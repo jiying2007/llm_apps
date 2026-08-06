@@ -1,0 +1,155 @@
+plugins {
+    id "com.android.application" version "9.0.1" apply false
+}
+
+tasks.register("generateUploadKey") {
+    group = "release"
+    description = "Generates the local Junchen Jingdu upload key and ignored signing properties."
+    notCompatibleWithConfigurationCache("one-time secret material generation")
+    doLast {
+        File propertiesFile = rootProject.file("keystore.properties")
+        File keyDirectory = rootProject.file("release-keystore")
+        File keyFile = new File(keyDirectory, "junchen-jingdu-upload.jks")
+        if (propertiesFile.exists() || keyFile.exists()) {
+            throw new GradleException(
+                    "upload signing files already exist; refusing to overwrite them")
+        }
+        if (!keyDirectory.isDirectory() && !keyDirectory.mkdirs()) {
+            throw new GradleException("cannot create release-keystore directory")
+        }
+
+        byte[] secretBytes = new byte[36]
+        new java.security.SecureRandom().nextBytes(secretBytes)
+        String password = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(secretBytes)
+        String passwordEnvironment = "JINGDU_GENERATED_KEY_PASSWORD"
+        File keytool = new File(System.getProperty("java.home"), "bin/keytool")
+        List<String> command = [keytool.absolutePath,
+                "-genkeypair",
+                "-alias", "jingdu-upload",
+                "-keyalg", "RSA",
+                "-keysize", "4096",
+                "-validity", "10000",
+                "-storetype", "PKCS12",
+                "-keystore", keyFile.absolutePath,
+                "-storepass:env", passwordEnvironment,
+                "-keypass:env", passwordEnvironment,
+                "-dname", "CN=Junchen Jingdu, OU=Android, O=Junchen, C=CN"]
+        ProcessBuilder builder = new ProcessBuilder(command)
+        builder.environment().put(passwordEnvironment, password)
+        builder.redirectErrorStream(true)
+        Process process = builder.start()
+        String output = process.inputStream.getText("UTF-8")
+        int result = process.waitFor()
+        if (result != 0) {
+            if (keyFile.exists()) {
+                keyFile.delete()
+            }
+            throw new GradleException("keytool failed: " + output.trim())
+        }
+
+        Properties properties = new Properties()
+        properties.setProperty("storeFile", keyFile.absolutePath)
+        properties.setProperty("storePassword", password)
+        properties.setProperty("keyAlias", "jingdu-upload")
+        properties.setProperty("keyPassword", password)
+        propertiesFile.withOutputStream { stream ->
+            properties.store(stream,
+                    "Generated locally. Never commit, upload, or send this file in chat.")
+        }
+        try {
+            java.nio.file.Files.setPosixFilePermissions(propertiesFile.toPath(),
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))
+            java.nio.file.Files.setPosixFilePermissions(keyFile.toPath(),
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))
+        } catch (UnsupportedOperationException ignored) {
+            // Non-POSIX filesystems rely on their platform ACLs.
+        }
+        logger.lifecycle("Generated upload key and ignored signing properties; back up both securely.")
+    }
+}
+
+tasks.register("w0Check") {
+    group = "verification"
+    description = "Runs the host core prototype tests, Android lint, and debug APK build."
+    dependsOn(":core:runPrototypeTests", ":app:lintDebug", ":app:assembleDebug")
+}
+
+tasks.register("androidMvpCheck") {
+    group = "verification"
+    description = "Runs core, debug, release lint, APK, and unsigned release AAB gates."
+    dependsOn(":core:runPrototypeTests", ":app:lintDebug", ":app:lintRelease",
+            ":app:assembleDebug", ":app:bundleRelease")
+}
+
+tasks.register("androidStoreCheck") {
+    group = "verification"
+    description = "Runs production identity/signing validation and the release gates."
+    dependsOn(":app:validateStoreRelease", ":core:runPrototypeTests",
+            ":app:lintRelease", ":app:assembleRelease", ":app:bundleRelease")
+}
+
+tasks.register("stageAndroidRelease", Copy) {
+    group = "release"
+    description = "Stages debug, signed release, mapping, and store artwork for delivery."
+    dependsOn("androidStoreCheck", ":app:assembleDebug")
+    into(layout.projectDirectory.dir("dist/android/1.0.0"))
+    from("app/build/outputs/apk/debug/app-debug.apk") {
+        rename { "jingdu-1.0.0-debug.apk" }
+    }
+    from("app/build/outputs/apk/release/app-release.apk") {
+        rename { "jingdu-1.0.0-release.apk" }
+    }
+    from("app/build/outputs/bundle/release/app-release.aab") {
+        rename { "jingdu-1.0.0-release.aab" }
+    }
+    from("app/build/outputs/mapping/release/mapping.txt") {
+        rename { "mapping-1.0.0.txt" }
+    }
+    from("../docs/txt-reader/release/assets/store-icon-512.png")
+    from("../docs/txt-reader/release/assets/feature-graphic-1024x500.png")
+}
+
+tasks.register("writeAndroidReleaseChecksums") {
+    group = "release"
+    description = "Writes SHA-256 checksums for staged Android release artifacts."
+    dependsOn("stageAndroidRelease")
+    doLast {
+        File releaseDirectory = rootProject.file("dist/android/1.0.0")
+        List<String> artifactNames = ["jingdu-1.0.0-debug.apk",
+                "jingdu-1.0.0-release.apk",
+                "jingdu-1.0.0-release.aab",
+                "mapping-1.0.0.txt",
+                "store-icon-512.png",
+                "feature-graphic-1024x500.png"]
+        StringBuilder checksums = new StringBuilder()
+        artifactNames.each { name ->
+            File artifact = new File(releaseDirectory, name)
+            if (!artifact.isFile()) {
+                throw new GradleException("missing staged artifact: " + name)
+            }
+            java.security.MessageDigest digest = java.security.MessageDigest
+                    .getInstance("SHA-256")
+            artifact.withInputStream { stream ->
+                byte[] buffer = new byte[8192]
+                int count
+                while ((count = stream.read(buffer)) != -1) {
+                    digest.update(buffer, 0, count)
+                }
+            }
+            String hash = java.util.HexFormat.of().formatHex(digest.digest())
+            checksums.append(hash).append("  ").append(name).append('\n')
+        }
+        java.nio.file.Files.writeString(new File(releaseDirectory,
+                "SHA256SUMS").toPath(), checksums.toString(),
+                java.nio.charset.StandardCharsets.UTF_8)
+    }
+}
+
+project(":app").tasks.matching { it.name == "bundleRelease" }.configureEach {
+    mustRunAfter(":app:validateStoreRelease")
+}
+
+project(":app").tasks.matching { it.name == "assembleRelease" }.configureEach {
+    mustRunAfter(":app:validateStoreRelease")
+}
