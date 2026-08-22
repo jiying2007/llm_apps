@@ -1,6 +1,6 @@
 import { taskpool } from '@kit.ArkTS';
 import nativeCore from 'libentry.so';
-import { chaptersTask, searchTask } from './BackgroundTasks';
+import { chaptersTask, OpenTaskResult, openDocumentTask, searchTask } from './BackgroundTasks';
 
 export interface SearchHit { offset: number; context: string; }
 export interface ChapterItem { offset: number; title: string; }
@@ -13,22 +13,31 @@ export class ReaderController {
   private pathValue: string = '';
   private lengthValue: number = 0;
   private positionValue: number = 0;
+  private openGeneration: number = 0;
 
-  open(path: string, restoredPosition: number): void {
-    this.close();
-    if (nativeCore.abiVersion() !== 2) throw new Error('unsupported Jingdu core ABI');
-    this.handle = nativeCore.open(path);
-    this.pathValue = path;
-    this.lengthValue = nativeCore.charCount(this.handle);
+  async open(path: string, restoredPosition: number): Promise<boolean> {
+    let generation = ++this.openGeneration;
+    this.closeHandle();
+    let packed = await taskpool.execute(new taskpool.Task(openDocumentTask, path)) as string;
+    let result = JSON.parse(packed) as OpenTaskResult;
+    if (result.handle <= 0 || result.length < 0 || result.path !== path) {
+      if (result.handle > 0) nativeCore.close(result.handle);
+      throw new Error('invalid shared-core open result');
+    }
+    if (generation !== this.openGeneration) {
+      nativeCore.close(result.handle);
+      return false;
+    }
+    this.handle = result.handle;
+    this.pathValue = result.path;
+    this.lengthValue = result.length;
     this.jump(restoredPosition);
+    return true;
   }
 
   close(): void {
-    if (this.handle !== 0) nativeCore.close(this.handle);
-    this.handle = 0;
-    this.pathValue = '';
-    this.lengthValue = 0;
-    this.positionValue = 0;
+    this.openGeneration++;
+    this.closeHandle();
   }
 
   handleValue(): number { return this.handle; }
@@ -51,7 +60,8 @@ export class ReaderController {
 
   async search(query: string): Promise<SearchHit[]> {
     this.ensureOpen();
-    let packed = await taskpool.execute(new taskpool.Task(searchTask, this.pathValue, query, 500)) as string;
+    let path = this.pathValue;
+    let packed = await taskpool.execute(new taskpool.Task(searchTask, path, query, 500)) as string;
     let result: SearchHit[] = [];
     packed.split('\n').forEach((line: string): void => {
       let tab = line.indexOf('\t');
@@ -64,7 +74,8 @@ export class ReaderController {
 
   async chapters(): Promise<ChapterItem[]> {
     this.ensureOpen();
-    let packed = await taskpool.execute(new taskpool.Task(chaptersTask, this.pathValue, 20000)) as string;
+    let path = this.pathValue;
+    let packed = await taskpool.execute(new taskpool.Task(chaptersTask, path, 20000)) as string;
     let result: ChapterItem[] = [];
     packed.split('\n').forEach((line: string): void => {
       let tab = line.indexOf('\t');
@@ -83,6 +94,14 @@ export class ReaderController {
     let next = Number(packed.substring(0, tab));
     if (!Number.isFinite(next)) return { nextOffset: from, text: '' };
     return { nextOffset: next, text: packed.substring(tab + 1) };
+  }
+
+  private closeHandle(): void {
+    if (this.handle !== 0) nativeCore.close(this.handle);
+    this.handle = 0;
+    this.pathValue = '';
+    this.lengthValue = 0;
+    this.positionValue = 0;
   }
 
   private ensureOpen(): void {
