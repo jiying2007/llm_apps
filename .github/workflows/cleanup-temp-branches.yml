@@ -1,0 +1,21 @@
+name: Cleanup Temp Branches
+
+on:
+  push:
+    branches: [feat/android-harmony-terminal]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete accidental temporary branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for ref in tmp-noop-do-not-use tmp-stage-never-merge tmp-should-not-create; do
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${ref}" || true
+          done
