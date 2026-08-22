@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
-: "${DEVECO_TOOLS_HOME:?set DEVECO_TOOLS_HOME to the HarmonyOS command-line tools root}"
+
+if [[ -n "${HARMONY_HVIGORW:-}" ]]; then
+  HVIGORW="$HARMONY_HVIGORW"
+elif command -v hvigorw >/dev/null 2>&1; then
+  HVIGORW="$(command -v hvigorw)"
+elif [[ -n "${DEVECO_TOOLS_HOME:-}" && -x "${DEVECO_TOOLS_HOME}/bin/hvigorw" ]]; then
+  HVIGORW="${DEVECO_TOOLS_HOME}/bin/hvigorw"
+else
+  echo "HarmonyOS Command Line Tools 6.1.1+ are required (set HARMONY_HVIGORW or DEVECO_TOOLS_HOME)." >&2
+  exit 2
+fi
+
 cd "$(dirname "$0")/../apps/harmony"
-"$DEVECO_TOOLS_HOME/hvigor/bin/hvigorw" --mode module -p product=default assembleHap --analyze=normal --no-parallel
+"$HVIGORW" --mode project -p product=default -p buildMode=debug assembleApp
