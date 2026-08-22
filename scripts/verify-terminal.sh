@@ -33,6 +33,11 @@ if git grep -n -E 'cleanPreviewFile|cleanRevisionPath|writeTextTask' -- apps; th
   exit 1
 fi
 
+if git grep -n 'configurationCacheRequested' -- apps/android; then
+  echo 'deprecated Gradle configuration-cache probe found' >&2
+  exit 1
+fi
+
 required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
@@ -72,6 +77,7 @@ grep -q 'self-hosted,harmonyos' docs/HARMONY_RUNNER.md
 grep -q 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' .github/workflows/harmony-device.yml
 
 grep -q 'version "9.3.1"' apps/android/build.gradle
+grep -q '^org.gradle.configuration-cache=false$' apps/android/gradle.properties
 grep -q 'gradle-9.5.0-bin.zip' apps/android/gradle/wrapper/gradle-wrapper.properties
 grep -q 'distributionSha256Sum=553c78f50dafcd54d65b9a444649057857469edf836431389695608536d6b746' \
   apps/android/gradle/wrapper/gradle-wrapper.properties
