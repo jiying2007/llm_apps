@@ -4,14 +4,16 @@ A change is mergeable only when every applicable gate below passes. `main` branc
 
 ## Source gates
 
-1. **Native core** — Release CMake build, `-Wall -Wextra -Wpedantic -Werror`, CTest including encoding/SHA/revision/large-file/concurrency/malformed-input coverage.
-2. **Android** — Debug/Release lint, Debug APK, Release AAB and JNI compilation for supported ABIs.
-3. **Harmony source contract** — Stage/HAP files, Node-API bridge, TaskPool long-work path, DocumentViewPicker and Core Speech Kit wiring are present and reference the single shared core.
+1. **Native core** — Release CMake build, `-Wall -Wextra -Wpedantic -Werror`, CTest including encoding/SHA/revision/large-file/concurrency/malformed-input coverage, plus clang-tidy analyzer/bugprone/performance/portability checks.
+2. **Android** — Debug/Release lint, Debug APK, Release AAB, JNI compilation for supported ABIs and architecture-contract checks for background open/work isolation and atomic private-file publication.
+3. **Harmony source contract** — Stage/HAP files, Node-API bridge, TaskPool long-work/open path, revision-safe persistence, DocumentViewPicker and Core Speech Kit wiring are present and reference the single shared core.
 4. **Repository contract** — no legacy roots, Java shared core, compatibility/transition markers, committed APK/AAB/HAP/keystore or extracted third-party executable assets.
 
 ## Toolchain gate
 
-Changes touching `apps/harmony` or the shared ABI require the official HarmonyOS/DevEco Hvigor build workflow when a `self-hosted,harmonyos` runner is available. The workflow must produce a HAP artifact; a static source check does not substitute for it.
+Changes touching `apps/harmony` or the shared ABI require the official HarmonyOS/DevEco Hvigor build workflow on a `self-hosted,harmonyos` runner. The workflow must produce a HAP artifact; a static source check does not substitute for it. Runner installation and verification are defined in `HARMONY_RUNNER.md`.
+
+A workflow that remains queued because no matching runner is online is an unmet toolchain gate, not success.
 
 ## Device gate
 
