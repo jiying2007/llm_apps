@@ -1,4 +1,5 @@
 name: Publish Android v2.0.0
+# publication-trigger: merged release PR
 
 on:
   push:
@@ -223,18 +224,20 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Delete migration branch
+      - name: Delete migration branches
         shell: bash
         run: |
           set -euo pipefail
-          if git ls-remote --exit-code --heads origin refs/heads/feat/android-harmony-terminal >/dev/null 2>&1; then
-            git push origin --delete feat/android-harmony-terminal
-          fi
+          for branch in feat/android-harmony-terminal release/android-v2-publisher; do
+            if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
+              git push origin --delete "$branch"
+            fi
+          done
 
       - name: Announce publication complete
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body 'Android v2.0.0 publication complete: signed release created, terminal root main published, migration branch cleanup attempted.'
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body 'Android v2.0.0 publication complete: signed release created, terminal root main published, migration branches cleaned.'
 
       - name: Report publisher failure
         if: failure()
