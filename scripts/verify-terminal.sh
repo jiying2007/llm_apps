@@ -23,6 +23,11 @@ if git grep -n -E 'implementation project\(":core"\)|include\(":app", ":core"\)'
   exit 1
 fi
 
+if git grep -n -E 'uses:[[:space:]]+actions/[^@]+@v[0-9]+' -- .github/workflows; then
+  echo 'floating GitHub Actions major tag found; pin actions to immutable commit SHAs' >&2
+  exit 1
+fi
+
 required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
@@ -50,5 +55,6 @@ grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jin
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'taskpool.execute' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'self-hosted,harmonyos' docs/HARMONY_RUNNER.md
+grep -q 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' .github/workflows/harmony-device.yml
 
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderSurfaceView.java
