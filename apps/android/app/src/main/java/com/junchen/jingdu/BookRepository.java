@@ -22,6 +22,9 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -101,33 +104,38 @@ final class BookRepository {
 
     synchronized Book importUri(Uri uri, String requestedEncoding) throws Exception {
         File temporary = File.createTempFile("jingdu-import-", ".bin", context.getCacheDir());
-        long size = copyUri(uri, temporary);
-        String sourceSha = NativeCore.fileSha256(temporary);
-        File directory = directory(sourceSha);
-        if (!directory.isDirectory() && !directory.mkdirs()) {
-            throw new IOException("cannot create book directory");
+        try {
+            long size = copyUri(uri, temporary);
+            String sourceSha = NativeCore.fileSha256(temporary);
+            Book existing = findById(sourceSha);
+            File directory = directory(sourceSha);
+            if (!directory.isDirectory() && !directory.mkdirs()) {
+                throw new IOException("cannot create book directory");
+            }
+
+            File raw = rawFile(sourceSha);
+            atomicReplace(temporary, raw);
+            String encoding = requestedEncoding == null ? AUTO : requestedEncoding;
+            if (AUTO.equals(encoding)) encoding = detect(raw);
+
+            File normalized = normalizedFile(sourceSha);
+            normalize(raw, normalized, encoding);
+            String normalizedSha = NativeCore.fileSha256(normalized);
+
+            Book book = new Book(
+                    sourceSha,
+                    displayName(uri),
+                    encoding,
+                    size,
+                    sourceSha,
+                    normalizedSha,
+                    existing == null ? 0 : existing.progress,
+                    System.currentTimeMillis());
+            upsert(book);
+            return book;
+        } finally {
+            if (temporary.exists() && !temporary.delete()) temporary.deleteOnExit();
         }
-
-        File raw = rawFile(sourceSha);
-        replaceFile(temporary, raw);
-        String encoding = requestedEncoding == null ? AUTO : requestedEncoding;
-        if (AUTO.equals(encoding)) encoding = detect(raw);
-
-        File normalized = normalizedFile(sourceSha);
-        normalize(raw, normalized, encoding);
-        String normalizedSha = NativeCore.fileSha256(normalized);
-
-        Book book = new Book(
-                sourceSha,
-                displayName(uri),
-                encoding,
-                size,
-                sourceSha,
-                normalizedSha,
-                0,
-                System.currentTimeMillis());
-        upsert(book);
-        return book;
     }
 
     synchronized void saveProgress(Book book, long progress) {
@@ -152,6 +160,13 @@ final class BookRepository {
         return NativeCore.repairRevision(
                 book.normalizedSha256,
                 packedRules == null ? "" : packedRules);
+    }
+
+    private Book findById(String id) {
+        for (Book book : list()) {
+            if (book.id.equals(id)) return book;
+        }
+        return null;
     }
 
     private long copyUri(Uri uri, File target) throws IOException {
@@ -194,13 +209,15 @@ final class BookRepository {
         }
 
         File temporary = new File(target.getParentFile(), "normalized.tmp");
+        FileOutputStream fileOutput = new FileOutputStream(temporary);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                      new FileInputStream(raw),
                      charset.newDecoder()
                              .onMalformedInput(CodingErrorAction.REPLACE)
                              .onUnmappableCharacter(CodingErrorAction.REPLACE)), 64 * 1024);
-             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-                     new FileOutputStream(temporary), StandardCharsets.UTF_8), 64 * 1024)) {
+             FileOutputStream output = fileOutput;
+             BufferedWriter writer = new BufferedWriter(
+                     new OutputStreamWriter(output, StandardCharsets.UTF_8), 64 * 1024)) {
             char[] buffer = new char[32 * 1024];
             boolean first = true;
             int count;
@@ -209,8 +226,10 @@ final class BookRepository {
                 first = false;
                 writer.write(buffer, start, count - start);
             }
+            writer.flush();
+            output.getFD().sync();
         }
-        replaceFile(temporary, target);
+        atomicReplace(temporary, target);
     }
 
     private synchronized void upsert(Book book) {
@@ -262,22 +281,15 @@ final class BookRepository {
     private File rawFile(String id) { return new File(directory(id), "source.bin"); }
     private File normalizedFile(String id) { return new File(directory(id), "document.txt"); }
 
-    private static void replaceFile(File source, File target) throws IOException {
-        if (target.exists() && !target.delete()) {
-            throw new IOException("cannot replace file: " + target.getName());
-        }
-        if (source.renameTo(target)) return;
-        copy(source, target);
-        if (!source.delete()) source.deleteOnExit();
-    }
-
-    private static void copy(File source, File target) throws IOException {
-        try (FileInputStream input = new FileInputStream(source);
-             FileOutputStream output = new FileOutputStream(target)) {
-            byte[] buffer = new byte[64 * 1024];
-            int count;
-            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
-            output.getFD().sync();
+    private static void atomicReplace(File source, File target) throws IOException {
+        try {
+            Files.move(
+                    source.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException error) {
+            Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
