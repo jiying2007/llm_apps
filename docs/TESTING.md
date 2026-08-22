@@ -34,9 +34,36 @@ Both platforms must test the same persistence invariants:
 
 The hosted repository contract checks structural invariants; device tests exercise interruption/process-death behavior.
 
-## Android
+## Android product UI
 
-CI must compile all supported native ABIs and run Debug/Release lint plus Debug APK and Release AAB builds. Platform behavior that can be expressed without a device should be unit-tested. Release/device validation covers DocumentProvider import/export, repeated import, process death, lifecycle, TTS/audio focus and accessibility.
+Android is Compose-first and has two top-level states: Library and Reader. CI compiles a Compose instrumentation-test source set in addition to Debug/Release lint/build.
+
+Minimum UI smoke coverage:
+
+- empty Library exposes product positioning and the primary import action;
+- Reader exposes back, search, chapters, progress and TTS semantics;
+- icon-only controls have content descriptions;
+- the old programmatic Views `MainActivity.java` is absent;
+- adaptive grid / bounded wide-reader measure / bottom sheets are part of the architecture contract.
+
+Device/UI validation additionally covers:
+
+- edge-to-edge system bars and predictive back;
+- 200% font scale and large accessibility text;
+- TalkBack reading order and minimum touch targets;
+- phone portrait/landscape, split screen, tablet and foldable-size windows;
+- theme/type/line-height/margin changes without losing position;
+- progress slider and sequential previous-page behavior;
+- ACTION_VIEW and ACTION_SEND import;
+- re-decode without reopening the external source picker;
+- revision-safe bookmarks and Clean offset isolation;
+- TTS/audio focus, auto page and sleep timer.
+
+UI tests should prefer semantics/user-observable behavior over implementation-node structure so Compose refactors do not create brittle tests.
+
+## Android performance
+
+10/100/300 MiB device runs verify that import, open/index, search, chapter scan, Clean generation, re-decode and export never intentionally execute on the main thread. Library rendering must not open/index every book. Reader page navigation must remain bounded regardless of full document size.
 
 ## HarmonyOS
 
@@ -44,4 +71,4 @@ Hosted CI verifies source/bridge/storage contracts. The `harmony-device.yml` wor
 
 ## Cross-platform parity
 
-Use the same golden source files on both platforms. For each file compare source SHA, normalized SHA, encoding selection, character count, fixed window reads, search offsets, chapter offsets, repair revision and clean-output SHA. A mismatch is a release blocker.
+Use the same golden source files on both platforms. For each file compare source SHA, normalized SHA, encoding selection, character count, fixed window reads, search offsets, chapter offsets, repair revision and clean-output SHA. A mismatch is a release blocker before declaring the two-platform product jointly production-ready.
