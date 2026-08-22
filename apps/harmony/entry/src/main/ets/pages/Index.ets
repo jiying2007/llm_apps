@@ -73,9 +73,9 @@ struct Index {
       .layoutWeight(1)
       .backgroundColor(this.night ? '#181818' : '#FAF8F0')
       Row({ space: 12 }) {
-        Button('上一页').enabled(this.current !== undefined).layoutWeight(1)
+        Button('上一页').enabled(this.current !== undefined && !this.busy).layoutWeight(1)
           .onClick(() => { this.reader.previous(); this.render(); })
-        Button('下一页').enabled(this.current !== undefined).layoutWeight(1)
+        Button('下一页').enabled(this.current !== undefined && !this.busy).layoutWeight(1)
           .onClick(() => { this.reader.next(); this.render(); })
       }.width('100%').padding(10)
     }
@@ -89,13 +89,13 @@ struct Index {
     Scroll() {
       Row({ space: 6 }) {
         Button('导入').enabled(!this.busy).onClick(() => this.panel = 'encoding')
-        Button('书架').onClick(() => { this.refreshLibrary(); this.panel = 'library'; })
+        Button('书架').enabled(!this.busy).onClick(() => { this.refreshLibrary(); this.panel = 'library'; })
         Button('搜索').enabled(this.current !== undefined && !this.busy).onClick(() => this.panel = 'search')
         Button('目录').enabled(this.current !== undefined && !this.busy).onClick(() => { this.panel = 'chapters'; this.loadChapters(); })
-        Button('书签').enabled(this.current !== undefined).onClick(() => { this.loadBookmarks(); this.panel = 'bookmarks'; })
+        Button('书签').enabled(this.current !== undefined && !this.busy).onClick(() => { this.loadBookmarks(); this.panel = 'bookmarks'; })
         Button('净读').enabled(this.current !== undefined && !this.busy).onClick(() => this.panel = 'repair')
-        Button(this.ttsReading ? '暂停朗读' : '朗读').enabled(this.current !== undefined).onClick(() => this.toggleTts())
-        Button(this.autoReading ? '停止自动' : '自动').enabled(this.current !== undefined).onClick(() => this.toggleAuto())
+        Button(this.ttsReading ? '暂停朗读' : '朗读').enabled(this.current !== undefined && !this.busy).onClick(() => this.toggleTts())
+        Button(this.autoReading ? '停止自动' : '自动').enabled(this.current !== undefined && !this.busy).onClick(() => this.toggleAuto())
         Button('睡眠').enabled(this.current !== undefined).onClick(() => this.panel = 'sleep')
         Button(this.night ? '日间' : '夜间').onClick(() => this.night = !this.night)
         Button('A-').onClick(() => this.fontSize = Math.max(14, this.fontSize - 2))
@@ -243,6 +243,7 @@ struct Index {
 
   private async pickImport(encoding: string): Promise<void> {
     if (!this.store || this.busy) return;
+    let token = 0;
     try {
       let context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       let options = new picker.DocumentSelectOptions();
@@ -250,19 +251,20 @@ struct Index {
       options.fileSuffixFilters = ['TXT|.txt'];
       let uris = await new picker.DocumentViewPicker(context).select(options);
       if (uris.length === 0) return;
-      let token = ++this.workGeneration;
+      token = ++this.workGeneration;
       this.busy = true;
       this.status = '正在导入…';
       let result = await taskpool.execute(new taskpool.Task(importBookTask, uris[0], this.store.rootPath(), encoding)) as string;
       if (token !== this.workGeneration) return;
       let book = this.store.persistImported(this.uriName(uris[0]), result);
       this.refreshLibrary();
-      this.openBook(book, false);
-      this.panel = '';
-    } catch (error) {
-      this.showError(error, '导入失败');
-    } finally {
       this.busy = false;
+      await this.openBook(book, false);
+      if (token + 1 === this.workGeneration) this.panel = '';
+    } catch (error) {
+      if (token === 0 || token === this.workGeneration) this.showError(error, '导入失败');
+    } finally {
+      if (token === this.workGeneration) this.busy = false;
     }
   }
 
@@ -271,22 +273,33 @@ struct Index {
     this.stopAuto();
     this.tts.stop('');
     this.ttsReading = false;
-    let restored = this.current?.id === book.id ? this.reader.position() : book.progress;
-    this.current = book;
+
+    let restored = clean ? 0 :
+      (this.current?.id === book.id && !this.cleanMode ? this.reader.position() : book.progress);
+    this.persistProgress();
+    let token = ++this.workGeneration;
+    this.busy = true;
+    this.current = undefined;
+    this.cleanMode = false;
+    this.reader.close();
+    this.status = clean ? '正在生成净读视图…' : '正在打开…';
+
     try {
       let path = this.store.normalizedPath(book);
-      if (clean) {
-        this.busy = true;
-        this.status = '正在生成净读视图…';
-        path = await this.buildClean(book);
+      if (clean) path = await this.buildClean(book);
+      if (token !== this.workGeneration) return;
+      let opened = await this.reader.open(path, restored);
+      if (token !== this.workGeneration || !opened) {
+        this.reader.close();
+        return;
       }
+      this.current = book;
       this.cleanMode = clean;
-      this.reader.open(path, restored);
       this.render();
     } catch (error) {
-      this.showError(error, clean ? '净读失败' : '打开失败');
+      if (token === this.workGeneration) this.showError(error, clean ? '净读失败' : '打开失败');
     } finally {
-      this.busy = false;
+      if (token === this.workGeneration) this.busy = false;
     }
   }
 
@@ -294,13 +307,20 @@ struct Index {
     if (!this.current || !this.store) return;
     try {
       this.pageText = this.reader.page();
-      this.store.saveProgress(this.current, this.reader.position());
-      let percent = this.reader.length() === 0 ? 0 : Math.min(100, Math.floor(this.reader.position() * 100 / this.reader.length()));
+      if (!this.cleanMode) this.store.saveProgress(this.current, this.reader.position());
+      let percent = this.reader.length() === 0 ? 0 :
+        Math.min(100, Math.floor(this.reader.position() * 100 / this.reader.length()));
       this.status = `${this.current.name} · ${percent}% · ${this.current.encoding} · ${this.current.normalizedSha256.substring(0, 8)}${this.cleanMode ? ' · 净读' : ' · 原文视图'}`;
-    } catch (error) { this.showError(error, '读取失败'); }
+    } catch (error) {
+      this.showError(error, '读取失败');
+    }
   }
 
-  private persistProgress(): void { if (this.current && this.store) this.store.saveProgress(this.current, this.reader.position()); }
+  private persistProgress(): void {
+    if (this.current && this.store && !this.cleanMode) {
+      this.store.saveProgress(this.current, this.reader.position());
+    }
+  }
 
   private async runSearch(): Promise<void> {
     if (this.searchQuery.trim().length === 0 || this.busy) return;
@@ -310,8 +330,14 @@ struct Index {
     try {
       let hits = await this.reader.search(this.searchQuery);
       if (token === this.workGeneration) this.searchHits = hits;
-    } catch (error) { this.showError(error, '搜索失败'); }
-    finally { this.busy = false; if (this.current) this.render(); }
+    } catch (error) {
+      if (token === this.workGeneration) this.showError(error, '搜索失败');
+    } finally {
+      if (token === this.workGeneration) {
+        this.busy = false;
+        if (this.current) this.render();
+      }
+    }
   }
 
   private async loadChapters(): Promise<void> {
@@ -322,8 +348,14 @@ struct Index {
     try {
       let items = await this.reader.chapters();
       if (token === this.workGeneration) this.chapters = items;
-    } catch (error) { this.showError(error, '目录失败'); }
-    finally { this.busy = false; if (this.current) this.render(); }
+    } catch (error) {
+      if (token === this.workGeneration) this.showError(error, '目录失败');
+    } finally {
+      if (token === this.workGeneration) {
+        this.busy = false;
+        if (this.current) this.render();
+      }
+    }
   }
 
   private loadBookmarks(): void {
@@ -349,13 +381,18 @@ struct Index {
   }
 
   private rules(): string { return this.current && this.store ? this.store.rules(this.current) : ''; }
-  private ruleCount(): number { let value = this.rules(); return value.length === 0 ? 0 : value.split('\u001e').length; }
+
+  private ruleCount(): number {
+    let value = this.rules();
+    return value.length === 0 ? 0 : value.split('\u001e').length;
+  }
 
   private addRule(): void {
     if (!this.current || !this.store) return;
     let from = this.ruleFrom;
     let to = this.ruleTo;
-    if (from.length === 0 || from.indexOf('\u001e') >= 0 || from.indexOf('\u001f') >= 0 || to.indexOf('\u001e') >= 0 || to.indexOf('\u001f') >= 0) {
+    if (from.length === 0 || from.indexOf('\u001e') >= 0 || from.indexOf('\u001f') >= 0 ||
+      to.indexOf('\u001e') >= 0 || to.indexOf('\u001f') >= 0) {
       this.toast('规则包含保留分隔符或查找为空');
       return;
     }
@@ -381,33 +418,51 @@ struct Index {
     return output;
   }
 
-  private toggleClean(): void { if (this.current) this.openBook(this.current, !this.cleanMode); }
+  private toggleClean(): void {
+    if (this.current) this.openBook(this.current, !this.cleanMode);
+  }
 
   private async exportClean(): Promise<void> {
     if (!this.current || !this.store || this.busy) return;
+    let book = this.current;
+    let token = ++this.workGeneration;
     try {
       this.busy = true;
       this.status = '正在准备导出…';
-      let cleanPath = await this.buildClean(this.current);
+      let cleanPath = await this.buildClean(book);
+      if (token !== this.workGeneration) return;
       let context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       let options = new picker.DocumentSaveOptions();
-      options.newFileNames = [`${this.stripTxt(this.current.name)}-净读.txt`];
+      options.newFileNames = [`${this.stripTxt(book.name)}-净读.txt`];
       options.fileSuffixChoices = ['txt'];
       let uris = await new picker.DocumentViewPicker(context).save(options);
+      if (token !== this.workGeneration) return;
       if (uris.length > 0) {
         await taskpool.execute(new taskpool.Task(exportTask, cleanPath, uris[0]));
-        this.toast('导出完成');
+        if (token === this.workGeneration) this.toast('导出完成');
       }
-    } catch (error) { this.showError(error, '导出失败'); }
-    finally { this.busy = false; if (this.current) this.render(); }
+    } catch (error) {
+      if (token === this.workGeneration) this.showError(error, '导出失败');
+    } finally {
+      if (token === this.workGeneration) {
+        this.busy = false;
+        if (this.current) this.render();
+      }
+    }
   }
 
-  private stripTxt(name: string): string { return name.toLowerCase().endsWith('.txt') ? name.substring(0, name.length - 4) : name; }
+  private stripTxt(name: string): string {
+    return name.toLowerCase().endsWith('.txt') ? name.substring(0, name.length - 4) : name;
+  }
 
   private async toggleTts(): Promise<void> {
-    if (!this.current) return;
+    if (!this.current || this.busy) return;
     this.stopAuto();
-    if (this.ttsReading) { this.tts.stop(''); this.ttsReading = false; return; }
+    if (this.ttsReading) {
+      this.tts.stop('');
+      this.ttsReading = false;
+      return;
+    }
     try {
       this.ttsReading = true;
       await this.tts.start(this.reader.handleValue(), this.reader.position(),
@@ -423,8 +478,11 @@ struct Index {
   }
 
   private toggleAuto(): void {
-    if (!this.current) return;
-    if (this.autoReading) { this.stopAuto(); return; }
+    if (!this.current || this.busy) return;
+    if (this.autoReading) {
+      this.stopAuto();
+      return;
+    }
     this.tts.stop('');
     this.ttsReading = false;
     this.autoReading = true;
@@ -440,7 +498,10 @@ struct Index {
 
   private stopAuto(): void {
     this.autoReading = false;
-    if (this.autoTimer >= 0) { clearInterval(this.autoTimer); this.autoTimer = -1; }
+    if (this.autoTimer >= 0) {
+      clearInterval(this.autoTimer);
+      this.autoTimer = -1;
+    }
   }
 
   private setSleepTimer(minutes: number): void {
@@ -453,12 +514,17 @@ struct Index {
         this.toast('睡眠定时结束');
       }, minutes * 60 * 1000);
       this.toast(`已设置 ${minutes} 分钟`);
-    } else this.toast('已关闭睡眠定时');
+    } else {
+      this.toast('已关闭睡眠定时');
+    }
     this.panel = '';
   }
 
   private cancelSleepTimer(): void {
-    if (this.sleepTimer >= 0) { clearTimeout(this.sleepTimer); this.sleepTimer = -1; }
+    if (this.sleepTimer >= 0) {
+      clearTimeout(this.sleepTimer);
+      this.sleepTimer = -1;
+    }
   }
 
   private confirmDelete(): void {
@@ -476,6 +542,7 @@ struct Index {
           this.stopAuto();
           this.tts.stop('');
           this.ttsReading = false;
+          this.persistProgress();
           this.reader.close();
           this.store?.delete(book);
           this.current = undefined;
