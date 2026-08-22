@@ -39,8 +39,10 @@ public final class MainActivity extends Activity {
     private static final int REQ_IMPORT = 100;
     private static final int REQ_EXPORT = 101;
 
+    private record OpenedBook(BookRepository.Book book, ReaderController reader, boolean clean) {}
+
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ReaderController reader = new ReaderController();
+    private ReaderController reader = new ReaderController();
     private final ExecutorService workers = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "jingdu-worker");
         thread.setDaemon(true);
@@ -57,13 +59,14 @@ public final class MainActivity extends Activity {
     private File pendingExport;
     private boolean cleanMode;
     private boolean autoReading;
+    private boolean busy;
     private long autoDelayMs = 6000;
     private float fontSp = 20;
     private boolean night;
 
     private final Runnable autoStep = new Runnable() {
         @Override public void run() {
-            if (!autoReading || currentBook == null) return;
+            if (busy || !autoReading || currentBook == null) return;
             reader.next();
             render();
             if (reader.position() < Math.max(0, reader.length() - 1)) main.postDelayed(this, autoDelayMs);
@@ -119,8 +122,8 @@ public final class MainActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         LinearLayout nav = new LinearLayout(this);
         nav.setGravity(Gravity.CENTER);
-        Button prev = button(nav, "上一页", v -> { reader.previous(); render(); });
-        Button next = button(nav, "下一页", v -> { reader.next(); render(); });
+        Button prev = button(nav, "上一页", v -> navigate(false));
+        Button next = button(nav, "下一页", v -> navigate(true));
         prev.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         next.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         root.addView(nav);
@@ -137,40 +140,58 @@ public final class MainActivity extends Activity {
         return button;
     }
 
+    private void navigate(boolean forward) {
+        if (busy || currentBook == null) return;
+        if (forward) reader.next();
+        else reader.previous();
+        render();
+    }
+
     private <T> void runWork(String message, Callable<T> task, Consumer<T> success, String errorTitle) {
+        if (busy) return;
         final long token = workGeneration.incrementAndGet();
+        busy = true;
         status.setText(message);
         workers.execute(() -> {
             try {
                 T result = task.call();
                 main.post(() -> {
                     if (isDestroyed() || token != workGeneration.get()) return;
+                    busy = false;
                     success.accept(result);
                 });
             } catch (Throwable error) {
                 main.post(() -> {
                     if (isDestroyed() || token != workGeneration.get()) return;
+                    busy = false;
                     showError(errorTitle, error);
                 });
             }
         });
     }
 
-    private void cancelLongWork() { workGeneration.incrementAndGet(); }
+    private void cancelLongWork() {
+        workGeneration.incrementAndGet();
+        busy = false;
+    }
 
     private void chooseImport() {
+        if (busy) return;
         new AlertDialog.Builder(this).setTitle("源文件编码").setItems(BookRepository.ENCODINGS, (d, which) -> {
             pendingEncoding = BookRepository.ENCODINGS[which];
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE);
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("text/plain")
+                    .addCategory(Intent.CATEGORY_OPENABLE);
             startActivityForResult(intent, REQ_IMPORT);
         }).show();
     }
 
     private void importUri(Uri uri, String encoding) {
-        runWork("正在导入…", () -> repository.importUri(uri, encoding), book -> openBook(book, false), "导入失败");
+        runWork("正在导入…", () -> repository.importUri(uri, encoding),
+                book -> openBook(book, false), "导入失败");
     }
 
     private void openMostRecent() {
+        if (busy) return;
         List<BookRepository.Book> books = repository.list();
         if (books.isEmpty()) {
             text.setText("导入本地 TXT 开始阅读。\n\n文件只复制到应用私有目录，源文件不会被修改。");
@@ -179,44 +200,66 @@ public final class MainActivity extends Activity {
     }
 
     private void openBook(BookRepository.Book book, boolean clean) {
+        if (busy) return;
         stopAuto();
         tts.stop(null);
+
+        BookRepository.Book previousBook = currentBook;
+        ReaderController previousReader = reader;
+        boolean previousClean = cleanMode;
+        long previousPosition = previousBook == null ? 0 : previousReader.position();
         long restored = clean ? 0 :
-                (currentBook != null && currentBook.id.equals(book.id) && !cleanMode
-                        ? reader.position() : book.progress);
-        if (currentBook != null && !cleanMode) {
-            repository.saveProgress(currentBook, reader.position());
+                (previousBook != null && previousBook.id.equals(book.id) && !previousClean
+                        ? previousPosition : book.progress);
+        if (previousBook != null && !previousClean) {
+            repository.saveProgress(previousBook, previousPosition);
         }
+
+        final long token = workGeneration.incrementAndGet();
+        busy = true;
         currentBook = null;
-        reader.close();
         cleanMode = false;
+        status.setText(clean ? "正在生成净读视图…" : "正在打开…");
 
-        if (!clean) {
-            File file = repository.normalizedFile(book);
-            runWork("正在打开…", () -> {
-                reader.open(file, restored);
-                return book;
-            }, opened -> {
-                currentBook = opened;
-                cleanMode = false;
-                render();
-            }, "打开失败");
-            return;
-        }
-
-        runWork("正在生成净读视图…", () -> {
-            File file = buildClean(book);
-            reader.open(file, 0);
-            return book;
-        }, opened -> {
-            currentBook = opened;
-            cleanMode = true;
-            render();
-        }, "净读失败");
+        workers.execute(() -> {
+            ReaderController candidate = new ReaderController();
+            try {
+                File file = clean ? buildClean(book) : repository.normalizedFile(book);
+                candidate.open(file, restored);
+                if (token != workGeneration.get() || isDestroyed()) {
+                    candidate.close();
+                    return;
+                }
+                OpenedBook opened = new OpenedBook(book, candidate, clean);
+                main.post(() -> {
+                    if (isDestroyed() || token != workGeneration.get()) {
+                        opened.reader().close();
+                        return;
+                    }
+                    ReaderController old = reader;
+                    reader = opened.reader();
+                    currentBook = opened.book();
+                    cleanMode = opened.clean();
+                    busy = false;
+                    old.close();
+                    render();
+                });
+            } catch (Throwable error) {
+                candidate.close();
+                main.post(() -> {
+                    if (isDestroyed() || token != workGeneration.get()) return;
+                    currentBook = previousBook;
+                    cleanMode = previousClean;
+                    busy = false;
+                    if (previousBook != null) render();
+                    showError(clean ? "净读失败" : "打开失败", error);
+                });
+            }
+        });
     }
 
     private void render() {
-        if (currentBook == null) return;
+        if (busy || currentBook == null) return;
         try {
             text.setText(reader.page());
             if (!cleanMode) repository.saveProgress(currentBook, reader.position());
@@ -230,15 +273,19 @@ public final class MainActivity extends Activity {
     }
 
     private void showLibrary() {
+        if (busy) return;
         List<BookRepository.Book> books = repository.list();
         if (books.isEmpty()) { toast("书架为空"); return; }
         String[] names = new String[books.size()];
-        for (int i = 0; i < books.size(); i++) names[i] = books.get(i).name + "  [" + books.get(i).encoding + "]";
-        new AlertDialog.Builder(this).setTitle("书架").setItems(names, (d, which) -> openBook(books.get(which), false)).show();
+        for (int i = 0; i < books.size(); i++) {
+            names[i] = books.get(i).name + "  [" + books.get(i).encoding + "]";
+        }
+        new AlertDialog.Builder(this).setTitle("书架").setItems(names,
+                (d, which) -> openBook(books.get(which), false)).show();
     }
 
     private void promptSearch() {
-        if (currentBook == null) return;
+        if (busy || currentBook == null) return;
         EditText input = new EditText(this);
         input.setSingleLine();
         new AlertDialog.Builder(this).setTitle("全文搜索").setView(input)
@@ -247,12 +294,14 @@ public final class MainActivity extends Activity {
     }
 
     private void runSearch(String query) {
-        if (query.trim().isEmpty()) return;
-        runWork("正在搜索…", () -> reader.search(query), hits -> {
+        if (busy || currentBook == null || query.trim().isEmpty()) return;
+        ReaderController source = reader;
+        runWork("正在搜索…", () -> source.search(query), hits -> {
             if (hits.isEmpty()) { toast("没有命中"); render(); return; }
             String[] items = new String[hits.size()];
             for (int i = 0; i < hits.size(); i++) items[i] = hits.get(i).context();
             new AlertDialog.Builder(this).setTitle("搜索结果 · " + hits.size()).setItems(items, (d, which) -> {
+                if (busy || currentBook == null) return;
                 reader.jump(hits.get(which).offset());
                 render();
             }).show();
@@ -260,12 +309,14 @@ public final class MainActivity extends Activity {
     }
 
     private void showChapters() {
-        if (currentBook == null) return;
-        runWork("正在生成目录…", reader::chapters, chapters -> {
+        if (busy || currentBook == null) return;
+        ReaderController source = reader;
+        runWork("正在生成目录…", source::chapters, chapters -> {
             if (chapters.isEmpty()) { toast("未识别到章节标题"); render(); return; }
             String[] items = new String[chapters.size()];
             for (int i = 0; i < chapters.size(); i++) items[i] = chapters.get(i).title();
             new AlertDialog.Builder(this).setTitle("目录 · " + chapters.size()).setItems(items, (d, which) -> {
+                if (busy || currentBook == null) return;
                 reader.jump(chapters.get(which).offset());
                 render();
             }).show();
@@ -278,7 +329,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showBookmarks() {
-        if (currentBook == null) return;
+        if (busy || currentBook == null) return;
         if (cleanMode) {
             toast("净读预览不写入原文书签");
             return;
@@ -290,8 +341,9 @@ public final class MainActivity extends Activity {
         Collections.sort(positions);
         ArrayList<String> labels = new ArrayList<>();
         labels.add("＋ 添加当前位置");
-        for (Long p : positions) labels.add("位置 " + p);
+        for (Long position : positions) labels.add("位置 " + position);
         new AlertDialog.Builder(this).setTitle("书签").setItems(labels.toArray(new String[0]), (d, which) -> {
+            if (busy || currentBook == null || cleanMode) return;
             if (which == 0) {
                 Set<String> set = bookmarkSet();
                 set.add(Long.toString(reader.position()));
@@ -301,8 +353,11 @@ public final class MainActivity extends Activity {
                 reader.jump(positions.get(which - 1));
                 render();
             }
-        }).setNeutralButton("清空", (d, w) -> getPreferences(MODE_PRIVATE).edit()
-                .remove("bookmarks." + currentBook.id).apply()).show();
+        }).setNeutralButton("清空", (d, w) -> {
+            if (currentBook != null && !cleanMode) {
+                getPreferences(MODE_PRIVATE).edit().remove("bookmarks." + currentBook.id).apply();
+            }
+        }).show();
     }
 
     private String rules() {
@@ -314,9 +369,10 @@ public final class MainActivity extends Activity {
     }
 
     private void showRepair() {
-        if (currentBook == null) return;
+        if (busy || currentBook == null) return;
         String[] actions = {"添加字面规则", cleanMode ? "切回原文视图" : "预览净读视图", "导出净读 TXT", "清空规则"};
         new AlertDialog.Builder(this).setTitle("净读规则 · " + ruleCount()).setItems(actions, (d, which) -> {
+            if (busy || currentBook == null) return;
             if (which == 0) addRule();
             else if (which == 1) openBook(currentBook, !cleanMode);
             else if (which == 2) exportClean();
@@ -336,6 +392,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addRule() {
+        if (busy || currentBook == null) return;
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         EditText from = new EditText(this);
@@ -345,15 +402,16 @@ public final class MainActivity extends Activity {
         layout.addView(from);
         layout.addView(to);
         new AlertDialog.Builder(this).setTitle("新增净读规则").setView(layout).setPositiveButton("保存", (d, w) -> {
-            String a = from.getText().toString();
-            String b = to.getText().toString();
-            if (a.isEmpty() || a.indexOf(0x1f) >= 0 || a.indexOf(0x1e) >= 0
-                    || b.indexOf(0x1f) >= 0 || b.indexOf(0x1e) >= 0) {
+            if (currentBook == null) return;
+            String find = from.getText().toString();
+            String replacement = to.getText().toString();
+            if (find.isEmpty() || find.indexOf(0x1f) >= 0 || find.indexOf(0x1e) >= 0
+                    || replacement.indexOf(0x1f) >= 0 || replacement.indexOf(0x1e) >= 0) {
                 toast("规则包含保留分隔符或查找为空");
                 return;
             }
             String old = rules();
-            String packed = old + (old.isEmpty() ? "" : "\u001e") + a + "\u001f" + b;
+            String packed = old + (old.isEmpty() ? "" : "\u001e") + find + "\u001f" + replacement;
             getPreferences(MODE_PRIVATE).edit().putString("rules." + currentBook.id, packed).apply();
             if (cleanMode) openBook(currentBook, true);
         }).setNegativeButton("取消", null).show();
@@ -365,15 +423,18 @@ public final class MainActivity extends Activity {
         String revision = repository.repairRevision(book, packedRules);
         File revisionFile = new File(output.getParentFile(), "clean.revision");
         if (output.isFile() && revisionFile.isFile()) {
-            try (FileInputStream in = new FileInputStream(revisionFile)) {
+            try (FileInputStream input = new FileInputStream(revisionFile)) {
                 byte[] data = new byte[(int) Math.min(128, revisionFile.length())];
-                int count = in.read(data);
-                if (count > 0 && revision.equals(new String(data, 0, count, java.nio.charset.StandardCharsets.UTF_8))) return output;
+                int count = input.read(data);
+                if (count > 0 && revision.equals(new String(
+                        data, 0, count, java.nio.charset.StandardCharsets.UTF_8))) {
+                    return output;
+                }
             }
         }
-        try (ReaderController base = new ReaderController()) {
-            base.open(repository.normalizedFile(book), 0);
-            base.exportRules(packedRules, output);
+        try (ReaderController source = new ReaderController()) {
+            source.open(repository.normalizedFile(book), 0);
+            source.exportRules(packedRules, output);
         }
         try (java.io.FileOutputStream revisionOut = new java.io.FileOutputStream(revisionFile)) {
             revisionOut.write(revision.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -383,7 +444,7 @@ public final class MainActivity extends Activity {
     }
 
     private void exportClean() {
-        if (currentBook == null) return;
+        if (busy || currentBook == null) return;
         BookRepository.Book book = currentBook;
         runWork("正在准备导出…", () -> buildClean(book), file -> {
             pendingExport = file;
@@ -395,11 +456,12 @@ public final class MainActivity extends Activity {
     }
 
     private static String stripTxt(String name) {
-        return name.toLowerCase(java.util.Locale.ROOT).endsWith(".txt") ? name.substring(0, name.length() - 4) : name;
+        return name.toLowerCase(java.util.Locale.ROOT).endsWith(".txt")
+                ? name.substring(0, name.length() - 4) : name;
     }
 
     private void toggleTts() {
-        if (currentBook == null) return;
+        if (busy || currentBook == null) return;
         stopAuto();
         if (tts.isSpeaking()) {
             tts.stop(null);
@@ -407,7 +469,12 @@ public final class MainActivity extends Activity {
             return;
         }
         tts.start(reader, reader.position(), new TtsController.Listener() {
-            @Override public void onPosition(long offset) { reader.jump(offset); render(); }
+            @Override public void onPosition(long offset) {
+                if (busy || currentBook == null) return;
+                reader.jump(offset);
+                render();
+            }
+
             @Override public void onStopped(String reason) {
                 if (reason != null && !reason.equals("end")) toast(reason);
             }
@@ -415,7 +482,7 @@ public final class MainActivity extends Activity {
     }
 
     private void toggleAuto() {
-        if (currentBook == null) return;
+        if (busy || currentBook == null) return;
         if (autoReading) stopAuto();
         else {
             tts.stop(null);
@@ -425,9 +492,13 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void stopAuto() { autoReading = false; main.removeCallbacks(autoStep); }
+    private void stopAuto() {
+        autoReading = false;
+        main.removeCallbacks(autoStep);
+    }
 
     private void chooseAutoSpeed() {
+        if (busy) return;
         String[] items = {"2 秒/页", "4 秒/页", "6 秒/页", "10 秒/页"};
         long[] values = {2000, 4000, 6000, 10000};
         new AlertDialog.Builder(this).setTitle("自动阅读速度")
@@ -435,6 +506,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showSleepTimer() {
+        if (busy || currentBook == null) return;
         String[] items = {"关闭", "15 分钟", "30 分钟", "60 分钟"};
         long[] minutes = {0, 15, 30, 60};
         new AlertDialog.Builder(this).setTitle("伴读睡眠定时").setItems(items, (d, w) -> {
@@ -447,7 +519,7 @@ public final class MainActivity extends Activity {
     }
 
     private void deleteCurrent() {
-        if (currentBook == null) return;
+        if (busy || currentBook == null) return;
         BookRepository.Book doomed = currentBook;
         new AlertDialog.Builder(this).setTitle("删除私有副本？")
                 .setMessage(doomed.name + "\n源 TXT 不会被删除。此操作不保留旧版本兼容数据。")
@@ -468,16 +540,16 @@ public final class MainActivity extends Activity {
     }
 
     private void applyAppearance() {
-        int bg = night ? Color.rgb(24, 24, 24) : Color.rgb(250, 248, 240);
-        int fg = night ? Color.rgb(225, 225, 225) : Color.rgb(35, 35, 35);
+        int background = night ? Color.rgb(24, 24, 24) : Color.rgb(250, 248, 240);
+        int foreground = night ? Color.rgb(225, 225, 225) : Color.rgb(35, 35, 35);
         if (text != null) {
-            text.setBackgroundColor(bg);
-            text.setTextColor(fg);
+            text.setBackgroundColor(background);
+            text.setTextColor(foreground);
             text.setTextSize(fontSp);
         }
         if (status != null) {
-            status.setBackgroundColor(bg);
-            status.setTextColor(fg);
+            status.setBackgroundColor(background);
+            status.setTextColor(foreground);
         }
     }
 
@@ -485,32 +557,43 @@ public final class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
-        if (requestCode == REQ_IMPORT) importUri(uri, pendingEncoding);
-        else if (requestCode == REQ_EXPORT && pendingExport != null) {
+        if (requestCode == REQ_IMPORT) {
+            importUri(uri, pendingEncoding);
+        } else if (requestCode == REQ_EXPORT && pendingExport != null) {
             File source = pendingExport;
             runWork("正在导出…", () -> {
-                try (FileInputStream in = new FileInputStream(source);
-                     OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
-                    if (out == null) throw new IOException("cannot open export destination");
+                try (FileInputStream input = new FileInputStream(source);
+                     OutputStream output = getContentResolver().openOutputStream(uri, "w")) {
+                    if (output == null) throw new IOException("cannot open export destination");
                     byte[] buffer = new byte[64 * 1024];
                     int count;
-                    while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
-                    out.flush();
+                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                    output.flush();
                 }
                 return Boolean.TRUE;
-            }, ignored -> { pendingExport = null; toast("导出完成"); render(); }, "导出失败");
+            }, ignored -> {
+                pendingExport = null;
+                toast("导出完成");
+                render();
+            }, "导出失败");
         }
     }
 
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (currentBook != null && keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) { reader.next(); render(); return true; }
-        if (currentBook != null && keyCode == KeyEvent.KEYCODE_VOLUME_UP) { reader.previous(); render(); return true; }
+        if (!busy && currentBook != null && keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            navigate(true);
+            return true;
+        }
+        if (!busy && currentBook != null && keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            navigate(false);
+            return true;
+        }
         return super.onKeyDown(keyCode, event);
     }
 
     @Override protected void onPause() {
         super.onPause();
-        if (currentBook != null && !cleanMode) {
+        if (!busy && currentBook != null && !cleanMode) {
             repository.saveProgress(currentBook, reader.position());
         }
     }
@@ -531,5 +614,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("确定", null).show();
     }
 
-    private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_SHORT).show(); }
+    private void toast(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
 }
