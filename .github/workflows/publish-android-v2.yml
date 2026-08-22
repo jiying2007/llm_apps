@@ -1,11 +1,10 @@
 name: Publish Android v2.0.0
-# publication-trigger: merged release PR
 
 on:
-  push:
+  pull_request:
     branches: [main]
     paths:
-      - '.github/workflows/publish-android-v2.yml'
+      - '.release/android-v2-trigger'
 
 permissions:
   contents: write
@@ -18,6 +17,7 @@ concurrency:
 
 jobs:
   publish:
+    if: github.actor == 'jiying2007'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -35,7 +35,7 @@ jobs:
       - name: Announce publisher start
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body "Android v2.0.0 publisher started on \`${GITHUB_SHA}\`."
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body "Android v2.0.0 publisher started from main \`$(git rev-parse HEAD)\`."
 
       - name: Verify terminal candidate
         shell: bash
@@ -68,7 +68,7 @@ jobs:
           alias=$alias_name
           storePassword=$store_pass
           keyPassword=$key_pass
-          createdFrom=${GITHUB_REPOSITORY}@${GITHUB_SHA}
+          createdFrom=${GITHUB_REPOSITORY}@$(git rev-parse HEAD)
 
           BACK UP THIS KEY SECURELY. Future Android v2.x releases must reuse it.
           It is never committed to Git and is not attached to the GitHub Release.
@@ -107,10 +107,18 @@ jobs:
           cp "${{ steps.signing.outputs.signing_dir }}/CERTIFICATE.txt" "$release_dir/CERTIFICATE.txt"
           echo "release_dir=$release_dir" >> "$GITHUB_OUTPUT"
 
+      - name: Preserve Android upload key before publication
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-v2.0.0-upload-key-BACKUP-NOW
+          path: ${{ steps.signing.outputs.signing_dir }}
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Announce signed artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body 'Android v2.0.0 signed APK/AAB built and signature verification passed.'
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body 'Android v2.0.0 signed APK/AAB verified; retained upload-key backup artifact created.'
 
       - name: Create and re-verify terminal root commit
         id: root
@@ -216,19 +224,11 @@ jobs:
             --title 'Android v2.0.0' \
             --notes-file "$RUNNER_TEMP/android-v2-release-notes.md"
 
-      - name: Preserve Android upload key for release owner
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: android-v2.0.0-upload-key-BACKUP-NOW
-          path: ${{ steps.signing.outputs.signing_dir }}
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Delete migration branches
+      - name: Delete migration and trigger branches
         shell: bash
         run: |
           set -euo pipefail
-          for branch in feat/android-harmony-terminal release/android-v2-publisher; do
+          for branch in feat/android-harmony-terminal release/android-v2-publisher release/android-v2-run; do
             if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
               git push origin --delete "$branch"
             fi
@@ -237,10 +237,10 @@ jobs:
       - name: Announce publication complete
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body 'Android v2.0.0 publication complete: signed release created, terminal root main published, migration branches cleaned.'
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body 'Android v2.0.0 publication complete: signed release created, terminal root main published, migration/trigger branches cleaned.'
 
       - name: Report publisher failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body "Android v2.0.0 publisher FAILED on \`${GITHUB_SHA}\`. Inspect the latest Publish Android v2.0.0 run before retrying."
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body "Android v2.0.0 publisher FAILED from main \`$(git rev-parse HEAD)\`. Inspect the Publish Android v2.0.0 run before retrying."
