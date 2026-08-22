@@ -10,6 +10,12 @@ export interface ImportTaskResult {
   normalizedSha256: string;
 }
 
+export interface OpenTaskResult {
+  handle: number;
+  length: number;
+  path: string;
+}
+
 function copyFile(sourcePath: string, targetPath: string): number {
   let source = fs.openSync(sourcePath, fs.OpenMode.READ_ONLY);
   let target = fs.openSync(targetPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
@@ -87,6 +93,18 @@ export function importBookTask(sourceUri: string, booksRoot: string, requestedEn
     size: size,
     sourceSha256: sourceSha256,
     normalizedSha256: normalizedSha256
+  };
+  return JSON.stringify(result);
+}
+
+@Concurrent
+export function openDocumentTask(path: string): string {
+  if (nativeCore.abiVersion() !== 2) throw new Error('unsupported Jingdu core ABI');
+  let handle = nativeCore.open(path);
+  let result: OpenTaskResult = {
+    handle: handle,
+    length: nativeCore.charCount(handle),
+    path: path
   };
   return JSON.stringify(result);
 }
