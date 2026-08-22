@@ -1,0 +1,152 @@
+name: Final Runtime Polish
+
+on:
+  push:
+    branches: [feat/android-harmony-terminal]
+    paths:
+      - '.github/workflows/final-runtime-polish.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/android-harmony-terminal
+      - name: Apply final runtime invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java')
+          s = p.read_text()
+          old = 'previousBook != null && previousBook.id.equals(book.id) && !previousClean\n                        ? previousPosition : book.progress'
+          new = 'previousBook != null && previousBook.id.equals(book.id)\n                        && previousBook.normalizedSha256.equals(book.normalizedSha256)\n                        && !previousClean ? previousPosition : book.progress'
+          if old not in s: raise SystemExit('Android restored-position invariant not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java')
+          s = p.read_text()
+          s = s.replace(
+              'File sourceTemporary = File.createTempFile("jingdu-import-", ".bin", context.getCacheDir());',
+              'File sourceTemporary = File.createTempFile(".source-", ".tmp", root);')
+          old = '''        if (!root.isDirectory() && !root.mkdirs()) {
+                      throw new IllegalStateException("cannot create books directory");
+                  }
+              }
+          '''
+          new = '''        if (!root.isDirectory() && !root.mkdirs()) {
+                      throw new IllegalStateException("cannot create books directory");
+                  }
+                  cleanupRootTemporaries();
+              }
+          '''
+          if old not in s: raise SystemExit('Android constructor block not found')
+          s = s.replace(old, new)
+          old = '''            } else if (name.equals("clean.txt") || name.equals("clean.revision")) {
+                          deleteTemporary(file);
+                      }
+                  }
+              }
+          '''
+          new = '''            } else if (name.startsWith("clean-") && name.endsWith(".txt.tmp")) {
+                          deleteTemporary(file);
+                      } else if (name.equals("clean.txt") || name.equals("clean.revision")) {
+                          deleteTemporary(file);
+                      }
+                  }
+              }
+
+              private void cleanupRootTemporaries() {
+                  File[] files = root.listFiles();
+                  if (files == null) return;
+                  for (File file : files) {
+                      String name = file.getName();
+                      if (name.startsWith(".source-") && name.endsWith(".tmp")) {
+                          deleteTemporary(file);
+                      }
+                  }
+              }
+          '''
+          if old not in s: raise SystemExit('Android clean prune block not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('apps/harmony/entry/src/main/ets/pages/Index.ets')
+          s = p.read_text()
+          old = '(previous?.id === book.id && !previousClean ? this.reader.position() : book.progress)'
+          new = '(previous?.id === book.id && previous.normalizedSha256 === book.normalizedSha256 &&\n        !previousClean ? this.reader.position() : book.progress)'
+          if old not in s: raise SystemExit('Harmony restored-position invariant not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets')
+          s = p.read_text()
+          old = '''    if (name.startsWith('clean-') && name.endsWith('.txt') && name !== keepClean) remove = true;
+              if (name.startsWith('.document-') && name.endsWith('.tmp')) remove = true;
+          '''
+          new = '''    if (name.startsWith('clean-') && name.endsWith('.txt') && name !== keepClean) remove = true;
+              if (name.startsWith('clean-') && name.endsWith('.txt.tmp')) remove = true;
+              if (name.startsWith('.document-') && name.endsWith('.tmp')) remove = true;
+          '''
+          if old not in s: raise SystemExit('Harmony prune block not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('apps/harmony/entry/src/main/ets/model/BookStore.ets')
+          s = p.read_text()
+          old = '''    try { fs.mkdirSync(this.root); } catch (_) {}
+              this.prefs = preferences.getPreferencesSync(context, { name: 'jingdu_library_v2' });
+          '''
+          new = '''    try { fs.mkdirSync(this.root); } catch (_) {}
+              this.cleanupRootTemporaries();
+              this.prefs = preferences.getPreferencesSync(context, { name: 'jingdu_library_v2' });
+          '''
+          if old not in s: raise SystemExit('Harmony constructor block not found')
+          s = s.replace(old, new)
+          old = '''  private write(items: BookMeta[]): void {
+              this.prefs.putSync('books', JSON.stringify(items));
+              this.prefs.flush();
+            }
+          }
+          '''
+          new = '''  private cleanupRootTemporaries(): void {
+              let files: string[] = [];
+              try { files = fs.listFileSync(this.root); } catch (_) { return; }
+              files.forEach((name: string): void => {
+                if (name.startsWith('.import-') && name.endsWith('.bin')) {
+                  try { fs.unlinkSync(`${this.root}/${name}`); } catch (_) {}
+                }
+              });
+            }
+
+            private write(items: BookMeta[]): void {
+              this.prefs.putSync('books', JSON.stringify(items));
+              this.prefs.flush();
+            }
+          }
+          '''
+          if old not in s: raise SystemExit('Harmony write block not found')
+          p.write_text(s.replace(old, new))
+          PY
+          git diff --check
+          grep -q 'previousBook.normalizedSha256.equals(book.normalizedSha256)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+          grep -q 'previous.normalizedSha256 === book.normalizedSha256' apps/harmony/entry/src/main/ets/pages/Index.ets
+          grep -q 'clean-.*txt.tmp' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+          grep -q "endsWith('.txt.tmp')" apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+      - name: Commit and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/final-runtime-polish.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java \
+                  apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java \
+                  apps/harmony/entry/src/main/ets/pages/Index.ets \
+                  apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets \
+                  apps/harmony/entry/src/main/ets/model/BookStore.ets
+          git commit -m 'fix: close repeated-import runtime edge cases'
+          git push origin HEAD:feat/android-harmony-terminal
