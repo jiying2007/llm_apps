@@ -185,17 +185,20 @@ final class BookRepository {
                 deleteTemporary(file);
             } else if (name.startsWith(".document-") && name.endsWith(".tmp")) {
                 deleteTemporary(file);
+            } else if (name.equals("document.txt")) {
+                deleteTemporary(file);
             }
         }
     }
 
-    void pruneCleanRevisions(Book book, String keepRevision) {
-        String keepName = "clean-" + keepRevision + ".txt";
+    void pruneCleanRevisions(Book book, File keep) {
         File[] files = directory(book.id).listFiles();
         if (files == null) return;
         for (File file : files) {
             String name = file.getName();
-            if (name.startsWith("clean-") && name.endsWith(".txt") && !name.equals(keepName)) {
+            if (name.startsWith("clean-") && name.endsWith(".txt") && !file.equals(keep)) {
+                deleteTemporary(file);
+            } else if (name.equals("clean.txt") || name.equals("clean.revision")) {
                 deleteTemporary(file);
             }
         }
