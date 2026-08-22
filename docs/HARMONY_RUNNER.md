@@ -10,9 +10,12 @@ The runner must provide:
 
 - official HarmonyOS Command Line Tools / SDK;
 - `hvigorw` executable;
-- Node.js 22 or a newer version supported by that toolchain;
+- Node.js 22 or a newer version supported by that Harmony toolchain;
+- a current GitHub Actions self-hosted runner release that supports Node 24 JavaScript actions;
 - Git and standard Unix shell utilities used by GitHub Actions;
 - enough free disk for a clean native + ArkTS build and HAP/APP artifacts.
+
+The GitHub workflow pins `actions/checkout` and `actions/upload-artifact` to immutable commit SHAs. Artifact upload uses the current Node-24 action line; do not keep an outdated runner merely to preserve a historical action runtime.
 
 Do not cache or mirror Huawei SDK binaries inside this Git repository.
 
@@ -50,6 +53,8 @@ node --version
 git --version
 ```
 
+Also verify the GitHub Actions runner service is on the current supported release before bringing it online.
+
 Then, from a clean checkout, run:
 
 ```bash
@@ -62,11 +67,11 @@ The command must exit zero and produce at least one `.hap` under `apps/harmony`.
 
 `.github/workflows/harmony-device.yml` is the canonical HAP source gate. It:
 
-1. checks out the exact PR commit;
+1. checks out the exact PR commit using a pinned action SHA;
 2. runs `scripts/check-harmony.sh`;
 3. requires a generated HAP;
 4. collects HAP/APP/native `.so` outputs;
-5. uploads the artifacts under the commit SHA.
+5. uploads the artifacts under the commit SHA using a pinned Node-24 artifact action.
 
 A queued workflow means no matching `self-hosted,harmonyos` runner is online. It is not build success and must never be reported as such.
 
@@ -76,9 +81,10 @@ A successful HAP build is still not the device gate. Before release, install the
 
 ## Upgrade rule
 
-When upgrading DevEco/Command Line Tools or the HarmonyOS SDK:
+When upgrading DevEco/Command Line Tools, the HarmonyOS SDK or the GitHub Actions runner:
 
-- use only official Huawei packages and published integrity data;
+- use only official vendor packages and published integrity data;
 - run the complete HAP workflow before accepting the upgrade;
 - update `build-profile.json5`, Hvigor model settings and this document in the same PR when their contract changes;
+- keep workflow actions pinned to immutable SHAs and let Dependabot propose reviewed updates;
 - never add compatibility scripts for multiple historical toolchains. The repository tracks one supported terminal toolchain contract at a time.
