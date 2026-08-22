@@ -7,8 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class ReaderController implements Closeable {
-    static final long PAGE_CHARS = 1800;
-    static final long WINDOW_CHARS = 6000;
+    static final long READ_AHEAD_CHARS = 5000;
+    static final long MIN_PAGE_CHARS = 180;
 
     record Hit(long offset, String context) {}
     record Chapter(long offset, String title) {}
@@ -29,7 +29,7 @@ final class ReaderController implements Closeable {
 
     String page() throws IOException {
         ensureOpen();
-        return NativeCore.read(handle, position, WINDOW_CHARS);
+        return NativeCore.read(handle, position, READ_AHEAD_CHARS);
     }
 
     long position() { return position; }
@@ -39,8 +39,9 @@ final class ReaderController implements Closeable {
         position = Math.min(Math.max(0, value), Math.max(0, length - 1));
     }
 
-    void next() { jump(position + PAGE_CHARS); }
-    void previous() { jump(position - PAGE_CHARS); }
+    void move(long delta) {
+        jump(position + delta);
+    }
 
     List<Hit> search(String query) throws IOException {
         File file = requireFile();
