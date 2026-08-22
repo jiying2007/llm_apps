@@ -1,3 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
-project(llm_apps LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.16)
+project(jingdu LANGUAGES CXX)
+enable_testing()
 add_subdirectory(core/native)

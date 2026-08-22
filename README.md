@@ -1,18 +1,25 @@
-# llm_apps
+# llm_apps / 净读 TXT
 
-Android + Harmony 长期产品仓库。当前主产品为 **净读 TXT**。
+Production repository for the same offline TXT reader on Android and HarmonyOS.
 
-## 终态架构
+## Terminal architecture
 
-- `core/`：平台无关业务、文本处理、索引、锚点、恢复与 TTS 会话契约；唯一业务语义 SSOT。
-- `apps/android/`：Android 原生 UI 与 Android 平台适配器。
-- `apps/harmony/`：HarmonyOS 原生 ArkUI/ArkTS UI 与平台适配器。
-- `docs/`：产品、架构、验证和发布证据。
+- `core/native/`: single C++17 business/algorithm core with stable C ABI.
+- `apps/android/`: Android native app; Java platform/UI layer + JNI bridge only.
+- `apps/harmony/`: HarmonyOS Stage/ArkUI app; ArkTS platform/UI layer + Node-API bridge only.
+- legacy encodings are decoded by the platform import adapters into a private normalized UTF-8 copy; the selected source file is never modified.
+- generated packages, signing keys, extracted competitor APKs, old prototypes, compatibility migrations and transition trees are not source assets and are rejected by CI.
 
-共享范围只包含业务与算法，不共享 UI。Android 与 Harmony 分别使用原生 UI，以保证阅读交互、无障碍、生命周期、性能和平台能力长期可控。
+## Local gates
 
-## 当前 Gate
+```bash
+./scripts/check-native.sh
+cd apps/android && ./gradlew --no-daemon androidCheck
+./scripts/verify-terminal.sh
+```
 
-Android 已有签名候选与 API 36 模拟器证据；Harmony 与双端真机仍需 SDK/设备环境验证。任何平台在真机、发布控制台与合规 Gate 未关闭前，不得声明 Production Done。
+HarmonyOS requires DevEco Studio / HarmonyOS SDK 6.0+ and builds from `apps/harmony` with the official Hvigor toolchain. The Harmony app imports files through DocumentViewPicker, uses the same shared native core through Node-API, and uses Core Speech Kit for system TTS.
 
-详见 `docs/architecture/ANDROID_HARMONY_TERMINAL.md`。
+## Release rule
+
+`main` is releasable source only. APK/AAB/HAP, mapping files and signatures are build/release artifacts, never committed. A release is valid only when source CI passes and the corresponding Android/Harmony signed packages pass their device/store gates.

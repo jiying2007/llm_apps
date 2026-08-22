@@ -13,12 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Configure native core
-        run: cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release
-      - name: Build native core
-        run: cmake --build build/native --parallel
-      - name: Test native core
-        run: ctest --test-dir build/native --output-on-failure
+      - run: ./scripts/check-native.sh
 
   android:
     runs-on: ubuntu-latest
@@ -32,22 +27,11 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Android verification
-        run: ./gradlew --no-daemon androidMvpCheck
+      - name: Android terminal verification
+        run: ./gradlew --no-daemon androidCheck
 
-  repository-contract:
+  terminal-contract:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reject legacy production roots and committed release outputs
-        shell: bash
-        run: |
-          set -euo pipefail
-          test ! -e prototype
-          test ! -e android-prototype
-          test ! -e txt_ref_apps
-          test ! -e apps/android/dist
-          if grep -R --line-number --exclude-dir=.git '../../prototype/core' apps/android core docs; then
-            echo 'legacy prototype core reference found' >&2
-            exit 1
-          fi
+      - run: ./scripts/verify-terminal.sh
