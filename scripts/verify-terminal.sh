@@ -65,10 +65,12 @@ grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
 grep -q 'sourceSha256' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
 grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+grep -q 'previousBook.normalizedSha256.equals(book.normalizedSha256)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
 grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+grep -q 'previous.normalizedSha256 === book.normalizedSha256' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'document-${normalizedSha256}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'clean-${revision}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'pruneRevisionsTask' apps/harmony/entry/src/main/ets/pages/Index.ets
@@ -85,4 +87,6 @@ echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/and
   | sha256sum --check --strict
 
 test ! -f .github/workflows/finalize-content-addressing.yml
+test ! -f .github/workflows/final-runtime-polish.yml
+test ! -f .github/workflows/upgrade-gradle-wrapper.yml
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderSurfaceView.java
