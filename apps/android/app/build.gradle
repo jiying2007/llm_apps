@@ -1,0 +1,102 @@
+plugins {
+    id "com.android.application"
+}
+
+def applicationIdValue = providers.gradleProperty("jingduApplicationId").getOrElse("com.junchen.jingdu")
+def versionCodeProperty = providers.gradleProperty("jingduVersionCode")
+def versionNameProperty = providers.gradleProperty("jingduVersionName")
+def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrElse(2)
+def versionNameValue = versionNameProperty.getOrElse("2.0.0")
+def signingPropertiesFile = rootProject.file("keystore.properties")
+def signingProperties = new Properties()
+if (signingPropertiesFile.isFile()) {
+    signingPropertiesFile.withInputStream { signingProperties.load(it) }
+}
+def signingKeys = ["storeFile", "storePassword", "keyAlias", "keyPassword"]
+def releaseSigningConfigured = signingPropertiesFile.isFile() && signingKeys.every { key ->
+    def value = signingProperties.getProperty(key)
+    value != null && !value.trim().isEmpty()
+}
+
+android {
+    namespace = "com.junchen.jingdu"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = applicationIdValue
+        minSdk = 26
+        targetSdk = 36
+        versionCode = versionCodeValue
+        versionName = versionNameValue
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -Wall -Wextra -Wpedantic"
+            }
+        }
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            release {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
+        release {
+            minifyEnabled = true
+            shrinkResources = false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            if (releaseSigningConfigured) signingConfig = signingConfigs.release
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+tasks.register("validateStoreRelease") {
+    group = "verification"
+    doLast {
+        if (applicationIdValue != "com.junchen.jingdu") {
+            throw new GradleException("production applicationId is fixed to com.junchen.jingdu")
+        }
+        if (!versionCodeProperty.isPresent() || versionCodeValue <= 0) {
+            throw new GradleException("set explicit positive -PjingduVersionCode")
+        }
+        if (!versionNameProperty.isPresent() || !(versionNameValue ==~ /\d+\.\d+\.\d+/)) {
+            throw new GradleException("set semantic -PjingduVersionName")
+        }
+        if (!releaseSigningConfigured) {
+            throw new GradleException("configure ignored keystore.properties")
+        }
+        if (!file(signingProperties.getProperty("storeFile")).isFile()) {
+            throw new GradleException("upload keystore missing")
+        }
+    }
+}

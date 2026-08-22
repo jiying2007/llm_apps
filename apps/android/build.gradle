@@ -1,0 +1,53 @@
+plugins {
+    id "com.android.application" version "9.3.1" apply false
+}
+
+def releaseVersion = providers.gradleProperty("jingduVersionName").getOrElse("2.0.0")
+
+tasks.register("androidCheck") {
+    group = "verification"
+    description = "Builds the single-core Android application and runs both lint variants."
+    dependsOn(":app:lintDebug", ":app:lintRelease", ":app:assembleDebug", ":app:bundleRelease")
+}
+
+tasks.register("androidStoreCheck") {
+    group = "verification"
+    description = "Validates final identity/signing and builds release APK/AAB."
+    dependsOn(":app:validateStoreRelease", ":app:lintRelease", ":app:assembleRelease", ":app:bundleRelease")
+}
+
+tasks.register("stageAndroidRelease", Copy) {
+    group = "release"
+    dependsOn("androidStoreCheck", ":app:assembleDebug")
+    into(layout.buildDirectory.dir("release/${releaseVersion}"))
+    from("app/build/outputs/apk/debug/app-debug.apk") { rename { "jingdu-${releaseVersion}-debug.apk" } }
+    from("app/build/outputs/apk/release/app-release.apk") { rename { "jingdu-${releaseVersion}-release.apk" } }
+    from("app/build/outputs/bundle/release/app-release.aab") { rename { "jingdu-${releaseVersion}-release.aab" } }
+    from("app/build/outputs/mapping/release/mapping.txt") { rename { "mapping-${releaseVersion}.txt" } }
+}
+
+tasks.register("writeAndroidReleaseChecksums") {
+    group = "release"
+    dependsOn("stageAndroidRelease")
+    doLast {
+        File dir = layout.buildDirectory.dir("release/${releaseVersion}").get().asFile
+        List<String> names = [
+                "jingdu-${releaseVersion}-debug.apk",
+                "jingdu-${releaseVersion}-release.apk",
+                "jingdu-${releaseVersion}-release.aab",
+                "mapping-${releaseVersion}.txt"]
+        StringBuilder text = new StringBuilder()
+        names.each { name ->
+            File artifact = new File(dir, name)
+            if (!artifact.isFile()) throw new GradleException("missing release artifact: ${name}")
+            def digest = java.security.MessageDigest.getInstance("SHA-256")
+            artifact.withInputStream { stream ->
+                byte[] buffer = new byte[8192]
+                int count
+                while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
+            }
+            text.append(java.util.HexFormat.of().formatHex(digest.digest())).append("  ").append(name).append('\n')
+        }
+        new File(dir, "SHA256SUMS").setText(text.toString(), "UTF-8")
+    }
+}

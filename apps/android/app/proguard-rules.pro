@@ -1,0 +1,2 @@
+-keep class com.junchen.jingdu.NativeCore { *; }
+-keepclasseswithmembernames class * { native <methods>; }

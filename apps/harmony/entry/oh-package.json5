@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "2.0.0",
+  "description": "Jingdu TXT entry module",
+  "main": "Index.ets",
+  "author": "Junchen",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "libentry.so": "file:./src/main/cpp/types/libentry"
+  }
+}
