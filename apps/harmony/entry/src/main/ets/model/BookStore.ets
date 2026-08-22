@@ -15,7 +15,10 @@ export interface BookMeta {
 }
 
 export class BookStore {
-  static readonly ENCODINGS: string[] = ['AUTO', 'UTF-8', 'GB18030', 'GBK', 'GB2312', 'Big5', 'UTF-16LE', 'UTF-16BE'];
+  static readonly ENCODINGS: string[] = [
+    'AUTO', 'UTF-8', 'GB18030', 'GBK', 'GB2312', 'Big5', 'UTF-16LE', 'UTF-16BE'
+  ];
+
   private readonly prefs: preferences.Preferences;
   private readonly root: string;
 
@@ -27,20 +30,32 @@ export class BookStore {
 
   rootPath(): string { return this.root; }
 
+  bookDir(book: BookMeta): string { return `${this.root}/${book.id}`; }
+
+  normalizedPath(book: BookMeta): string {
+    return `${this.bookDir(book)}/document-${book.normalizedSha256}.txt`;
+  }
+
+  cleanPath(book: BookMeta, revision: string): string {
+    return `${this.bookDir(book)}/clean-${revision}.txt`;
+  }
+
   list(): BookMeta[] {
     let raw = this.prefs.getSync('books', '[]') as string;
     let books: BookMeta[] = [];
     try {
       let parsed = JSON.parse(raw) as BookMeta[];
       parsed.forEach((item: BookMeta): void => {
-        if (item.id.length !== 64 || item.id !== item.sourceSha256 || item.normalizedSha256.length !== 64) return;
+        if (item.id.length !== 64 || item.id !== item.sourceSha256 ||
+          item.normalizedSha256.length !== 64) return;
         try {
+          fs.statSync(`${this.bookDir(item)}/source.bin`);
           fs.statSync(this.normalizedPath(item));
           books.push(item);
         } catch (_) {}
       });
     } catch (_) {
-      // Hard-cut metadata: old/malformed private data is intentionally not migrated.
+      // Hard-cut v2 metadata: old/malformed private data is intentionally ignored.
     }
     books.sort((a: BookMeta, b: BookMeta): number => b.touchedAt - a.touchedAt);
     return books;
@@ -48,9 +63,11 @@ export class BookStore {
 
   persistImported(name: string, taskJson: string): BookMeta {
     let result = JSON.parse(taskJson) as ImportTaskResult;
-    if (result.id.length !== 64 || result.id !== result.sourceSha256 || result.normalizedSha256.length !== 64) {
+    if (result.id.length !== 64 || result.id !== result.sourceSha256 ||
+      result.normalizedSha256.length !== 64) {
       throw new Error('invalid shared-core identity result');
     }
+
     let existing = this.list().find((item: BookMeta): boolean => item.id === result.id);
     let book: BookMeta = {
       id: result.id,
@@ -59,8 +76,8 @@ export class BookStore {
       size: result.size,
       sourceSha256: result.sourceSha256,
       normalizedSha256: result.normalizedSha256,
-      progress: existing !== undefined && existing.normalizedSha256 === result.normalizedSha256
-        ? existing.progress : 0,
+      progress: existing !== undefined &&
+        existing.normalizedSha256 === result.normalizedSha256 ? existing.progress : 0,
       touchedAt: Date.now()
     };
     let books = this.list().filter((item: BookMeta): boolean => item.id !== book.id);
@@ -68,10 +85,6 @@ export class BookStore {
     this.write(books);
     return book;
   }
-
-  normalizedPath(book: BookMeta): string { return `${this.root}/${book.id}/document.txt`; }
-  cleanPath(book: BookMeta): string { return `${this.root}/${book.id}/clean.txt`; }
-  cleanRevisionPath(book: BookMeta): string { return `${this.root}/${book.id}/clean.revision`; }
 
   saveProgress(book: BookMeta, progress: number): void {
     book.progress = Math.max(0, progress);
@@ -82,17 +95,24 @@ export class BookStore {
   }
 
   delete(book: BookMeta): void {
-    for (let path of [`${this.root}/${book.id}/source.bin`, this.normalizedPath(book), this.cleanPath(book), this.cleanRevisionPath(book)]) {
-      try { fs.unlinkSync(path); } catch (_) {}
-    }
-    try { fs.rmdirSync(`${this.root}/${book.id}`); } catch (_) {}
+    let dir = this.bookDir(book);
+    let files: string[] = [];
+    try { files = fs.listFileSync(dir); } catch (_) {}
+    files.forEach((name: string): void => {
+      try { fs.unlinkSync(`${dir}/${name}`); } catch (_) {}
+    });
+    try { fs.rmdirSync(dir); } catch (_) {}
+
     this.write(this.list().filter((item: BookMeta): boolean => item.id !== book.id));
     this.prefs.deleteSync(`rules.${book.id}`);
     this.prefs.deleteSync(`bookmarks.${book.id}`);
     this.prefs.flush();
   }
 
-  rules(book: BookMeta): string { return this.prefs.getSync(`rules.${book.id}`, '') as string; }
+  rules(book: BookMeta): string {
+    return this.prefs.getSync(`rules.${book.id}`, '') as string;
+  }
+
   saveRules(book: BookMeta, rules: string): void {
     this.prefs.putSync(`rules.${book.id}`, rules);
     this.prefs.flush();
