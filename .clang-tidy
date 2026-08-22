@@ -1,16 +1,17 @@
 Checks: >-
   -*,
   bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
   clang-analyzer-*,
   performance-*,
   portability-*,
-  readability-braces-around-statements,
   readability-const-return-type,
   readability-container-size-empty,
   readability-duplicate-include,
   readability-inconsistent-declaration-parameter-name,
   readability-misleading-indentation,
-  readability-redundant-* 
+  readability-redundant-*
 WarningsAsErrors: ''
 HeaderFilterRegex: 'core/native/.*|apps/android/app/src/main/cpp/.*|apps/harmony/entry/src/main/cpp/.*'
 FormatStyle: file
