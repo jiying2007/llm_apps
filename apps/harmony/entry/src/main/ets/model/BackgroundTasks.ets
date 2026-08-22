@@ -36,6 +36,43 @@ function copyFile(sourcePath: string, targetPath: string): number {
   return total;
 }
 
+function readSmallText(path: string): string {
+  try {
+    let file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    try {
+      let size = Math.min(128, fs.statSync(path).size);
+      if (size <= 0) return '';
+      let buffer = new ArrayBuffer(size);
+      let count = fs.readSync(file.fd, buffer, { offset: 0, length: size });
+      if (count <= 0) return '';
+      return util.TextDecoder.create('utf-8').decodeToString(new Uint8Array(buffer, 0, count));
+    } finally {
+      fs.closeSync(file);
+    }
+  } catch (_) {
+    return '';
+  }
+}
+
+function writeTextFile(path: string, value: string): void {
+  let file = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+  try {
+    fs.writeSync(file.fd, value, { encoding: 'utf-8' });
+    fs.fsyncSync(file.fd);
+  } finally {
+    fs.closeSync(file);
+  }
+}
+
+function fileExists(path: string): boolean {
+  try {
+    fs.statSync(path);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function normalize(rawPath: string, normalizedPath: string, requestedEncoding: string): string {
   let raw = fs.openSync(rawPath, fs.OpenMode.READ_ONLY);
   let sampleBuffer = new ArrayBuffer(64 * 1024);
@@ -127,9 +164,15 @@ export function chaptersTask(path: string, limit: number): string {
 export function cleanTask(normalizedPath: string, normalizedSha256: string,
   rules: string, outputPath: string): string {
   let revision = nativeCore.repairRevision(normalizedSha256, rules);
+  let revisionPath = outputPath.endsWith('.txt')
+    ? `${outputPath.substring(0, outputPath.length - 4)}.revision`
+    : `${outputPath}.revision`;
+  if (fileExists(outputPath) && readSmallText(revisionPath) === revision) return revision;
+
   let handle = nativeCore.open(normalizedPath);
   try { nativeCore.exportRules(handle, rules, outputPath); }
   finally { nativeCore.close(handle); }
+  writeTextFile(revisionPath, revision);
   return revision;
 }
 
@@ -140,11 +183,5 @@ export function exportTask(sourcePath: string, destinationUri: string): number {
 
 @Concurrent
 export function writeTextTask(path: string, value: string): void {
-  let file = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
-  try {
-    fs.writeSync(file.fd, value, { encoding: 'utf-8' });
-    fs.fsyncSync(file.fd);
-  } finally {
-    fs.closeSync(file);
-  }
+  writeTextFile(path, value);
 }
