@@ -38,14 +38,27 @@ final class TtsController implements AutoCloseable {
                     if (change <= AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) stop("audio focus");
                 })
                 .build();
-        tts = new TextToSpeech(context.getApplicationContext(), status -> ready = status == TextToSpeech.SUCCESS);
+        tts = new TextToSpeech(context.getApplicationContext(),
+                status -> ready = status == TextToSpeech.SUCCESS);
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String utteranceId) { }
+
             @Override public void onDone(String utteranceId) {
                 long token = parseToken(utteranceId);
                 main.post(() -> { if (token == generation.get()) speakNext(token); });
             }
-            @Override public void onError(String utteranceId) { main.post(() -> stop("tts error")); }
+
+            @Override public void onError(String utteranceId, int errorCode) {
+                main.post(() -> stop("tts error: " + errorCode));
+            }
+
+            // Android still declares this API-15 method abstract even though API 21
+            // deprecated it in favor of onError(String, int), so a minimal override
+            // is required to keep the listener concrete for every supported API.
+            @SuppressWarnings("deprecation")
+            @Override public void onError(String utteranceId) {
+                main.post(() -> stop("tts error"));
+            }
         });
     }
 
