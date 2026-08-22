@@ -9,6 +9,7 @@ export interface SpeechChunk { nextOffset: number; text: string; }
 export class ReaderController {
   static readonly PAGE_CHARS: number = 1800;
   static readonly WINDOW_CHARS: number = 6000;
+
   private handle: number = 0;
   private pathValue: string = '';
   private lengthValue: number = 0;
@@ -17,7 +18,6 @@ export class ReaderController {
 
   async open(path: string, restoredPosition: number): Promise<boolean> {
     let generation = ++this.openGeneration;
-    this.closeHandle();
     let packed = await taskpool.execute(new taskpool.Task(openDocumentTask, path)) as string;
     let result = JSON.parse(packed) as OpenTaskResult;
     if (result.handle <= 0 || result.length < 0 || result.path !== path) {
@@ -28,10 +28,13 @@ export class ReaderController {
       nativeCore.close(result.handle);
       return false;
     }
+
+    let previous = this.handle;
     this.handle = result.handle;
     this.pathValue = result.path;
     this.lengthValue = result.length;
     this.jump(restoredPosition);
+    if (previous !== 0) nativeCore.close(previous);
     return true;
   }
 
@@ -67,7 +70,9 @@ export class ReaderController {
       let tab = line.indexOf('\t');
       if (tab <= 0) return;
       let offset = Number(line.substring(0, tab));
-      if (Number.isFinite(offset)) result.push({ offset: offset, context: line.substring(tab + 1) });
+      if (Number.isFinite(offset)) {
+        result.push({ offset: offset, context: line.substring(tab + 1) });
+      }
     });
     return result;
   }
@@ -81,7 +86,9 @@ export class ReaderController {
       let tab = line.indexOf('\t');
       if (tab <= 0) return;
       let offset = Number(line.substring(0, tab));
-      if (Number.isFinite(offset)) result.push({ offset: offset, title: line.substring(tab + 1) });
+      if (Number.isFinite(offset)) {
+        result.push({ offset: offset, title: line.substring(tab + 1) });
+      }
     });
     return result;
   }
