@@ -2,7 +2,9 @@ import { common } from '@kit.AbilityKit';
 import { picker } from '@kit.CoreFileKit';
 import { taskpool } from '@kit.ArkTS';
 import { BookMeta, BookStore } from '../model/BookStore';
-import { cleanTask, exportTask, importBookTask, writeTextTask } from '../model/BackgroundTasks';
+import {
+  CleanTaskResult, cleanTask, exportTask, importBookTask, pruneRevisionsTask
+} from '../model/BackgroundTasks';
 import { ChapterItem, ReaderController, SearchHit } from '../model/ReaderController';
 import { TtsController } from '../model/TtsController';
 
@@ -91,12 +93,15 @@ struct Index {
         Button('导入').enabled(!this.busy).onClick(() => this.panel = 'encoding')
         Button('书架').enabled(!this.busy).onClick(() => { this.refreshLibrary(); this.panel = 'library'; })
         Button('搜索').enabled(this.current !== undefined && !this.busy).onClick(() => this.panel = 'search')
-        Button('目录').enabled(this.current !== undefined && !this.busy).onClick(() => { this.panel = 'chapters'; this.loadChapters(); })
+        Button('目录').enabled(this.current !== undefined && !this.busy)
+          .onClick(() => { this.panel = 'chapters'; this.loadChapters(); })
         Button('书签').enabled(this.current !== undefined && !this.busy && !this.cleanMode)
           .onClick(() => { this.loadBookmarks(); this.panel = 'bookmarks'; })
         Button('净读').enabled(this.current !== undefined && !this.busy).onClick(() => this.panel = 'repair')
-        Button(this.ttsReading ? '暂停朗读' : '朗读').enabled(this.current !== undefined && !this.busy).onClick(() => this.toggleTts())
-        Button(this.autoReading ? '停止自动' : '自动').enabled(this.current !== undefined && !this.busy).onClick(() => this.toggleAuto())
+        Button(this.ttsReading ? '暂停朗读' : '朗读')
+          .enabled(this.current !== undefined && !this.busy).onClick(() => this.toggleTts())
+        Button(this.autoReading ? '停止自动' : '自动')
+          .enabled(this.current !== undefined && !this.busy).onClick(() => this.toggleAuto())
         Button('睡眠').enabled(this.current !== undefined).onClick(() => this.panel = 'sleep')
         Button(this.night ? '日间' : '夜间').onClick(() => this.night = !this.night)
         Button('A-').onClick(() => this.fontSize = Math.max(14, this.fontSize - 2))
@@ -120,7 +125,9 @@ struct Index {
       else if (this.panel === 'bookmarks') this.bookmarkPanel()
       else if (this.panel === 'repair') this.repairPanel()
       else if (this.panel === 'sleep') this.sleepPanel()
-      else if (this.panel === 'danger') Button('删除当前私有副本').fontColor(Color.Red).onClick(() => this.confirmDelete())
+      else if (this.panel === 'danger') {
+        Button('删除当前私有副本').fontColor(Color.Red).onClick(() => this.confirmDelete())
+      }
 
       if (this.current !== undefined && this.panel !== 'danger') {
         Button('删除私有副本…').fontColor(Color.Red).onClick(() => this.panel = 'danger')
@@ -150,7 +157,8 @@ struct Index {
       Row() {
         Column() {
           Text(book.name).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-          Text(`${book.encoding} · ${book.sourceSha256.substring(0, 8)}`).fontSize(11).fontColor('#777777')
+          Text(`${book.encoding} · ${book.sourceSha256.substring(0, 8)}`)
+            .fontSize(11).fontColor('#777777')
         }.alignItems(HorizontalAlign.Start).layoutWeight(1)
         Button('打开').onClick(() => { this.openBook(book, false); this.panel = ''; })
       }.width('100%')
@@ -193,7 +201,8 @@ struct Index {
     Button('添加当前位置').onClick(() => this.addBookmark())
     ForEach(this.bookmarks, (offset: number) => {
       Row() {
-        Text(`位置 ${offset}`).layoutWeight(1).onClick(() => { this.reader.jump(offset); this.render(); this.panel = ''; })
+        Text(`位置 ${offset}`).layoutWeight(1)
+          .onClick(() => { this.reader.jump(offset); this.render(); this.panel = ''; })
         Button('删除').onClick(() => this.removeBookmark(offset))
       }.width('100%').padding(4)
     }, (offset: number) => offset.toString())
@@ -201,11 +210,14 @@ struct Index {
 
   @Builder
   repairPanel() {
-    TextInput({ placeholder: '查找（字面文本）', text: this.ruleFrom }).onChange((value: string) => this.ruleFrom = value)
-    TextInput({ placeholder: '替换为', text: this.ruleTo }).onChange((value: string) => this.ruleTo = value)
+    TextInput({ placeholder: '查找（字面文本）', text: this.ruleFrom })
+      .onChange((value: string) => this.ruleFrom = value)
+    TextInput({ placeholder: '替换为', text: this.ruleTo })
+      .onChange((value: string) => this.ruleTo = value)
     Row({ space: 8 }) {
       Button('添加规则').onClick(() => this.addRule())
-      Button(this.cleanMode ? '原文视图' : '净读预览').enabled(!this.busy).onClick(() => this.toggleClean())
+      Button(this.cleanMode ? '原文视图' : '净读预览').enabled(!this.busy)
+        .onClick(() => this.toggleClean())
       Button('导出').enabled(!this.busy).onClick(async () => await this.exportClean())
       Button('清空规则').onClick(() => this.clearRules())
     }
@@ -255,7 +267,8 @@ struct Index {
       token = ++this.workGeneration;
       this.busy = true;
       this.status = '正在导入…';
-      let result = await taskpool.execute(new taskpool.Task(importBookTask, uris[0], this.store.rootPath(), encoding)) as string;
+      let result = await taskpool.execute(new taskpool.Task(
+        importBookTask, uris[0], this.store.rootPath(), encoding)) as string;
       if (token !== this.workGeneration) return;
       let book = this.store.persistImported(this.uriName(uris[0]), result);
       this.refreshLibrary();
@@ -270,13 +283,15 @@ struct Index {
   }
 
   private async openBook(book: BookMeta, clean: boolean): Promise<void> {
-    if (!this.store) return;
+    if (!this.store || this.busy) return;
     this.stopAuto();
     this.tts.stop('');
     this.ttsReading = false;
 
+    let previous = this.current;
+    let previousClean = this.cleanMode;
     let restored = clean ? 0 :
-      (this.current?.id === book.id && !this.cleanMode ? this.reader.position() : book.progress);
+      (previous?.id === book.id && !previousClean ? this.reader.position() : book.progress);
     this.persistProgress();
     let token = ++this.workGeneration;
     this.busy = true;
@@ -284,23 +299,32 @@ struct Index {
     this.cleanMode = false;
     this.bookmarks = [];
     if (this.panel === 'bookmarks') this.panel = '';
-    this.reader.close();
     this.status = clean ? '正在生成净读视图…' : '正在打开…';
 
     try {
       let path = this.store.normalizedPath(book);
       if (clean) path = await this.buildClean(book);
       if (token !== this.workGeneration) return;
+
       let opened = await this.reader.open(path, restored);
-      if (token !== this.workGeneration || !opened) {
-        this.reader.close();
-        return;
-      }
+      if (token !== this.workGeneration || !opened) return;
+
       this.current = book;
       this.cleanMode = clean;
+      await taskpool.execute(new taskpool.Task(
+        pruneRevisionsTask,
+        this.store.bookDir(book),
+        book.normalizedSha256,
+        clean ? path : ''));
+      if (token !== this.workGeneration) return;
       this.render();
     } catch (error) {
-      if (token === this.workGeneration) this.showError(error, clean ? '净读失败' : '打开失败');
+      if (token === this.workGeneration) {
+        this.current = previous;
+        this.cleanMode = previousClean;
+        if (previous !== undefined) this.render();
+        this.showError(error, clean ? '净读失败' : '打开失败');
+      }
     } finally {
       if (token === this.workGeneration) this.busy = false;
     }
@@ -366,7 +390,8 @@ struct Index {
       this.bookmarks = [];
       return;
     }
-    this.bookmarks = this.store.bookmarks(this.current).sort((a: number, b: number): number => a - b);
+    this.bookmarks = this.store.bookmarks(this.current)
+      .sort((a: number, b: number): number => a - b);
   }
 
   private addBookmark(): void {
@@ -381,12 +406,15 @@ struct Index {
 
   private removeBookmark(offset: number): void {
     if (!this.current || !this.store || this.cleanMode) return;
-    let values = this.store.bookmarks(this.current).filter((item: number): boolean => item !== offset);
+    let values = this.store.bookmarks(this.current)
+      .filter((item: number): boolean => item !== offset);
     this.store.saveBookmarks(this.current, values);
     this.bookmarks = values;
   }
 
-  private rules(): string { return this.current && this.store ? this.store.rules(this.current) : ''; }
+  private rules(): string {
+    return this.current && this.store ? this.store.rules(this.current) : '';
+  }
 
   private ruleCount(): number {
     let value = this.rules();
@@ -403,7 +431,8 @@ struct Index {
       return;
     }
     let old = this.rules();
-    this.store.saveRules(this.current, `${old}${old.length === 0 ? '' : '\u001e'}${from}\u001f${to}`);
+    this.store.saveRules(this.current,
+      `${old}${old.length === 0 ? '' : '\u001e'}${from}\u001f${to}`);
     this.ruleFrom = '';
     this.ruleTo = '';
     if (this.cleanMode) this.openBook(this.current, true);
@@ -417,11 +446,17 @@ struct Index {
 
   private async buildClean(book: BookMeta): Promise<string> {
     if (!this.store) throw new Error('book store unavailable');
-    let output = this.store.cleanPath(book);
-    let revision = await taskpool.execute(new taskpool.Task(
-      cleanTask, this.store.normalizedPath(book), book.normalizedSha256, this.store.rules(book), output)) as string;
-    await taskpool.execute(new taskpool.Task(writeTextTask, this.store.cleanRevisionPath(book), revision));
-    return output;
+    let packed = await taskpool.execute(new taskpool.Task(
+      cleanTask,
+      this.store.normalizedPath(book),
+      book.normalizedSha256,
+      this.store.rules(book),
+      this.store.bookDir(book))) as string;
+    let result = JSON.parse(packed) as CleanTaskResult;
+    if (result.revision.length !== 64 || result.path !== this.store.cleanPath(book, result.revision)) {
+      throw new Error('invalid clean artifact result');
+    }
+    return result.path;
   }
 
   private toggleClean(): void {
