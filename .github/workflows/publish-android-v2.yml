@@ -8,7 +8,8 @@ on:
 
 permissions:
   contents: write
-\concurrency:
+
+concurrency:
   group: publish-android-v2.0.0
   cancel-in-progress: false
 
