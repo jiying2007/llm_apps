@@ -36,6 +36,15 @@ function copyFile(sourcePath: string, targetPath: string): number {
   return total;
 }
 
+function removeIfExists(path: string): void {
+  if (path.length === 0) return;
+  try { fs.unlinkSync(path); } catch (_) {}
+}
+
+function publishFile(temporaryPath: string, targetPath: string): void {
+  fs.renameSync(temporaryPath, targetPath);
+}
+
 function readSmallText(path: string): string {
   try {
     let file = fs.openSync(path, fs.OpenMode.READ_ONLY);
@@ -112,26 +121,37 @@ function normalize(rawPath: string, normalizedPath: string, requestedEncoding: s
 @Concurrent
 export function importBookTask(sourceUri: string, booksRoot: string, requestedEncoding: string): string {
   let nonce = `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
-  let tempPath = `${booksRoot}/.import-${nonce}.bin`;
-  let size = copyFile(sourceUri, tempPath);
-  let sourceSha256 = nativeCore.fileSha256(tempPath);
-  let dir = `${booksRoot}/${sourceSha256}`;
-  try { fs.mkdirSync(dir); } catch (_) {}
-  let rawPath = `${dir}/source.bin`;
-  try { fs.unlinkSync(rawPath); } catch (_) {}
-  copyFile(tempPath, rawPath);
-  try { fs.unlinkSync(tempPath); } catch (_) {}
-  let normalizedPath = `${dir}/document.txt`;
-  let encoding = normalize(rawPath, normalizedPath, requestedEncoding);
-  let normalizedSha256 = nativeCore.fileSha256(normalizedPath);
-  let result: ImportTaskResult = {
-    id: sourceSha256,
-    encoding: encoding,
-    size: size,
-    sourceSha256: sourceSha256,
-    normalizedSha256: normalizedSha256
-  };
-  return JSON.stringify(result);
+  let sourceTemp = `${booksRoot}/.import-${nonce}.bin`;
+  let normalizedTemp = '';
+  try {
+    let size = copyFile(sourceUri, sourceTemp);
+    let sourceSha256 = nativeCore.fileSha256(sourceTemp);
+    let dir = `${booksRoot}/${sourceSha256}`;
+    try { fs.mkdirSync(dir); } catch (_) {}
+
+    let rawPath = `${dir}/source.bin`;
+    publishFile(sourceTemp, rawPath);
+    sourceTemp = '';
+
+    let normalizedPath = `${dir}/document.txt`;
+    normalizedTemp = `${dir}/.document-${nonce}.tmp`;
+    let encoding = normalize(rawPath, normalizedTemp, requestedEncoding);
+    let normalizedSha256 = nativeCore.fileSha256(normalizedTemp);
+    publishFile(normalizedTemp, normalizedPath);
+    normalizedTemp = '';
+
+    let result: ImportTaskResult = {
+      id: sourceSha256,
+      encoding: encoding,
+      size: size,
+      sourceSha256: sourceSha256,
+      normalizedSha256: normalizedSha256
+    };
+    return JSON.stringify(result);
+  } finally {
+    removeIfExists(sourceTemp);
+    removeIfExists(normalizedTemp);
+  }
 }
 
 @Concurrent
