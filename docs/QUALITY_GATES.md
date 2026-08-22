@@ -5,9 +5,9 @@ A change is mergeable only when every applicable gate below passes. `main` branc
 ## Source gates
 
 1. **Native core** — Release CMake build, `-Wall -Wextra -Wpedantic -Werror`, CTest including encoding/SHA/revision/large-file/concurrency/malformed-input coverage, plus clang-tidy analyzer/bugprone/performance/portability checks.
-2. **Android** — Debug/Release lint, Debug APK, Release AAB, JNI compilation for supported ABIs and architecture-contract checks for background open/work isolation and atomic private-file publication.
-3. **Harmony source contract** — Stage/HAP files, Node-API bridge, TaskPool long-work/open path, revision-safe persistence, DocumentViewPicker and Core Speech Kit wiring are present and reference the single shared core.
-4. **Repository contract** — no legacy roots, Java shared core, compatibility/transition markers, committed APK/AAB/HAP/keystore or extracted third-party executable assets.
+2. **Android** — Debug/Release lint, Debug APK, Release AAB, JNI compilation for supported ABIs, single-worker long-work isolation, immutable `document-<sha>` / `clean-<revision>` artifacts and candidate-session-before-prune checks.
+3. **Harmony source contract** — Stage/HAP files, Node-API bridge, TaskPool long-work/open path, immutable `document-<sha>` / `clean-<revision>` artifacts, candidate-session-before-prune, revision-safe persistence, DocumentViewPicker and Core Speech Kit wiring are present and reference the single shared core.
+4. **Repository contract** — no legacy roots, Java shared core, compatibility/transition markers, mutable fixed clean/document persistence API, floating GitHub Actions tags, committed APK/AAB/HAP/keystore or extracted third-party executable assets.
 
 ## Toolchain gate
 
@@ -17,7 +17,7 @@ A workflow that remains queued because no matching runner is online is an unmet 
 
 ## Device gate
 
-Before store release, both platforms execute the matrix in `DEVICE_MATRIX.md`: import/encoding, reopen/progress, paging, search, chapters, bookmarks, repair/export, auto reading, TTS, lifecycle, accessibility, low-storage/write failures and 10/100/300 MiB performance.
+Before store release, both platforms execute the matrix in `DEVICE_MATRIX.md`: import/encoding, repeated import, changed decode revision, interrupted candidate publication, reopen/progress, paging, search, chapters, bookmarks, repair/export, auto reading, TTS, lifecycle, accessibility, low-storage/write failures and 10/100/300 MiB performance.
 
 ## Cross-platform gate
 
