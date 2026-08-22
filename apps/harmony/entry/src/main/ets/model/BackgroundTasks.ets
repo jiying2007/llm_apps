@@ -16,9 +16,29 @@ export interface OpenTaskResult {
   path: string;
 }
 
+export interface CleanTaskResult {
+  path: string;
+  revision: string;
+}
+
+function fileExists(path: string): boolean {
+  try {
+    fs.statSync(path);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function removeIfExists(path: string): void {
+  if (path.length === 0) return;
+  try { fs.unlinkSync(path); } catch (_) {}
+}
+
 function copyFile(sourcePath: string, targetPath: string): number {
   let source = fs.openSync(sourcePath, fs.OpenMode.READ_ONLY);
-  let target = fs.openSync(targetPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+  let target = fs.openSync(targetPath,
+    fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
   let total = 0;
   try {
     let buffer = new ArrayBuffer(64 * 1024);
@@ -36,49 +56,19 @@ function copyFile(sourcePath: string, targetPath: string): number {
   return total;
 }
 
-function removeIfExists(path: string): void {
-  if (path.length === 0) return;
-  try { fs.unlinkSync(path); } catch (_) {}
-}
-
-function publishFile(temporaryPath: string, targetPath: string): void {
-  fs.renameSync(temporaryPath, targetPath);
-}
-
-function readSmallText(path: string): string {
+function publishImmutable(temporaryPath: string, targetPath: string): void {
+  if (fileExists(targetPath)) {
+    removeIfExists(temporaryPath);
+    return;
+  }
   try {
-    let file = fs.openSync(path, fs.OpenMode.READ_ONLY);
-    try {
-      let size = Math.min(128, fs.statSync(path).size);
-      if (size <= 0) return '';
-      let buffer = new ArrayBuffer(size);
-      let count = fs.readSync(file.fd, buffer, { offset: 0, length: size });
-      if (count <= 0) return '';
-      return util.TextDecoder.create('utf-8').decodeToString(new Uint8Array(buffer, 0, count));
-    } finally {
-      fs.closeSync(file);
+    fs.renameSync(temporaryPath, targetPath);
+  } catch (error) {
+    if (fileExists(targetPath)) {
+      removeIfExists(temporaryPath);
+      return;
     }
-  } catch (_) {
-    return '';
-  }
-}
-
-function writeTextFile(path: string, value: string): void {
-  let file = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
-  try {
-    fs.writeSync(file.fd, value, { encoding: 'utf-8' });
-    fs.fsyncSync(file.fd);
-  } finally {
-    fs.closeSync(file);
-  }
-}
-
-function fileExists(path: string): boolean {
-  try {
-    fs.statSync(path);
-    return true;
-  } catch (_) {
-    return false;
+    throw error;
   }
 }
 
@@ -87,19 +77,23 @@ function normalize(rawPath: string, normalizedPath: string, requestedEncoding: s
   let sampleBuffer = new ArrayBuffer(64 * 1024);
   let sampleSize = 0;
   try {
-    sampleSize = fs.readSync(raw.fd, sampleBuffer, { position: 0, offset: 0, length: sampleBuffer.byteLength });
+    sampleSize = fs.readSync(raw.fd, sampleBuffer,
+      { position: 0, offset: 0, length: sampleBuffer.byteLength });
   } finally {
     fs.closeSync(raw);
   }
+
   let sample = new Uint8Array(sampleBuffer, 0, sampleSize);
   let totalSize = fs.statSync(rawPath).size;
   let encoding = requestedEncoding === 'AUTO'
     ? nativeCore.detectEncoding(sample, totalSize > sampleSize)
     : requestedEncoding;
 
-  let decoder = util.TextDecoder.create(encoding.toLowerCase(), { ignoreBOM: false, fatal: false });
+  let decoder = util.TextDecoder.create(encoding.toLowerCase(),
+    { ignoreBOM: false, fatal: false });
   let source = fs.openSync(rawPath, fs.OpenMode.READ_ONLY);
-  let output = fs.openSync(normalizedPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+  let output = fs.openSync(normalizedPath,
+    fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
   try {
     let buffer = new ArrayBuffer(64 * 1024);
     while (true) {
@@ -119,7 +113,8 @@ function normalize(rawPath: string, normalizedPath: string, requestedEncoding: s
 }
 
 @Concurrent
-export function importBookTask(sourceUri: string, booksRoot: string, requestedEncoding: string): string {
+export function importBookTask(sourceUri: string, booksRoot: string,
+  requestedEncoding: string): string {
   let nonce = `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
   let sourceTemp = `${booksRoot}/.import-${nonce}.bin`;
   let normalizedTemp = '';
@@ -130,14 +125,14 @@ export function importBookTask(sourceUri: string, booksRoot: string, requestedEn
     try { fs.mkdirSync(dir); } catch (_) {}
 
     let rawPath = `${dir}/source.bin`;
-    publishFile(sourceTemp, rawPath);
+    publishImmutable(sourceTemp, rawPath);
     sourceTemp = '';
 
-    let normalizedPath = `${dir}/document.txt`;
     normalizedTemp = `${dir}/.document-${nonce}.tmp`;
     let encoding = normalize(rawPath, normalizedTemp, requestedEncoding);
     let normalizedSha256 = nativeCore.fileSha256(normalizedTemp);
-    publishFile(normalizedTemp, normalizedPath);
+    let normalizedPath = `${dir}/document-${normalizedSha256}.txt`;
+    publishImmutable(normalizedTemp, normalizedPath);
     normalizedTemp = '';
 
     let result: ImportTaskResult = {
@@ -182,25 +177,39 @@ export function chaptersTask(path: string, limit: number): string {
 
 @Concurrent
 export function cleanTask(normalizedPath: string, normalizedSha256: string,
-  rules: string, outputPath: string): string {
+  rules: string, bookDir: string): string {
   let revision = nativeCore.repairRevision(normalizedSha256, rules);
-  let revisionPath = outputPath.endsWith('.txt')
-    ? `${outputPath.substring(0, outputPath.length - 4)}.revision`
-    : `${outputPath}.revision`;
-  if (fileExists(outputPath) && readSmallText(revisionPath) === revision) return revision;
+  let outputPath = `${bookDir}/clean-${revision}.txt`;
+  if (!fileExists(outputPath)) {
+    let handle = nativeCore.open(normalizedPath);
+    try { nativeCore.exportRules(handle, rules, outputPath); }
+    finally { nativeCore.close(handle); }
+  }
+  let result: CleanTaskResult = { path: outputPath, revision: revision };
+  return JSON.stringify(result);
+}
 
-  let handle = nativeCore.open(normalizedPath);
-  try { nativeCore.exportRules(handle, rules, outputPath); }
-  finally { nativeCore.close(handle); }
-  return revision;
+@Concurrent
+export function pruneRevisionsTask(bookDir: string, normalizedSha256: string,
+  keepCleanPath: string): void {
+  let keepDocument = `document-${normalizedSha256}.txt`;
+  let keepClean = '';
+  let slash = keepCleanPath.lastIndexOf('/');
+  if (keepCleanPath.length > 0) keepClean = slash >= 0 ? keepCleanPath.substring(slash + 1) : keepCleanPath;
+
+  let files: string[] = [];
+  try { files = fs.listFileSync(bookDir); } catch (_) { return; }
+  files.forEach((name: string): void => {
+    let remove = false;
+    if (name.startsWith('document-') && name.endsWith('.txt') && name !== keepDocument) remove = true;
+    if (name.startsWith('clean-') && name.endsWith('.txt') && name !== keepClean) remove = true;
+    if (name.startsWith('.document-') && name.endsWith('.tmp')) remove = true;
+    if (name === 'document.txt' || name === 'clean.txt' || name === 'clean.revision') remove = true;
+    if (remove) removeIfExists(`${bookDir}/${name}`);
+  });
 }
 
 @Concurrent
 export function exportTask(sourcePath: string, destinationUri: string): number {
   return copyFile(sourcePath, destinationUri);
-}
-
-@Concurrent
-export function writeTextTask(path: string, value: string): void {
-  writeTextFile(path, value);
 }
