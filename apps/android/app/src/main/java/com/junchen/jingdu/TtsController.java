@@ -28,27 +28,51 @@ final class TtsController implements AutoCloseable {
 
     TtsController(Context context) {
         audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        AudioAttributes attributes = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
-        focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(attributes).setOnAudioFocusChangeListener(change -> { if (change <= AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) stop("audio focus"); }).build();
+        AudioAttributes attributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build();
+        focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attributes)
+                .setOnAudioFocusChangeListener(change -> {
+                    if (change <= AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) stop("audio focus");
+                })
+                .build();
         tts = new TextToSpeech(context.getApplicationContext(), status -> ready = status == TextToSpeech.SUCCESS);
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String utteranceId) { }
-            @Override public void onDone(String utteranceId) { long token = parseToken(utteranceId); main.post(() -> { if (token == generation.get()) speakNext(token); }); }
+            @Override public void onDone(String utteranceId) {
+                long token = parseToken(utteranceId);
+                main.post(() -> { if (token == generation.get()) speakNext(token); });
+            }
             @Override public void onError(String utteranceId) { main.post(() -> stop("tts error")); }
         });
     }
 
     void start(ReaderController reader, long from, Listener listener) {
         stop(null);
-        if (!ready) { if (listener != null) listener.onStopped("TTS engine not ready"); return; }
-        if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { if (listener != null) listener.onStopped("audio focus denied"); return; }
-        this.reader = reader; this.listener = listener; this.offset = Math.max(0, from);
-        long token = generation.incrementAndGet(); speakNext(token);
+        if (!ready) {
+            if (listener != null) listener.onStopped("TTS engine not ready");
+            return;
+        }
+        if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            if (listener != null) listener.onStopped("audio focus denied");
+            return;
+        }
+        this.reader = reader;
+        this.listener = listener;
+        this.offset = Math.max(0, from);
+        long token = generation.incrementAndGet();
+        speakNext(token);
     }
 
     void stop(String reason) {
-        generation.incrementAndGet(); tts.stop(); audio.abandonAudioFocusRequest(focus);
-        Listener old = listener; listener = null; reader = null;
+        generation.incrementAndGet();
+        tts.stop();
+        audio.abandonAudioFocusRequest(focus);
+        Listener old = listener;
+        listener = null;
+        reader = null;
         if (reason != null && old != null) old.onStopped(reason);
     }
 
@@ -61,13 +85,24 @@ final class TtsController implements AutoCloseable {
         if (reader == null || token != generation.get()) return;
         try {
             ReaderController.Speech chunk = reader.speech(offset);
-            if (chunk.text().isBlank() || chunk.nextOffset() <= offset) { stop("end"); return; }
-            offset = chunk.nextOffset(); if (listener != null) listener.onPosition(offset);
-            Bundle params = new Bundle();
-            tts.speak(chunk.text(), TextToSpeech.QUEUE_FLUSH, params, Long.toString(token));
-        } catch (Exception error) { stop(error.getMessage() == null ? "tts failure" : error.getMessage()); }
+            if (chunk.text().trim().isEmpty() || chunk.nextOffset() <= offset) {
+                stop("end");
+                return;
+            }
+            offset = chunk.nextOffset();
+            if (listener != null) listener.onPosition(offset);
+            tts.speak(chunk.text(), TextToSpeech.QUEUE_FLUSH, new Bundle(), Long.toString(token));
+        } catch (Exception error) {
+            stop(error.getMessage() == null ? "tts failure" : error.getMessage());
+        }
     }
 
-    private static long parseToken(String id) { try { return Long.parseLong(id); } catch (Exception ignored) { return -1; } }
-    @Override public void close() { stop(null); tts.shutdown(); }
+    private static long parseToken(String id) {
+        try { return Long.parseLong(id); } catch (Exception ignored) { return -1; }
+    }
+
+    @Override public void close() {
+        stop(null);
+        tts.shutdown();
+    }
 }

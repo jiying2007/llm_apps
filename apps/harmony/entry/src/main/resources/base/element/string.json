@@ -1,0 +1,7 @@
+{
+  "string": [
+    { "name": "app_name", "value": "净读 TXT" },
+    { "name": "module_desc", "value": "本地 TXT 阅读与净读" },
+    { "name": "ability_desc", "value": "净读 TXT" }
+  ]
+}
