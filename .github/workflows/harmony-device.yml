@@ -1,0 +1,43 @@
+name: Harmony Device Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/native/**'
+      - 'apps/harmony/**'
+      - 'scripts/check-harmony.sh'
+      - '.github/workflows/harmony-device.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/native/**'
+      - 'apps/harmony/**'
+      - 'scripts/check-harmony.sh'
+      - '.github/workflows/harmony-device.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-harmony:
+    runs-on: [self-hosted, harmonyos]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Build HarmonyOS app
+        run: ./scripts/check-harmony.sh
+      - name: Collect HAP/APP/native artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/harmony-artifacts
+          find apps/harmony -type f \( -name '*.hap' -o -name '*.app' -o -name '*.so' \) \
+            -print -exec cp --parents {} build/harmony-artifacts/ \;
+          test -n "$(find build/harmony-artifacts -type f -name '*.hap' -print -quit)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: harmony-build-${{ github.sha }}
+          path: build/harmony-artifacts
+          if-no-files-found: error
+          retention-days: 14

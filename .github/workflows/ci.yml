@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  native-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Build, test and analyze shared core
+        run: ./scripts/check-native.sh
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Android terminal verification
+        run: ./gradlew --no-daemon --warning-mode all androidCheck
+      - name: Android architecture contract
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+          grep -q 'NativeCore.open(file)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+          grep -q 'ATOMIC_MOVE' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+          grep -q 'existing.normalizedSha256.equals(normalizedSha)' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+          grep -q 'if (!cleanMode) repository.saveProgress' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+          grep -q '净读预览不写入原文书签' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+          grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+          grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+          grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+
+  harmony-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Validate Harmony terminal contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f apps/harmony/build-profile.json5
+          test -f apps/harmony/entry/build-profile.json5
+          test -f apps/harmony/entry/src/main/module.json5
+          test -f apps/harmony/entry/src/main/cpp/napi_init.cpp
+          test -f apps/harmony/entry/src/main/ets/pages/Index.ets
+          test -f apps/harmony/entry/src/main/ets/model/BookStore.ets
+          test -f apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+          test -f apps/harmony/entry/src/main/ets/model/ReaderController.ets
+          test -f apps/harmony/entry/src/main/ets/model/TtsController.ets
+          grep -q 'core/native' apps/harmony/entry/src/main/cpp/CMakeLists.txt
+          grep -q 'abiVersion() !== 2' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+          grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+          grep -q 'openDocumentTask' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+          grep -q 'document-${normalizedSha256}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+          grep -q 'clean-${revision}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+          grep -q 'await this.reader.open' apps/harmony/entry/src/main/ets/pages/Index.ets
+          grep -q 'pruneRevisionsTask' apps/harmony/entry/src/main/ets/pages/Index.ets
+          grep -q 'if (!this.cleanMode) this.store.saveProgress' apps/harmony/entry/src/main/ets/pages/Index.ets
+          grep -q '&& !this.cleanMode' apps/harmony/entry/src/main/ets/pages/Index.ets
+          grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
+          grep -q 'existing.normalizedSha256 === result.normalizedSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
+          grep -q '@kit.CoreSpeechKit' apps/harmony/entry/src/main/ets/model/TtsController.ets
+          grep -q 'DocumentViewPicker' apps/harmony/entry/src/main/ets/pages/Index.ets
+
+  terminal-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: ./scripts/verify-terminal.sh

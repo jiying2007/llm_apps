@@ -1,1 +1,11 @@
+.gradle/
+**/build/
+local.properties
+keystore.properties
+*.jks
+*.keystore
+*.iml
 .cache/
+.DS_Store
+apps/harmony/oh_modules/
+apps/harmony/.hvigor/

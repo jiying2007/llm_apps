@@ -1,0 +1,222 @@
+name: Publish Android v2.0.0
+
+on:
+  push:
+    branches: [feat/android-harmony-terminal]
+    paths:
+      - '.github/workflows/publish-android-v2.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: publish-android-v2.0.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/android-harmony-terminal
+          fetch-depth: 0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Verify terminal candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/check-native.sh
+          ./scripts/verify-terminal.sh
+          cd apps/android
+          ./gradlew --no-daemon --warning-mode all androidCheck
+
+      - name: Bootstrap retained Android upload key
+        id: signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          signing_dir="$RUNNER_TEMP/android-v2-signing"
+          mkdir -p "$signing_dir"
+          keystore="$signing_dir/jingdu-upload-key-v2.jks"
+          store_pass="$(openssl rand -hex 32)"
+          key_pass="$(openssl rand -hex 32)"
+          alias_name='jingdu-upload'
+          keytool -genkeypair \
+            -keystore "$keystore" -storetype JKS \
+            -storepass "$store_pass" -keypass "$key_pass" \
+            -alias "$alias_name" -keyalg RSA -keysize 4096 -validity 10000 \
+            -dname 'CN=Jingdu Android Upload,O=Jingdu'
+          chmod 600 "$keystore"
+          cat > "$signing_dir/ANDROID_UPLOAD_KEY_CREDENTIALS.txt" <<EOF
+          Android upload key for Jingdu v2.x
+          alias=$alias_name
+          storePassword=$store_pass
+          keyPassword=$key_pass
+          createdFrom=${GITHUB_REPOSITORY}@${GITHUB_SHA}
+
+          BACK UP THIS KEY SECURELY. Future Android v2.x releases must reuse it.
+          It is never committed to Git and is not attached to the public/private GitHub Release.
+          EOF
+          keytool -list -v -keystore "$keystore" -storepass "$store_pass" -alias "$alias_name" \
+            | sed -n '/Owner:/p;/Issuer:/p;/Valid from:/p;/Certificate fingerprints:/,/Signature algorithm name:/p' \
+            > "$signing_dir/CERTIFICATE.txt"
+          cat > apps/android/keystore.properties <<EOF
+          storeFile=$keystore
+          storePassword=$store_pass
+          keyAlias=$alias_name
+          keyPassword=$key_pass
+          EOF
+          echo "signing_dir=$signing_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Build and verify signed Android release
+        id: android_release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/android
+          ./gradlew --no-daemon --no-configuration-cache --warning-mode all \
+            -PjingduApplicationId=com.junchen.jingdu \
+            -PjingduVersionCode=2 \
+            -PjingduVersionName=2.0.0 \
+            androidStoreCheck writeAndroidReleaseChecksums
+          release_dir="$PWD/build/release/2.0.0"
+          apk="$release_dir/jingdu-2.0.0-release.apk"
+          aab="$release_dir/jingdu-2.0.0-release.aab"
+          mapping="$release_dir/mapping-2.0.0.txt"
+          test -s "$apk" && test -s "$aab" && test -s "$mapping"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n1)"
+          test -x "$apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk" > "$release_dir/APK_SIGNATURE.txt"
+          jarsigner -verify -verbose -certs "$aab" > "$release_dir/AAB_SIGNATURE.txt"
+          cp "${{ steps.signing.outputs.signing_dir }}/CERTIFICATE.txt" "$release_dir/CERTIFICATE.txt"
+          echo "release_dir=$release_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Create and re-verify terminal root commit
+        id: root
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$(git rev-parse HEAD)"
+          git fetch origin main
+          old_main="$(git rev-parse origin/main)"
+          if git ls-remote --exit-code --tags origin refs/tags/v2.0.0 >/dev/null 2>&1; then
+            echo 'v2.0.0 tag already exists; refusing duplicate publication.' >&2
+            exit 1
+          fi
+          git update-index --force-remove .github/workflows/publish-android-v2.yml
+          git update-index --force-remove scripts/publish-hard-cut.sh
+          root_tree="$(git write-tree)"
+          root_commit="$(printf '%s\n' 'release: Android v2.0.0 terminal root' | git commit-tree "$root_tree")"
+          test "$(git rev-parse "${root_commit}^{tree}")" = "$root_tree"
+
+          root_worktree="$RUNNER_TEMP/jingdu-v2-root"
+          git worktree add --detach "$root_worktree" "$root_commit"
+          (
+            cd "$root_worktree"
+            ./scripts/check-native.sh
+            ./scripts/verify-terminal.sh
+            cd apps/android
+            ./gradlew --no-daemon --warning-mode all androidCheck
+          )
+          git worktree remove --force "$root_worktree"
+
+          release_dir="${{ steps.android_release.outputs.release_dir }}"
+          cat > "$release_dir/SOURCE.txt" <<EOF
+          candidate_commit=$candidate
+          terminal_root_commit=$root_commit
+          terminal_root_tree=$root_tree
+          previous_main=$old_main
+          android_version=2.0.0
+          android_version_code=2
+          harmony_status=source-complete-pre-release
+          EOF
+          (
+            cd "$release_dir"
+            sha256sum \
+              jingdu-2.0.0-release.apk \
+              jingdu-2.0.0-release.aab \
+              mapping-2.0.0.txt \
+              APK_SIGNATURE.txt AAB_SIGNATURE.txt CERTIFICATE.txt SOURCE.txt \
+              > SHA256SUMS
+          )
+          echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
+          echo "root_commit=$root_commit" >> "$GITHUB_OUTPUT"
+          echo "root_tree=$root_tree" >> "$GITHUB_OUTPUT"
+          echo "old_main=$old_main" >> "$GITHUB_OUTPUT"
+
+      - name: Merge PR and publish terminal main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr ready 1 --repo "$GITHUB_REPOSITORY"
+          gh pr merge 1 --repo "$GITHUB_REPOSITORY" --squash \
+            --subject 'release: Android v2.0.0 terminal architecture' \
+            --body 'Android v2.0.0 production source; HarmonyOS remains source-complete and pre-release.'
+          git fetch origin main
+          merged_main="$(git rev-parse origin/main)"
+          git push origin "${{ steps.root.outputs.root_commit }}:refs/heads/main" \
+            --force-with-lease="refs/heads/main:${merged_main}"
+
+      - name: Create Android v2.0.0 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          root_commit='${{ steps.root.outputs.root_commit }}'
+          git tag -a v2.0.0 "$root_commit" -m 'Android v2.0.0'
+          git push origin refs/tags/v2.0.0
+          release_dir='${{ steps.android_release.outputs.release_dir }}'
+          cat > "$RUNNER_TEMP/android-v2-release-notes.md" <<'EOF'
+          ## Android v2.0.0
+
+          First production Android release of the terminal architecture.
+
+          - Android native shell over the single C++17 shared core / JNI bridge
+          - application id `com.junchen.jingdu`
+          - minSdk 26 / targetSdk 36
+          - signed release APK and AAB
+          - R8 mapping and SHA-256 manifest included
+          - immutable content-addressed normalized/clean document revisions
+          - offline product path with no network permission/runtime third-party SDK
+
+          HarmonyOS source is included in the repository but is **not production-qualified in this release**; HAP and Harmony real-device gates are intentionally deferred.
+          EOF
+          gh release create v2.0.0 \
+            "$release_dir/jingdu-2.0.0-release.apk" \
+            "$release_dir/jingdu-2.0.0-release.aab" \
+            "$release_dir/mapping-2.0.0.txt" \
+            "$release_dir/SHA256SUMS" \
+            "$release_dir/APK_SIGNATURE.txt" \
+            "$release_dir/AAB_SIGNATURE.txt" \
+            "$release_dir/CERTIFICATE.txt" \
+            "$release_dir/SOURCE.txt" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$root_commit" \
+            --title 'Android v2.0.0' \
+            --notes-file "$RUNNER_TEMP/android-v2-release-notes.md"
+
+      - name: Preserve Android upload key for release owner
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-v2.0.0-upload-key-BACKUP-NOW
+          path: ${{ steps.signing.outputs.signing_dir }}
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Delete migration branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin --delete feat/android-harmony-terminal
