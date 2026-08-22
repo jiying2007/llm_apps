@@ -51,6 +51,7 @@ export class BookStore {
     if (result.id.length !== 64 || result.id !== result.sourceSha256 || result.normalizedSha256.length !== 64) {
       throw new Error('invalid shared-core identity result');
     }
+    let existing = this.list().find((item: BookMeta): boolean => item.id === result.id);
     let book: BookMeta = {
       id: result.id,
       name: name,
@@ -58,7 +59,8 @@ export class BookStore {
       size: result.size,
       sourceSha256: result.sourceSha256,
       normalizedSha256: result.normalizedSha256,
-      progress: 0,
+      progress: existing !== undefined && existing.normalizedSha256 === result.normalizedSha256
+        ? existing.progress : 0,
       touchedAt: Date.now()
     };
     let books = this.list().filter((item: BookMeta): boolean => item.id !== book.id);
