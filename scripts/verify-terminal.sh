@@ -24,10 +24,12 @@ if git grep -n -E 'implementation project\(":core"\)|include\(":app", ":core"\)'
 fi
 
 required=(
-  README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy
-  .github/CODEOWNERS .github/pull_request_template.md
+  README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
+  .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
+  .github/workflows/ci.yml .github/workflows/harmony-device.yml
   docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
-  docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md docs/RELEASE.md
+  docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md
+  docs/HARMONY_RUNNER.md docs/RELEASE.md
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
   apps/harmony/entry/src/main/cpp/napi_init.cpp
@@ -41,10 +43,12 @@ for path in "${required[@]}"; do
 done
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
+grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
 grep -q 'sourceSha256' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
-grep -q 'ExecutorService' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'taskpool.execute' apps/harmony/entry/src/main/ets/pages/Index.ets
+grep -q 'self-hosted,harmonyos' docs/HARMONY_RUNNER.md
 
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderSurfaceView.java
