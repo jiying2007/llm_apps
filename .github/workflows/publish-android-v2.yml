@@ -2,15 +2,13 @@ name: Publish Android v2.0.0
 
 on:
   push:
-    branches: [feat/android-harmony-terminal]
+    branches: [main]
     paths:
       - '.github/workflows/publish-android-v2.yml'
 
 permissions:
   contents: write
-  pull-requests: write
-
-concurrency:
+\concurrency:
   group: publish-android-v2.0.0
   cancel-in-progress: false
 
@@ -21,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: feat/android-harmony-terminal
+          ref: main
           fetch-depth: 0
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -64,7 +62,7 @@ jobs:
           createdFrom=${GITHUB_REPOSITORY}@${GITHUB_SHA}
 
           BACK UP THIS KEY SECURELY. Future Android v2.x releases must reuse it.
-          It is never committed to Git and is not attached to the public/private GitHub Release.
+          It is never committed to Git and is not attached to the GitHub Release.
           EOF
           keytool -list -v -keystore "$keystore" -storepass "$store_pass" -alias "$alias_name" \
             | sed -n '/Owner:/p;/Issuer:/p;/Valid from:/p;/Certificate fingerprints:/,/Signature algorithm name:/p' \
@@ -108,6 +106,7 @@ jobs:
           candidate="$(git rev-parse HEAD)"
           git fetch origin main
           old_main="$(git rev-parse origin/main)"
+          test "$candidate" = "$old_main"
           if git ls-remote --exit-code --tags origin refs/tags/v2.0.0 >/dev/null 2>&1; then
             echo 'v2.0.0 tag already exists; refusing duplicate publication.' >&2
             exit 1
@@ -131,7 +130,7 @@ jobs:
 
           release_dir="${{ steps.android_release.outputs.release_dir }}"
           cat > "$release_dir/SOURCE.txt" <<EOF
-          candidate_commit=$candidate
+          candidate_main=$candidate
           terminal_root_commit=$root_commit
           terminal_root_tree=$root_tree
           previous_main=$old_main
@@ -148,25 +147,16 @@ jobs:
               APK_SIGNATURE.txt AAB_SIGNATURE.txt CERTIFICATE.txt SOURCE.txt \
               > SHA256SUMS
           )
-          echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
           echo "root_commit=$root_commit" >> "$GITHUB_OUTPUT"
           echo "root_tree=$root_tree" >> "$GITHUB_OUTPUT"
           echo "old_main=$old_main" >> "$GITHUB_OUTPUT"
 
-      - name: Merge PR and publish terminal main
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Publish terminal main
         shell: bash
         run: |
           set -euo pipefail
-          gh pr ready 1 --repo "$GITHUB_REPOSITORY"
-          gh pr merge 1 --repo "$GITHUB_REPOSITORY" --squash \
-            --subject 'release: Android v2.0.0 terminal architecture' \
-            --body 'Android v2.0.0 production source; HarmonyOS remains source-complete and pre-release.'
-          git fetch origin main
-          merged_main="$(git rev-parse origin/main)"
           git push origin "${{ steps.root.outputs.root_commit }}:refs/heads/main" \
-            --force-with-lease="refs/heads/main:${merged_main}"
+            --force-with-lease="refs/heads/main:${{ steps.root.outputs.old_main }}"
 
       - name: Create Android v2.0.0 GitHub Release
         env:
@@ -219,4 +209,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git push origin --delete feat/android-harmony-terminal
+          if git ls-remote --exit-code --heads origin refs/heads/feat/android-harmony-terminal >/dev/null 2>&1; then
+            git push origin --delete feat/android-harmony-terminal
+          fi
