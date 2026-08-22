@@ -35,7 +35,11 @@ final class TtsController implements AutoCloseable {
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(attributes)
                 .setOnAudioFocusChangeListener(change -> {
-                    if (change <= AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) stop("audio focus");
+                    if (change == AudioManager.AUDIOFOCUS_LOSS
+                            || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+                            || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+                        main.post(() -> stop("audio focus"));
+                    }
                 })
                 .build();
         tts = new TextToSpeech(context.getApplicationContext(),
