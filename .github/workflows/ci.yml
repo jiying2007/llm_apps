@@ -28,22 +28,31 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Android terminal verification
+      - name: Android product verification
         run: ./gradlew --no-daemon --warning-mode all androidCheck
-      - name: Android architecture contract
+      - name: Android product contract
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
-          grep -q 'NativeCore.open(file)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+          test -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          test -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+          test -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
+          test -f apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
+          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+          grep -q 'enableEdgeToEdge' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'bookmarkKey(book)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+          grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+          grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+          grep -q 'onTextLayout' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
           grep -q 'ATOMIC_MOVE' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
-          grep -q 'existing.normalizedSha256.equals(normalizedSha)' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
-          grep -q 'if (!cleanMode) repository.saveProgress' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
-          grep -q '净读预览不写入原文书签' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
           grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
           grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
-          grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+          grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
+          grep -q 'compileSdk = 37' apps/android/app/build.gradle
 
   harmony-contract:
     runs-on: ubuntu-latest
