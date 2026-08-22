@@ -9,12 +9,11 @@ def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrEls
 def versionNameValue = versionNameProperty.getOrElse("2.0.0")
 def signingPropertiesFile = rootProject.file("keystore.properties")
 def signingProperties = new Properties()
-def signingAllowed = !gradle.startParameter.configurationCacheRequested
-if (signingAllowed && signingPropertiesFile.isFile()) {
+if (signingPropertiesFile.isFile()) {
     signingPropertiesFile.withInputStream { signingProperties.load(it) }
 }
 def signingKeys = ["storeFile", "storePassword", "keyAlias", "keyPassword"]
-def releaseSigningConfigured = signingAllowed && signingPropertiesFile.isFile() && signingKeys.every { key ->
+def releaseSigningConfigured = signingPropertiesFile.isFile() && signingKeys.every { key ->
     def value = signingProperties.getProperty(key)
     value != null && !value.trim().isEmpty()
 }
@@ -93,10 +92,11 @@ tasks.register("validateStoreRelease") {
         if (!versionNameProperty.isPresent() || !(versionNameValue ==~ /\d+\.\d+\.\d+/)) {
             throw new GradleException("set semantic -PjingduVersionName")
         }
-        if (gradle.startParameter.configurationCacheRequested) {
-            throw new GradleException("release signing must run with --no-configuration-cache")
+        if (!releaseSigningConfigured) {
+            throw new GradleException("configure ignored keystore.properties")
         }
-        if (!releaseSigningConfigured) throw new GradleException("configure ignored keystore.properties")
-        if (!file(signingProperties.getProperty("storeFile")).isFile()) throw new GradleException("upload keystore missing")
+        if (!file(signingProperties.getProperty("storeFile")).isFile()) {
+            throw new GradleException("upload keystore missing")
+        }
     }
 }
