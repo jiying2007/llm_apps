@@ -1,30 +1,24 @@
+import { taskpool } from '@kit.ArkTS';
 import nativeCore from 'libentry.so';
+import { chaptersTask, searchTask } from './BackgroundTasks';
 
-export interface SearchHit {
-  offset: number;
-  context: string;
-}
-
-export interface ChapterItem {
-  offset: number;
-  title: string;
-}
-
-export interface SpeechChunk {
-  nextOffset: number;
-  text: string;
-}
+export interface SearchHit { offset: number; context: string; }
+export interface ChapterItem { offset: number; title: string; }
+export interface SpeechChunk { nextOffset: number; text: string; }
 
 export class ReaderController {
   static readonly PAGE_CHARS: number = 1800;
   static readonly WINDOW_CHARS: number = 6000;
   private handle: number = 0;
+  private pathValue: string = '';
   private lengthValue: number = 0;
   private positionValue: number = 0;
 
   open(path: string, restoredPosition: number): void {
     this.close();
+    if (nativeCore.abiVersion() !== 2) throw new Error('unsupported Jingdu core ABI');
     this.handle = nativeCore.open(path);
+    this.pathValue = path;
     this.lengthValue = nativeCore.charCount(this.handle);
     this.jump(restoredPosition);
   }
@@ -32,11 +26,13 @@ export class ReaderController {
   close(): void {
     if (this.handle !== 0) nativeCore.close(this.handle);
     this.handle = 0;
+    this.pathValue = '';
     this.lengthValue = 0;
     this.positionValue = 0;
   }
 
   handleValue(): number { return this.handle; }
+  path(): string { return this.pathValue; }
   position(): number { return this.positionValue; }
   length(): number { return this.lengthValue; }
 
@@ -53,10 +49,11 @@ export class ReaderController {
   next(): void { this.jump(this.positionValue + ReaderController.PAGE_CHARS); }
   previous(): void { this.jump(this.positionValue - ReaderController.PAGE_CHARS); }
 
-  search(query: string): SearchHit[] {
+  async search(query: string): Promise<SearchHit[]> {
     this.ensureOpen();
+    let packed = await taskpool.execute(new taskpool.Task(searchTask, this.pathValue, query, 500)) as string;
     let result: SearchHit[] = [];
-    nativeCore.search(this.handle, query, 500).split('\n').forEach((line: string): void => {
+    packed.split('\n').forEach((line: string): void => {
       let tab = line.indexOf('\t');
       if (tab <= 0) return;
       let offset = Number(line.substring(0, tab));
@@ -65,10 +62,11 @@ export class ReaderController {
     return result;
   }
 
-  chapters(): ChapterItem[] {
+  async chapters(): Promise<ChapterItem[]> {
     this.ensureOpen();
+    let packed = await taskpool.execute(new taskpool.Task(chaptersTask, this.pathValue, 20000)) as string;
     let result: ChapterItem[] = [];
-    nativeCore.chapters(this.handle, 20000).split('\n').forEach((line: string): void => {
+    packed.split('\n').forEach((line: string): void => {
       let tab = line.indexOf('\t');
       if (tab <= 0) return;
       let offset = Number(line.substring(0, tab));
@@ -85,11 +83,6 @@ export class ReaderController {
     let next = Number(packed.substring(0, tab));
     if (!Number.isFinite(next)) return { nextOffset: from, text: '' };
     return { nextOffset: next, text: packed.substring(tab + 1) };
-  }
-
-  exportRules(packedRules: string, outputPath: string): void {
-    this.ensureOpen();
-    nativeCore.exportRules(this.handle, packedRules, outputPath);
   }
 
   private ensureOpen(): void {

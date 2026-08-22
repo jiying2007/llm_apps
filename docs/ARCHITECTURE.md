@@ -2,22 +2,40 @@
 
 ## One product, one core, two native shells
 
-```
+```text
 Android UI/platform (Java) -- JNI -----+
-                                        +-- C ABI -- C++17 Jingdu Core
+                                        +-- C ABI v2 -- C++17 Jingdu Core
 HarmonyOS UI/platform (ArkTS) -- NAPI --+
 ```
 
-The core has no Android, JNI, HarmonyOS, Node-API or UI dependencies. Platform shells own only capabilities that necessarily differ by OS: user-file picker, legacy-byte decoding, private-file creation, system TTS/audio focus, lifecycle and store signing.
+`core/native` is the single source of truth for cross-platform document semantics. The platform shells own only operating-system capabilities: document picker/export, charset decoding into app-private UTF-8, UI/lifecycle, concurrency adapters, TTS/audio, preferences and store signing.
 
-The normalization boundary is deliberate: selected source bytes are copied into the app sandbox and decoded to UTF-8 by each operating system's maintained charset implementation. From that point forward every document operation is shared native code.
+## Data flow
 
-## Core contract
+```text
+user-selected source
+  -> app-private byte-for-byte copy
+  -> sourceSha256 == book id
+  -> shared AUTO encoding decision (or manual override)
+  -> platform charset decoder
+  -> app-private normalized UTF-8
+  -> normalizedSha256
+  -> shared core index/read/search/chapter/speech/repair
+  -> optional derived clean view keyed by repairRevision
+```
 
-ABI v1 owns UTF-8 validation, sparse character/byte indexing, bounded window reads, full-text literal search, chapter discovery, sentence-bounded speech chunks and atomic literal-rule export. Handles are process-local and must be closed by the platform bridge.
+The external source is never modified.
 
-## Non-negotiable repository rules
+## Concurrency
 
-There is no compatibility core, prototype core, migration adapter or old package-data migration. Old private application data is intentionally not part of this 2.0 hard cut. Source trees may not contain release binaries, private keys, competitor APKs or archived transition implementation.
+Operations proportional to file size or match count do not run on a UI thread. Android uses a bounded ExecutorService. HarmonyOS uses TaskPool `@Concurrent` tasks with only transferable path/string/number parameters. Bounded page reads and bounded TTS chunks may run synchronously.
 
-Android and HarmonyOS must change together when a core ABI or product behavior changes. A platform-specific reimplementation of a core operation is a defect.
+## Persistence
+
+Android and HarmonyOS may use different platform persistence APIs but must persist the same logical model defined in `DATA_MODEL.md`. Platform timestamps are metadata, not identity.
+
+## Repository rules
+
+There is no compatibility core, prototype core, old ABI bridge, migration adapter, archived implementation tree or committed release binary. A platform-specific implementation of shared document behavior is a defect.
+
+See `CORE_CONTRACT.md`, `ENCODING.md`, `PERFORMANCE.md`, `TESTING.md` and `DEVICE_MATRIX.md` for normative contracts.

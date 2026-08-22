@@ -5,12 +5,15 @@ for path in prototype android-prototype txt_ref_apps research apps/android/core 
   test ! -e "$path" || { echo "legacy path remains: $path" >&2; exit 1; }
 done
 
-if find . -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.hap' -o -name '*.hsp' -o -name '*.jks' -o -name '*.keystore' -o -name '*.p12' -o -name '*.p7b' \) -not -path './.git/*' | grep .; then
+if find . -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.hap' -o -name '*.hsp' \
+  -o -name '*.jks' -o -name '*.keystore' -o -name '*.p12' -o -name '*.p7b' \) \
+  -not -path './.git/*' | grep .; then
   echo 'committed binary/signing artifact found' >&2
   exit 1
 fi
 
-if git grep -n -E 'com\.jingdu\.txt\.w0|android-prototype|prototype/core|device-pending|console-pending' -- ':!scripts/verify-terminal.sh'; then
+if git grep -n -E 'com\.jingdu\.txt\.w0|android-prototype|prototype/core|device-pending|console-pending' \
+  -- ':!scripts/verify-terminal.sh'; then
   echo 'legacy implementation reference found' >&2
   exit 1
 fi
@@ -20,11 +23,28 @@ if git grep -n -E 'implementation project\(":core"\)|include\(":app", ":core"\)'
   exit 1
 fi
 
-test -f core/native/include/jingdu/core_api.h
-test -f core/native/src/core_api.cpp
-test -f apps/android/app/src/main/cpp/native_bridge.cpp
-test -f apps/harmony/entry/src/main/cpp/napi_init.cpp
-test -f apps/harmony/entry/src/main/ets/pages/Index.ets
-test -f apps/harmony/entry/src/main/ets/model/BookStore.ets
-test -f apps/harmony/entry/src/main/ets/model/TtsController.ets
+required=(
+  README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy
+  .github/CODEOWNERS .github/pull_request_template.md
+  docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
+  docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md docs/RELEASE.md
+  core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/sha256.cpp
+  apps/android/app/src/main/cpp/native_bridge.cpp
+  apps/harmony/entry/src/main/cpp/napi_init.cpp
+  apps/harmony/entry/src/main/ets/pages/Index.ets
+  apps/harmony/entry/src/main/ets/model/BookStore.ets
+  apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+  apps/harmony/entry/src/main/ets/model/TtsController.ets
+)
+for path in "${required[@]}"; do
+  test -f "$path" || { echo "required terminal asset missing: $path" >&2; exit 1; }
+done
+
+grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
+grep -q 'sourceSha256' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
+grep -q 'ExecutorService' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+grep -q 'taskpool.execute' apps/harmony/entry/src/main/ets/pages/Index.ets
+
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderSurfaceView.java

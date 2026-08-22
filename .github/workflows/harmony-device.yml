@@ -2,6 +2,12 @@ name: Harmony Device Build
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'core/native/**'
+      - 'apps/harmony/**'
+      - 'scripts/check-harmony.sh'
+      - '.github/workflows/harmony-device.yml'
   push:
     branches: [main]
     paths:
@@ -21,12 +27,13 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build HarmonyOS app
         run: ./scripts/check-harmony.sh
-      - name: Collect HAP/APP artifacts
+      - name: Collect HAP/APP/native artifacts
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/harmony-artifacts
-          find apps/harmony -type f \( -name '*.hap' -o -name '*.app' -o -name '*.so' \) -print -exec cp --parents {} build/harmony-artifacts/ \;
+          find apps/harmony -type f \( -name '*.hap' -o -name '*.app' -o -name '*.so' \) \
+            -print -exec cp --parents {} build/harmony-artifacts/ \;
           test -n "$(find build/harmony-artifacts -type f -name '*.hap' -print -quit)"
       - uses: actions/upload-artifact@v4
         with:

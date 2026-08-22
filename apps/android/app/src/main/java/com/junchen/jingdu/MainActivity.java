@@ -29,6 +29,11 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 public final class MainActivity extends Activity {
     private static final int REQ_IMPORT = 100;
@@ -36,6 +41,13 @@ public final class MainActivity extends Activity {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ReaderController reader = new ReaderController();
+    private final ExecutorService workers = Executors.newFixedThreadPool(2, runnable -> {
+        Thread thread = new Thread(runnable, "jingdu-worker");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final AtomicLong workGeneration = new AtomicLong();
+
     private BookRepository repository;
     private TtsController tts;
     private BookRepository.Book currentBook;
@@ -117,13 +129,34 @@ public final class MainActivity extends Activity {
     }
 
     private Button button(LinearLayout parent, String label, View.OnClickListener listener) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setOnClickListener(listener);
-        parent.addView(b);
-        return b;
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setOnClickListener(listener);
+        parent.addView(button);
+        return button;
     }
+
+    private <T> void runWork(String message, Callable<T> task, Consumer<T> success, String errorTitle) {
+        final long token = workGeneration.incrementAndGet();
+        status.setText(message);
+        workers.execute(() -> {
+            try {
+                T result = task.call();
+                main.post(() -> {
+                    if (isDestroyed() || token != workGeneration.get()) return;
+                    success.accept(result);
+                });
+            } catch (Throwable error) {
+                main.post(() -> {
+                    if (isDestroyed() || token != workGeneration.get()) return;
+                    showError(errorTitle, error);
+                });
+            }
+        });
+    }
+
+    private void cancelLongWork() { workGeneration.incrementAndGet(); }
 
     private void chooseImport() {
         new AlertDialog.Builder(this).setTitle("源文件编码").setItems(BookRepository.ENCODINGS, (d, which) -> {
@@ -134,15 +167,7 @@ public final class MainActivity extends Activity {
     }
 
     private void importUri(Uri uri, String encoding) {
-        status.setText("正在导入…");
-        new Thread(() -> {
-            try {
-                BookRepository.Book book = repository.importUri(uri, encoding);
-                main.post(() -> openBook(book, false));
-            } catch (Exception error) {
-                main.post(() -> showError("导入失败", error));
-            }
-        }, "jingdu-import").start();
+        runWork("正在导入…", () -> repository.importUri(uri, encoding), book -> openBook(book, false), "导入失败");
     }
 
     private void openMostRecent() {
@@ -156,16 +181,27 @@ public final class MainActivity extends Activity {
     private void openBook(BookRepository.Book book, boolean clean) {
         stopAuto();
         tts.stop(null);
-        long position = currentBook != null && currentBook.id.equals(book.id) ? reader.position() : book.progress;
+        long restored = currentBook != null && currentBook.id.equals(book.id) ? reader.position() : book.progress;
         currentBook = book;
-        cleanMode = clean;
-        try {
-            File file = clean ? buildClean(book) : repository.normalizedFile(book);
-            reader.open(file, position);
-            render();
-        } catch (Exception error) {
-            showError("打开失败", error);
+        if (!clean) {
+            cleanMode = false;
+            try {
+                reader.open(repository.normalizedFile(book), restored);
+                render();
+            } catch (Exception error) {
+                showError("打开失败", error);
+            }
+            return;
         }
+        runWork("正在生成净读视图…", () -> buildClean(book), file -> {
+            try {
+                cleanMode = true;
+                reader.open(file, restored);
+                render();
+            } catch (Exception error) {
+                showError("打开失败", error);
+            }
+        }, "净读失败");
     }
 
     private void render() {
@@ -174,7 +210,9 @@ public final class MainActivity extends Activity {
             text.setText(reader.page());
             repository.saveProgress(currentBook, reader.position());
             long percent = reader.length() == 0 ? 0 : Math.min(100, reader.position() * 100 / reader.length());
-            status.setText(currentBook.name + " · " + percent + "% · " + currentBook.encoding + (cleanMode ? " · 净读" : " · 原文视图"));
+            status.setText(currentBook.name + " · " + percent + "% · " + currentBook.encoding
+                    + " · " + currentBook.normalizedSha256.substring(0, 8)
+                    + (cleanMode ? " · 净读" : " · 原文视图"));
         } catch (Exception error) {
             showError("读取失败", error);
         }
@@ -199,34 +237,28 @@ public final class MainActivity extends Activity {
 
     private void runSearch(String query) {
         if (query.trim().isEmpty()) return;
-        try {
-            List<ReaderController.Hit> hits = reader.search(query);
-            if (hits.isEmpty()) { toast("没有命中"); return; }
+        runWork("正在搜索…", () -> reader.search(query), hits -> {
+            if (hits.isEmpty()) { toast("没有命中"); render(); return; }
             String[] items = new String[hits.size()];
             for (int i = 0; i < hits.size(); i++) items[i] = hits.get(i).context();
             new AlertDialog.Builder(this).setTitle("搜索结果 · " + hits.size()).setItems(items, (d, which) -> {
                 reader.jump(hits.get(which).offset());
                 render();
             }).show();
-        } catch (Exception error) {
-            showError("搜索失败", error);
-        }
+        }, "搜索失败");
     }
 
     private void showChapters() {
         if (currentBook == null) return;
-        try {
-            List<ReaderController.Chapter> chapters = reader.chapters();
-            if (chapters.isEmpty()) { toast("未识别到章节标题"); return; }
+        runWork("正在生成目录…", reader::chapters, chapters -> {
+            if (chapters.isEmpty()) { toast("未识别到章节标题"); render(); return; }
             String[] items = new String[chapters.size()];
             for (int i = 0; i < chapters.size(); i++) items[i] = chapters.get(i).title();
             new AlertDialog.Builder(this).setTitle("目录 · " + chapters.size()).setItems(items, (d, which) -> {
                 reader.jump(chapters.get(which).offset());
                 render();
             }).show();
-        } catch (Exception error) {
-            showError("目录失败", error);
-        }
+        }, "目录失败");
     }
 
     private Set<String> bookmarkSet() {
@@ -296,7 +328,8 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("新增净读规则").setView(layout).setPositiveButton("保存", (d, w) -> {
             String a = from.getText().toString();
             String b = to.getText().toString();
-            if (a.isEmpty() || a.indexOf(0x1f) >= 0 || a.indexOf(0x1e) >= 0 || b.indexOf(0x1f) >= 0 || b.indexOf(0x1e) >= 0) {
+            if (a.isEmpty() || a.indexOf(0x1f) >= 0 || a.indexOf(0x1e) >= 0
+                    || b.indexOf(0x1f) >= 0 || b.indexOf(0x1e) >= 0) {
                 toast("规则包含保留分隔符或查找为空");
                 return;
             }
@@ -309,27 +342,40 @@ public final class MainActivity extends Activity {
 
     private File buildClean(BookRepository.Book book) throws IOException {
         File output = repository.cleanPreviewFile(book);
+        String packedRules = rules();
+        String revision = repository.repairRevision(book, packedRules);
+        File revisionFile = new File(output.getParentFile(), "clean.revision");
+        if (output.isFile() && revisionFile.isFile()) {
+            try (FileInputStream in = new FileInputStream(revisionFile)) {
+                byte[] data = new byte[(int) Math.min(128, revisionFile.length())];
+                int count = in.read(data);
+                if (count > 0 && revision.equals(new String(data, 0, count, java.nio.charset.StandardCharsets.UTF_8))) return output;
+            }
+        }
         try (ReaderController base = new ReaderController()) {
             base.open(repository.normalizedFile(book), 0);
-            base.exportRules(rules(), output);
+            base.exportRules(packedRules, output);
+        }
+        try (java.io.FileOutputStream revisionOut = new java.io.FileOutputStream(revisionFile)) {
+            revisionOut.write(revision.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            revisionOut.getFD().sync();
         }
         return output;
     }
 
     private void exportClean() {
-        try {
-            pendingExport = buildClean(currentBook);
+        if (currentBook == null) return;
+        runWork("正在准备导出…", () -> buildClean(currentBook), file -> {
+            pendingExport = file;
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain")
                     .addCategory(Intent.CATEGORY_OPENABLE)
                     .putExtra(Intent.EXTRA_TITLE, stripTxt(currentBook.name) + "-净读.txt");
             startActivityForResult(intent, REQ_EXPORT);
-        } catch (Exception error) {
-            showError("准备导出失败", error);
-        }
+        }, "准备导出失败");
     }
 
     private static String stripTxt(String name) {
-        return name.toLowerCase().endsWith(".txt") ? name.substring(0, name.length() - 4) : name;
+        return name.toLowerCase(java.util.Locale.ROOT).endsWith(".txt") ? name.substring(0, name.length() - 4) : name;
     }
 
     private void toggleTts() {
@@ -359,10 +405,7 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void stopAuto() {
-        autoReading = false;
-        main.removeCallbacks(autoStep);
-    }
+    private void stopAuto() { autoReading = false; main.removeCallbacks(autoStep); }
 
     private void chooseAutoSpeed() {
         String[] items = {"2 秒/页", "4 秒/页", "6 秒/页", "10 秒/页"};
@@ -389,10 +432,14 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("删除私有副本？")
                 .setMessage(doomed.name + "\n源 TXT 不会被删除。此操作不保留旧版本兼容数据。")
                 .setPositiveButton("删除", (d, w) -> {
+                    cancelLongWork();
                     stopAuto();
                     tts.stop(null);
                     reader.close();
                     repository.delete(doomed);
+                    getPreferences(MODE_PRIVATE).edit()
+                            .remove("bookmarks." + doomed.id)
+                            .remove("rules." + doomed.id).apply();
                     currentBook = null;
                     cleanMode = false;
                     text.setText("");
@@ -420,28 +467,24 @@ public final class MainActivity extends Activity {
         Uri uri = data.getData();
         if (requestCode == REQ_IMPORT) importUri(uri, pendingEncoding);
         else if (requestCode == REQ_EXPORT && pendingExport != null) {
-            try (FileInputStream in = new FileInputStream(pendingExport);
-                 OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
-                if (out == null) throw new IOException("cannot open export destination");
-                byte[] buffer = new byte[64 * 1024];
-                int count;
-                while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
-                toast("导出完成");
-            } catch (Exception error) {
-                showError("导出失败", error);
-            } finally {
-                pendingExport = null;
-            }
+            File source = pendingExport;
+            runWork("正在导出…", () -> {
+                try (FileInputStream in = new FileInputStream(source);
+                     OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
+                    if (out == null) throw new IOException("cannot open export destination");
+                    byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                    out.flush();
+                }
+                return Boolean.TRUE;
+            }, ignored -> { pendingExport = null; toast("导出完成"); render(); }, "导出失败");
         }
     }
 
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (currentBook != null && keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            reader.next(); render(); return true;
-        }
-        if (currentBook != null && keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-            reader.previous(); render(); return true;
-        }
+        if (currentBook != null && keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) { reader.next(); render(); return true; }
+        if (currentBook != null && keyCode == KeyEvent.KEYCODE_VOLUME_UP) { reader.previous(); render(); return true; }
         return super.onKeyDown(keyCode, event);
     }
 
@@ -451,10 +494,12 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        cancelLongWork();
         stopAuto();
         main.removeCallbacksAndMessages(null);
         tts.close();
         reader.close();
+        workers.shutdownNow();
         super.onDestroy();
     }
 
@@ -464,7 +509,5 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("确定", null).show();
     }
 
-    private void toast(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-    }
+    private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_SHORT).show(); }
 }

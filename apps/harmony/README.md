@@ -1,9 +1,7 @@
 # HarmonyOS
 
-Native HarmonyOS Stage/ArkUI shell for Jingdu TXT. All document business and algorithm behavior is provided by `../../core/native` through Node-API; ArkTS owns only FilePicker/charset normalization, UI/lifecycle, local preferences and Core Speech Kit integration.
+Native HarmonyOS Stage/ArkUI shell for Jingdu TXT. All document semantics come from the shared C++ ABI v2 through Node-API.
 
-Requirements: Huawei standard-system phone/tablet/2-in-1, HarmonyOS 5.0.0+; build with DevEco Studio 6.0+ and HarmonyOS SDK 6.0+. The source target is SDK 6.0.0(20).
+HarmonyOS owns DocumentViewPicker, charset normalization, ArkUI/lifecycle, Preferences and Core Speech Kit. Long import/search/chapter/repair/export work runs through TaskPool `@Concurrent` tasks; UIAbility-only APIs remain on the UI thread.
 
-Main flow: `DocumentViewPicker` import -> private legacy-charset decode to UTF-8 -> shared native core -> reading/search/chapters/bookmarks/repair/export -> Core Speech Kit TTS.
-
-No network permission, account, analytics SDK, alternate business core or compatibility implementation is used.
+Requires the official DevEco/HarmonyOS SDK 6.x environment. Real HAP verification is defined by `.github/workflows/harmony-device.yml` and `scripts/check-harmony.sh`.

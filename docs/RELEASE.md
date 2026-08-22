@@ -1,8 +1,9 @@
 # Release
 
-Source control contains no signed packages or signing material.
+Source control contains releasable source, not signed packages or signing material.
 
-Android release:
+## Android
+
 ```bash
 cd apps/android
 ./gradlew --no-daemon --no-configuration-cache \
@@ -12,6 +13,21 @@ cd apps/android
   writeAndroidReleaseChecksums
 ```
 
-HarmonyOS release is built from `apps/harmony` with the installed DevEco/HarmonyOS SDK and the publisher's signing profile. Use the official Hvigor command-line tool to assemble the release HAP, then archive package checksum/symbols in the release system rather than the Git tree.
+The command validates final identity/version/signing, builds release APK/AAB, stages version-derived names and writes SHA-256 checksums under Gradle build output. Do not copy those artifacts into Git.
 
-Release acceptance requires the device matrix in `QUALITY_GATES.md`, the applicable app-store console checks, and immutable version/tag provenance. Package identity is intentionally not backward-compatible with any earlier experimental package/data tree beyond the final `com.junchen.jingdu` identity.
+## HarmonyOS
+
+Use `.github/workflows/harmony-device.yml` or `scripts/check-harmony.sh` on the official DevEco/HarmonyOS SDK 6.x toolchain. Release signing uses publisher-owned signing configuration outside Git. Archive the HAP/APP, native symbols and package checksums in release infrastructure.
+
+## Acceptance
+
+A production release requires:
+
+- all source gates in `QUALITY_GATES.md`;
+- Harmony HAP build for the release commit;
+- Android/Harmony device matrix evidence;
+- golden cross-platform parity evidence;
+- final store signing/privacy/listing checks;
+- immutable version/tag provenance and rollback package metadata.
+
+Version `2.x` is a hard-cut product line. Earlier experimental private metadata/ABI is not an upgrade-compatibility contract.
