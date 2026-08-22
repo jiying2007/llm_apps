@@ -68,11 +68,11 @@ int main() {
   char revision1[JD_SHA256_HEX_SIZE]{};
   char revision2[JD_SHA256_HEX_SIZE]{};
   char revision3[JD_SHA256_HEX_SIZE]{};
-  check(jd_repair_revision(hash, "hello\x1fhi", revision1, sizeof(revision1)) == JD_OK,
+  check(jd_repair_revision(hash, "hello\x1f" "hi", revision1, sizeof(revision1)) == JD_OK,
         "revision status");
-  check(jd_repair_revision(hash, "hello\x1fhi", revision2, sizeof(revision2)) == JD_OK,
+  check(jd_repair_revision(hash, "hello\x1f" "hi", revision2, sizeof(revision2)) == JD_OK,
         "revision repeat status");
-  check(jd_repair_revision(hash, "hello\x1fbye", revision3, sizeof(revision3)) == JD_OK,
+  check(jd_repair_revision(hash, "hello\x1f" "bye", revision3, sizeof(revision3)) == JD_OK,
         "revision changed-rule status");
   check(std::string(revision1) == revision2, "revision deterministic");
   check(std::string(revision1) != revision3, "revision changes with rule pack");
@@ -101,7 +101,7 @@ int main() {
         "speech chunk");
 
   const char* repairedPath = "jingdu-core-repaired.txt";
-  check(jd_export_rules(handle, "hello\x1fhi", repairedPath) == JD_OK,
+  check(jd_export_rules(handle, "hello\x1f" "hi", repairedPath) == JD_OK,
         "repair export");
   std::ifstream repaired(repairedPath, std::ios::binary);
   const std::string content((std::istreambuf_iterator<char>(repaired)),
