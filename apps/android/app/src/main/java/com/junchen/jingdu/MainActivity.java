@@ -41,7 +41,7 @@ public final class MainActivity extends Activity {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ReaderController reader = new ReaderController();
-    private final ExecutorService workers = Executors.newFixedThreadPool(2, runnable -> {
+    private final ExecutorService workers = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "jingdu-worker");
         thread.setDaemon(true);
         return thread;
@@ -181,26 +181,34 @@ public final class MainActivity extends Activity {
     private void openBook(BookRepository.Book book, boolean clean) {
         stopAuto();
         tts.stop(null);
-        long restored = currentBook != null && currentBook.id.equals(book.id) ? reader.position() : book.progress;
-        currentBook = book;
+        long restored = currentBook != null && currentBook.id.equals(book.id)
+                ? reader.position() : book.progress;
+        if (currentBook != null) repository.saveProgress(currentBook, reader.position());
+        currentBook = null;
+        reader.close();
+        cleanMode = false;
+
         if (!clean) {
-            cleanMode = false;
-            try {
-                reader.open(repository.normalizedFile(book), restored);
+            File file = repository.normalizedFile(book);
+            runWork("正在打开…", () -> {
+                reader.open(file, restored);
+                return book;
+            }, opened -> {
+                currentBook = opened;
+                cleanMode = false;
                 render();
-            } catch (Exception error) {
-                showError("打开失败", error);
-            }
+            }, "打开失败");
             return;
         }
-        runWork("正在生成净读视图…", () -> buildClean(book), file -> {
-            try {
-                cleanMode = true;
-                reader.open(file, restored);
-                render();
-            } catch (Exception error) {
-                showError("打开失败", error);
-            }
+
+        runWork("正在生成净读视图…", () -> {
+            File file = buildClean(book);
+            reader.open(file, restored);
+            return book;
+        }, opened -> {
+            currentBook = opened;
+            cleanMode = true;
+            render();
         }, "净读失败");
     }
 
@@ -291,7 +299,11 @@ public final class MainActivity extends Activity {
     }
 
     private String rules() {
-        return currentBook == null ? "" : getPreferences(MODE_PRIVATE).getString("rules." + currentBook.id, "");
+        return currentBook == null ? "" : rulesFor(currentBook);
+    }
+
+    private String rulesFor(BookRepository.Book book) {
+        return getPreferences(MODE_PRIVATE).getString("rules." + book.id, "");
     }
 
     private void showRepair() {
@@ -342,7 +354,7 @@ public final class MainActivity extends Activity {
 
     private File buildClean(BookRepository.Book book) throws IOException {
         File output = repository.cleanPreviewFile(book);
-        String packedRules = rules();
+        String packedRules = rulesFor(book);
         String revision = repository.repairRevision(book, packedRules);
         File revisionFile = new File(output.getParentFile(), "clean.revision");
         if (output.isFile() && revisionFile.isFile()) {
@@ -365,11 +377,12 @@ public final class MainActivity extends Activity {
 
     private void exportClean() {
         if (currentBook == null) return;
-        runWork("正在准备导出…", () -> buildClean(currentBook), file -> {
+        BookRepository.Book book = currentBook;
+        runWork("正在准备导出…", () -> buildClean(book), file -> {
             pendingExport = file;
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain")
                     .addCategory(Intent.CATEGORY_OPENABLE)
-                    .putExtra(Intent.EXTRA_TITLE, stripTxt(currentBook.name) + "-净读.txt");
+                    .putExtra(Intent.EXTRA_TITLE, stripTxt(book.name) + "-净读.txt");
             startActivityForResult(intent, REQ_EXPORT);
         }, "准备导出失败");
     }
