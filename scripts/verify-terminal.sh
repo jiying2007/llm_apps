@@ -42,11 +42,19 @@ required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
   .github/workflows/ci.yml .github/workflows/harmony-device.yml
-  docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
+  docs/PRODUCT.md docs/UX.md docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
   docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md
   docs/HARMONY_RUNNER.md docs/RELEASE.md
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
+  apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt
+  apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
+  apps/android/app/src/main/res/values/themes.xml
+  apps/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+  apps/android/app/src/main/res/mipmap-anydpi-v33/ic_launcher.xml
   apps/android/gradle/wrapper/gradle-wrapper.jar
   apps/android/gradle/wrapper/gradle-wrapper.properties
   apps/harmony/entry/src/main/cpp/napi_init.cpp
@@ -60,15 +68,28 @@ for path in "${required[@]}"; do
   test -f "$path" || { echo "required terminal asset missing: $path" >&2; exit 1; }
 done
 
+test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
 grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
 grep -q 'sourceSha256' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
-grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
-grep -q 'previousBook.normalizedSha256.equals(book.normalizedSha256)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'previousBook.normalizedSha256 == book.normalizedSha256' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'bookmarkKey(book)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
-grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+grep -q 'onTextLayout' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+grep -q '本地 TXT · 无广告 · 不上传' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
+grep -q 'compileSdk = 37' apps/android/app/build.gradle
+grep -q 'id "org.jetbrains.kotlin.plugin.compose" version "2.4.10"' apps/android/build.gradle
+
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'previous.normalizedSha256 === book.normalizedSha256' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'document-${normalizedSha256}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
