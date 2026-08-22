@@ -37,6 +37,8 @@ required=(
   docs/HARMONY_RUNNER.md docs/RELEASE.md
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
+  apps/android/gradle/wrapper/gradle-wrapper.jar
+  apps/android/gradle/wrapper/gradle-wrapper.properties
   apps/harmony/entry/src/main/cpp/napi_init.cpp
   apps/harmony/entry/src/main/ets/pages/Index.ets
   apps/harmony/entry/src/main/ets/model/BookStore.ets
@@ -56,5 +58,12 @@ grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'taskpool.execute' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'self-hosted,harmonyos' docs/HARMONY_RUNNER.md
 grep -q 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' .github/workflows/harmony-device.yml
+
+grep -q 'version "9.3.1"' apps/android/build.gradle
+grep -q 'gradle-9.5.0-bin.zip' apps/android/gradle/wrapper/gradle-wrapper.properties
+grep -q 'distributionSha256Sum=553c78f50dafcd54d65b9a444649057857469edf836431389695608536d6b746' \
+  apps/android/gradle/wrapper/gradle-wrapper.properties
+echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/android/gradle/wrapper/gradle-wrapper.jar' \
+  | sha256sum --check --strict
 
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderSurfaceView.java
