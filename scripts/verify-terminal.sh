@@ -28,6 +28,11 @@ if git grep -n -E 'uses:[[:space:]]+actions/[^@]+@v[0-9]+' -- .github/workflows;
   exit 1
 fi
 
+if git grep -n -E 'cleanPreviewFile|cleanRevisionPath|writeTextTask' -- apps; then
+  echo 'legacy fixed clean-artifact mechanism found' >&2
+  exit 1
+fi
+
 required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
@@ -43,6 +48,7 @@ required=(
   apps/harmony/entry/src/main/ets/pages/Index.ets
   apps/harmony/entry/src/main/ets/model/BookStore.ets
   apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+  apps/harmony/entry/src/main/ets/model/ReaderController.ets
   apps/harmony/entry/src/main/ets/model/TtsController.ets
 )
 for path in "${required[@]}"; do
@@ -54,7 +60,13 @@ grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
 grep -q 'sourceSha256' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
 grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+grep -q 'document-${normalizedSha256}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+grep -q 'clean-${revision}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+grep -q 'pruneRevisionsTask' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'taskpool.execute' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'self-hosted,harmonyos' docs/HARMONY_RUNNER.md
 grep -q 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' .github/workflows/harmony-device.yml
@@ -66,4 +78,5 @@ grep -q 'distributionSha256Sum=553c78f50dafcd54d65b9a444649057857469edf836431389
 echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/android/gradle/wrapper/gradle-wrapper.jar' \
   | sha256sum --check --strict
 
+test ! -f .github/workflows/finalize-content-addressing.yml
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderSurfaceView.java
