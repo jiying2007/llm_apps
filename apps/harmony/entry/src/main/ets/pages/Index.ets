@@ -92,7 +92,8 @@ struct Index {
         Button('书架').enabled(!this.busy).onClick(() => { this.refreshLibrary(); this.panel = 'library'; })
         Button('搜索').enabled(this.current !== undefined && !this.busy).onClick(() => this.panel = 'search')
         Button('目录').enabled(this.current !== undefined && !this.busy).onClick(() => { this.panel = 'chapters'; this.loadChapters(); })
-        Button('书签').enabled(this.current !== undefined && !this.busy).onClick(() => { this.loadBookmarks(); this.panel = 'bookmarks'; })
+        Button('书签').enabled(this.current !== undefined && !this.busy && !this.cleanMode)
+          .onClick(() => { this.loadBookmarks(); this.panel = 'bookmarks'; })
         Button('净读').enabled(this.current !== undefined && !this.busy).onClick(() => this.panel = 'repair')
         Button(this.ttsReading ? '暂停朗读' : '朗读').enabled(this.current !== undefined && !this.busy).onClick(() => this.toggleTts())
         Button(this.autoReading ? '停止自动' : '自动').enabled(this.current !== undefined && !this.busy).onClick(() => this.toggleAuto())
@@ -281,6 +282,8 @@ struct Index {
     this.busy = true;
     this.current = undefined;
     this.cleanMode = false;
+    this.bookmarks = [];
+    if (this.panel === 'bookmarks') this.panel = '';
     this.reader.close();
     this.status = clean ? '正在生成净读视图…' : '正在打开…';
 
@@ -359,12 +362,15 @@ struct Index {
   }
 
   private loadBookmarks(): void {
-    if (!this.current || !this.store) return;
+    if (!this.current || !this.store || this.cleanMode) {
+      this.bookmarks = [];
+      return;
+    }
     this.bookmarks = this.store.bookmarks(this.current).sort((a: number, b: number): number => a - b);
   }
 
   private addBookmark(): void {
-    if (!this.current || !this.store) return;
+    if (!this.current || !this.store || this.cleanMode) return;
     let offset = this.reader.position();
     let values = this.store.bookmarks(this.current);
     if (values.indexOf(offset) < 0) values.push(offset);
@@ -374,7 +380,7 @@ struct Index {
   }
 
   private removeBookmark(offset: number): void {
-    if (!this.current || !this.store) return;
+    if (!this.current || !this.store || this.cleanMode) return;
     let values = this.store.bookmarks(this.current).filter((item: number): boolean => item !== offset);
     this.store.saveBookmarks(this.current, values);
     this.bookmarks = values;
