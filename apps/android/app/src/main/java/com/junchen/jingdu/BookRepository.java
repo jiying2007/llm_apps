@@ -121,6 +121,8 @@ final class BookRepository {
             File normalized = normalizedFile(sourceSha);
             normalize(raw, normalized, encoding);
             String normalizedSha = NativeCore.fileSha256(normalized);
+            long progress = existing != null && existing.normalizedSha256.equals(normalizedSha)
+                    ? existing.progress : 0;
 
             Book book = new Book(
                     sourceSha,
@@ -129,7 +131,7 @@ final class BookRepository {
                     size,
                     sourceSha,
                     normalizedSha,
-                    existing == null ? 0 : existing.progress,
+                    progress,
                     System.currentTimeMillis());
             upsert(book);
             return book;
