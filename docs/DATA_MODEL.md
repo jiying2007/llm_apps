@@ -8,14 +8,18 @@ The product uses content identity, not import time or platform-local identifiers
 - `id`: exactly equal to `sourceSha256` on Android and HarmonyOS.
 - `normalizedSha256`: lowercase SHA-256 of the normalized UTF-8 document.
 - `encoding`: source decoding selected by AUTO detection or explicit user override.
-- `progress`: Unicode scalar/code-point offset in the currently selected source-derived text view.
+- `progress`: Unicode scalar/code-point offset in the normalized source view only.
 - `touchedAt`: platform-local recency metadata only; never part of identity.
 
 The selected external source file is never modified. Import first creates an app-private source copy and all subsequent work uses private files.
 
-## Normalized document
+## Normalized document and revision domain
 
 Every source is decoded by the platform charset implementation to UTF-8 in the app sandbox. The native core then validates and operates only on normalized UTF-8. A source hash and normalized hash are intentionally separate: identical decoded text from different source bytes does not collapse source identity.
+
+`progress` and bookmarks are valid only in the offset domain identified by `normalizedSha256`. Re-importing the same source bytes with a different decoding preserves progress only when the resulting `normalizedSha256` is unchanged; otherwise progress resets to zero. Bookmarks remain source-view offsets and must not be created or applied from a derived clean view without an explicit source/derived projection.
+
+The current clean preview intentionally does not persist its own position into source progress and starts at offset zero. This is a correctness rule, not a compatibility fallback. A future feature that maps clean-view positions back to source positions must introduce a tested projection contract rather than approximate offsets.
 
 ## Repair rules
 
@@ -32,8 +36,8 @@ A cached clean view must be regenerated when that revision changes.
 Each platform persists the same logical state:
 
 - book metadata listed above;
-- reading progress;
-- bookmarks as code-point offsets;
+- source-view reading progress bound to `normalizedSha256`;
+- source-view bookmarks as code-point offsets;
 - ordered repair-rule pack;
 - clean artifact revision.
 
