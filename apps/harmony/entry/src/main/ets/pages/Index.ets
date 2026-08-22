@@ -291,7 +291,8 @@ struct Index {
     let previous = this.current;
     let previousClean = this.cleanMode;
     let restored = clean ? 0 :
-      (previous?.id === book.id && !previousClean ? this.reader.position() : book.progress);
+      (previous?.id === book.id && previous.normalizedSha256 === book.normalizedSha256 &&
+        !previousClean ? this.reader.position() : book.progress);
     this.persistProgress();
     let token = ++this.workGeneration;
     this.busy = true;

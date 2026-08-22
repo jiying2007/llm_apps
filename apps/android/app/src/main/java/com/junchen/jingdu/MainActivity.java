@@ -253,8 +253,9 @@ public final class MainActivity extends Activity {
         boolean previousClean = cleanMode;
         long previousPosition = previousBook == null ? 0 : previousReader.position();
         long restored = clean ? 0 :
-                (previousBook != null && previousBook.id.equals(book.id) && !previousClean
-                        ? previousPosition : book.progress);
+                (previousBook != null && previousBook.id.equals(book.id)
+                        && previousBook.normalizedSha256.equals(book.normalizedSha256)
+                        && !previousClean ? previousPosition : book.progress);
         if (previousBook != null && !previousClean) {
             repository.saveProgress(previousBook, previousPosition);
         }

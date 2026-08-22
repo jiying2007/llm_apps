@@ -25,6 +25,7 @@ export class BookStore {
   constructor(context: common.UIAbilityContext) {
     this.root = `${context.filesDir}/books`;
     try { fs.mkdirSync(this.root); } catch (_) {}
+    this.cleanupRootTemporaries();
     this.prefs = preferences.getPreferencesSync(context, { name: 'jingdu_library_v2' });
   }
 
@@ -126,6 +127,16 @@ export class BookStore {
   saveBookmarks(book: BookMeta, values: number[]): void {
     this.prefs.putSync(`bookmarks.${book.id}`, JSON.stringify(values));
     this.prefs.flush();
+  }
+
+  private cleanupRootTemporaries(): void {
+    let files: string[] = [];
+    try { files = fs.listFileSync(this.root); } catch (_) { return; }
+    files.forEach((name: string): void => {
+      if (name.startsWith('.import-') && name.endsWith('.bin')) {
+        try { fs.unlinkSync(`${this.root}/${name}`); } catch (_) {}
+      }
+    });
   }
 
   private write(items: BookMeta[]): void {

@@ -72,6 +72,7 @@ final class BookRepository {
         if (!root.isDirectory() && !root.mkdirs()) {
             throw new IllegalStateException("cannot create books directory");
         }
+        cleanupRootTemporaries();
     }
 
     synchronized List<Book> list() {
@@ -104,7 +105,7 @@ final class BookRepository {
     }
 
     synchronized Book importUri(Uri uri, String requestedEncoding) throws Exception {
-        File sourceTemporary = File.createTempFile("jingdu-import-", ".bin", context.getCacheDir());
+        File sourceTemporary = File.createTempFile(".source-", ".tmp", root);
         File normalizedTemporary = null;
         try {
             long size = copyUri(uri, sourceTemporary);
@@ -198,7 +199,20 @@ final class BookRepository {
             String name = file.getName();
             if (name.startsWith("clean-") && name.endsWith(".txt") && !file.equals(keep)) {
                 deleteTemporary(file);
+            } else if (name.startsWith("clean-") && name.endsWith(".txt.tmp")) {
+                deleteTemporary(file);
             } else if (name.equals("clean.txt") || name.equals("clean.revision")) {
+                deleteTemporary(file);
+            }
+        }
+    }
+
+    private void cleanupRootTemporaries() {
+        File[] files = root.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            String name = file.getName();
+            if (name.startsWith(".source-") && name.endsWith(".tmp")) {
                 deleteTemporary(file);
             }
         }
