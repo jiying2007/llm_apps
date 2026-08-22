@@ -8,10 +8,12 @@ on:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: publish-android-v2.0.0
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish:
@@ -28,6 +30,11 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
+      - name: Announce publisher start
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body "Android v2.0.0 publisher started on \`${GITHUB_SHA}\`."
 
       - name: Verify terminal candidate
         shell: bash
@@ -99,6 +106,11 @@ jobs:
           cp "${{ steps.signing.outputs.signing_dir }}/CERTIFICATE.txt" "$release_dir/CERTIFICATE.txt"
           echo "release_dir=$release_dir" >> "$GITHUB_OUTPUT"
 
+      - name: Announce signed artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body 'Android v2.0.0 signed APK/AAB built and signature verification passed.'
+
       - name: Create and re-verify terminal root commit
         id: root
         shell: bash
@@ -151,6 +163,11 @@ jobs:
           echo "root_commit=$root_commit" >> "$GITHUB_OUTPUT"
           echo "root_tree=$root_tree" >> "$GITHUB_OUTPUT"
           echo "old_main=$old_main" >> "$GITHUB_OUTPUT"
+
+      - name: Announce root verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body "Terminal root source gates passed; publishing root \`${{ steps.root.outputs.root_commit }}\`."
 
       - name: Publish terminal main
         shell: bash
@@ -213,3 +230,14 @@ jobs:
           if git ls-remote --exit-code --heads origin refs/heads/feat/android-harmony-terminal >/dev/null 2>&1; then
             git push origin --delete feat/android-harmony-terminal
           fi
+
+      - name: Announce publication complete
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body 'Android v2.0.0 publication complete: signed release created, terminal root main published, migration branch cleanup attempted.'
+
+      - name: Report publisher failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 1 --repo "$GITHUB_REPOSITORY" --body "Android v2.0.0 publisher FAILED on \`${GITHUB_SHA}\`. Inspect the latest Publish Android v2.0.0 run before retrying."
