@@ -13,6 +13,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileAlreadyExistsException;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -84,7 +85,7 @@ final class BookRepository {
                 String sourceSha = item.getString("sourceSha256");
                 String normalizedSha = item.getString("normalizedSha256");
                 if (id.length() != 64 || !id.equals(sourceSha) || normalizedSha.length() != 64) continue;
-                if (!normalizedFile(id).isFile()) continue;
+                if (!rawFile(id).isFile() || !normalizedFile(id, normalizedSha).isFile()) continue;
                 books.add(new Book(
                         id,
                         item.getString("name"),
@@ -103,27 +104,30 @@ final class BookRepository {
     }
 
     synchronized Book importUri(Uri uri, String requestedEncoding) throws Exception {
-        File temporary = File.createTempFile("jingdu-import-", ".bin", context.getCacheDir());
+        File sourceTemporary = File.createTempFile("jingdu-import-", ".bin", context.getCacheDir());
+        File normalizedTemporary = null;
         try {
-            long size = copyUri(uri, temporary);
-            String sourceSha = NativeCore.fileSha256(temporary);
+            long size = copyUri(uri, sourceTemporary);
+            String sourceSha = NativeCore.fileSha256(sourceTemporary);
             Book existing = findById(sourceSha);
             File directory = directory(sourceSha);
             if (!directory.isDirectory() && !directory.mkdirs()) {
                 throw new IOException("cannot create book directory");
             }
 
-            File raw = rawFile(sourceSha);
-            atomicReplace(temporary, raw);
             String encoding = requestedEncoding == null ? AUTO : requestedEncoding;
-            if (AUTO.equals(encoding)) encoding = detect(raw);
+            if (AUTO.equals(encoding)) encoding = detect(sourceTemporary);
 
-            File normalized = normalizedFile(sourceSha);
-            normalize(raw, normalized, encoding);
-            String normalizedSha = NativeCore.fileSha256(normalized);
+            normalizedTemporary = File.createTempFile(".document-", ".tmp", directory);
+            normalize(sourceTemporary, normalizedTemporary, encoding);
+            String normalizedSha = NativeCore.fileSha256(normalizedTemporary);
+
+            publishImmutable(sourceTemporary, rawFile(sourceSha));
+            publishImmutable(normalizedTemporary, normalizedFile(sourceSha, normalizedSha));
+            normalizedTemporary = null;
+
             long progress = existing != null && existing.normalizedSha256.equals(normalizedSha)
                     ? existing.progress : 0;
-
             Book book = new Book(
                     sourceSha,
                     displayName(uri),
@@ -136,7 +140,8 @@ final class BookRepository {
             upsert(book);
             return book;
         } finally {
-            if (temporary.exists() && !temporary.delete()) temporary.deleteOnExit();
+            deleteTemporary(sourceTemporary);
+            deleteTemporary(normalizedTemporary);
         }
     }
 
@@ -155,13 +160,45 @@ final class BookRepository {
         write(books);
     }
 
-    File normalizedFile(Book book) { return normalizedFile(book.id); }
-    File cleanPreviewFile(Book book) { return new File(directory(book.id), "clean.txt"); }
+    File normalizedFile(Book book) {
+        return normalizedFile(book.id, book.normalizedSha256);
+    }
+
+    File cleanFile(Book book, String revision) {
+        return new File(directory(book.id), "clean-" + revision + ".txt");
+    }
 
     String repairRevision(Book book, String packedRules) throws IOException {
         return NativeCore.repairRevision(
                 book.normalizedSha256,
                 packedRules == null ? "" : packedRules);
+    }
+
+    void pruneDocumentRevisions(Book book) {
+        File directory = directory(book.id);
+        File keep = normalizedFile(book);
+        File[] files = directory.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            String name = file.getName();
+            if (name.startsWith("document-") && name.endsWith(".txt") && !file.equals(keep)) {
+                deleteTemporary(file);
+            } else if (name.startsWith(".document-") && name.endsWith(".tmp")) {
+                deleteTemporary(file);
+            }
+        }
+    }
+
+    void pruneCleanRevisions(Book book, String keepRevision) {
+        String keepName = "clean-" + keepRevision + ".txt";
+        File[] files = directory(book.id).listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            String name = file.getName();
+            if (name.startsWith("clean-") && name.endsWith(".txt") && !name.equals(keepName)) {
+                deleteTemporary(file);
+            }
+        }
     }
 
     private Book findById(String id) {
@@ -210,14 +247,12 @@ final class BookRepository {
             throw new IOException("unsupported encoding: " + encodingName, error);
         }
 
-        File temporary = new File(target.getParentFile(), "normalized.tmp");
-        FileOutputStream fileOutput = new FileOutputStream(temporary);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                      new FileInputStream(raw),
                      charset.newDecoder()
                              .onMalformedInput(CodingErrorAction.REPLACE)
                              .onUnmappableCharacter(CodingErrorAction.REPLACE)), 64 * 1024);
-             FileOutputStream output = fileOutput;
+             FileOutputStream output = new FileOutputStream(target);
              BufferedWriter writer = new BufferedWriter(
                      new OutputStreamWriter(output, StandardCharsets.UTF_8), 64 * 1024)) {
             char[] buffer = new char[32 * 1024];
@@ -231,7 +266,6 @@ final class BookRepository {
             writer.flush();
             output.getFD().sync();
         }
-        atomicReplace(temporary, target);
     }
 
     private synchronized void upsert(Book book) {
@@ -281,18 +315,30 @@ final class BookRepository {
 
     private File directory(String id) { return new File(root, id); }
     private File rawFile(String id) { return new File(directory(id), "source.bin"); }
-    private File normalizedFile(String id) { return new File(directory(id), "document.txt"); }
+    private File normalizedFile(String id, String normalizedSha) {
+        return new File(directory(id), "document-" + normalizedSha + ".txt");
+    }
 
-    private static void atomicReplace(File source, File target) throws IOException {
-        try {
-            Files.move(
-                    source.toPath(),
-                    target.toPath(),
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException error) {
-            Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+    private static void publishImmutable(File source, File target) throws IOException {
+        if (target.isFile()) {
+            deleteTemporary(source);
+            return;
         }
+        try {
+            Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException error) {
+            try {
+                Files.move(source.toPath(), target.toPath());
+            } catch (FileAlreadyExistsException alreadyPublished) {
+                deleteTemporary(source);
+            }
+        } catch (FileAlreadyExistsException alreadyPublished) {
+            deleteTemporary(source);
+        }
+    }
+
+    private static void deleteTemporary(File file) {
+        if (file != null && file.exists() && !file.delete()) file.deleteOnExit();
     }
 
     private static void deleteTree(File file) {
