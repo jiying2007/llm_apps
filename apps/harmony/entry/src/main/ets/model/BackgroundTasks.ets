@@ -172,7 +172,6 @@ export function cleanTask(normalizedPath: string, normalizedSha256: string,
   let handle = nativeCore.open(normalizedPath);
   try { nativeCore.exportRules(handle, rules, outputPath); }
   finally { nativeCore.close(handle); }
-  writeTextFile(revisionPath, revision);
   return revision;
 }
 
