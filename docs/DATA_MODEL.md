@@ -13,6 +13,23 @@ The product uses content identity, not import time or platform-local identifiers
 
 The selected external source file is never modified. Import first creates an app-private source copy and all subsequent work uses private files.
 
+## Immutable artifact layout
+
+A book directory is keyed by `sourceSha256`. Source bytes are immutable because equal source hashes imply equal bytes. Derived files are content addressed and are never replaced underneath an active reader:
+
+```text
+books/<sourceSha256>/
+  source.bin
+  document-<normalizedSha256>.txt
+  clean-<repairRevision>.txt
+```
+
+Normalization is written to a temporary file, fsynced, hashed and then published under `document-<normalizedSha256>.txt`. An existing target is reused rather than overwritten. Repair output follows the same rule with `clean-<repairRevision>.txt`.
+
+A new reader session is built against the new immutable path first. Only after that session is successfully published may older document/clean revisions for the same book be pruned. A failed import/open therefore leaves the previously published session and files usable.
+
+Legacy fixed names such as `document.txt`, `clean.txt` and `clean.revision` are not part of the production persistence contract. They may only appear in cleanup code that deletes stale experimental artifacts.
+
 ## Normalized document and revision domain
 
 Every source is decoded by the platform charset implementation to UTF-8 in the app sandbox. The native core then validates and operates only on normalized UTF-8. A source hash and normalized hash are intentionally separate: identical decoded text from different source bytes does not collapse source identity.
@@ -29,7 +46,7 @@ A repair artifact is identified by:
 
 `repairRevision = SHA256("jingdu-repair-v1\n" + normalizedSha256 + "\n" + packedRules)`
 
-A cached clean view must be regenerated when that revision changes.
+The revision is the clean artifact identity itself; no sidecar revision file is required.
 
 ## Book-local persisted state
 
@@ -38,8 +55,7 @@ Each platform persists the same logical state:
 - book metadata listed above;
 - source-view reading progress bound to `normalizedSha256`;
 - source-view bookmarks as code-point offsets;
-- ordered repair-rule pack;
-- clean artifact revision.
+- ordered repair-rule pack.
 
 Storage format is platform-native and is not shared across operating systems. Semantics are shared.
 
