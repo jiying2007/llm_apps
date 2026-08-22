@@ -9,6 +9,7 @@ The public boundary is `core/native/include/jingdu/core_api.h`. ABI v2 is a C AB
 Rules:
 
 - ABI breaking changes increment `jd_abi_version()` and update Android JNI, Harmony Node-API, tests and this document in the same change.
+- `jd_status` is a signed 32-bit integer ABI type. `0` is success; positive stable values represent product errors.
 - No STL types, exceptions, platform objects or ownership-bearing C++ objects cross the ABI.
 - Strings are UTF-8. Paths are UTF-8 process-local paths to app-private files.
 - `jd_handle` is process-local, opaque and must be closed exactly once with `jd_close`.
@@ -20,6 +21,8 @@ Rules:
 ## Thread safety
 
 Different handles and read-only operations on the same handle may be called concurrently. The handle registry is internally synchronized. A handle must not be closed while another thread is using it. Platform lifecycle code owns that exclusion.
+
+Android and HarmonyOS therefore build/open long-lived reader handles away from the UI thread and publish a completed handle/session only after the background operation succeeds. Search/chapter workers use independent read-only handles rather than racing the UI reader handle.
 
 ## Limits
 
@@ -38,3 +41,7 @@ These limits are defensive product contracts and may only be increased with perf
 ## Derived revisions
 
 `jd_repair_revision(normalizedSha256, rulePack)` is deterministic. A clean/repair artifact is valid only for exactly that normalized document hash and rule pack. Platform-specific timestamps must never be used as document or revision identity.
+
+## Offset domains
+
+Persisted reading progress and bookmarks belong only to the normalized source document identified by `normalizedSha256`. The current literal-repair clean view does not expose a source-to-derived projection in ABI v2, so clean-view offsets are intentionally not persisted as source progress/bookmarks. A future projection capability must be added to the shared core before that behavior can change.
