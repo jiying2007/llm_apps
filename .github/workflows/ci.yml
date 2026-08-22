@@ -86,9 +86,8 @@ jobs:
   android-v2-release:
     if: >-
       github.event_name == 'pull_request' &&
-      github.head_ref == 'release/android-v2-run' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor == 'jiying2007'
+      github.head_ref == 'release/android-v2-publish' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     needs: [native-core, android, harmony-contract, terminal-contract]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -285,7 +284,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for branch in feat/android-harmony-terminal release/android-v2-publisher release/android-v2-run; do
+          for branch in feat/android-harmony-terminal release/android-v2-publisher release/android-v2-run release/android-v2-final release/android-v2-publish; do
             if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
               git push origin --delete "$branch"
             fi
