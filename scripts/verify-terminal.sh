@@ -45,7 +45,6 @@ required=(
   docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
   docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md
   docs/HARMONY_RUNNER.md docs/RELEASE.md
-  scripts/publish-hard-cut.sh
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
   apps/android/gradle/wrapper/gradle-wrapper.jar
@@ -60,9 +59,6 @@ required=(
 for path in "${required[@]}"; do
   test -f "$path" || { echo "required terminal asset missing: $path" >&2; exit 1; }
 done
-
-test -x scripts/publish-hard-cut.sh || { echo 'hard-cut publisher must be executable' >&2; exit 1; }
-bash -n scripts/publish-hard-cut.sh
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
 grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
