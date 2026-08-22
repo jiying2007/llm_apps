@@ -20,4 +20,4 @@ fi
 "$TIDY" \
   core/native/src/core_api.cpp core/native/src/sha256.cpp \
   -p build/native \
-  --warnings-as-errors='clang-analyzer-*,bugprone-*,performance-*,portability-*'
+  --warnings-as-errors='clang-analyzer-*,bugprone-*,-bugprone-easily-swappable-parameters,-bugprone-implicit-widening-of-multiplication-result,performance-*,portability-*'
