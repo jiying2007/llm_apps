@@ -2,52 +2,53 @@
 
 Source control contains releasable source, not signed packages or signing material.
 
-## Android
+## Android v2.x
 
 ```bash
 cd apps/android
-./gradlew --no-daemon --no-configuration-cache \
+./gradlew --no-daemon --no-configuration-cache --warning-mode all \
   -PjingduApplicationId=com.junchen.jingdu \
   -PjingduVersionCode=<monotonic-code> \
   -PjingduVersionName=<semver> \
-  writeAndroidReleaseChecksums
+  androidStoreCheck writeAndroidReleaseChecksums
 ```
 
-The command validates final identity/version/signing, builds release APK/AAB, stages version-derived names and writes SHA-256 checksums under Gradle build output. Do not copy those artifacts into Git.
+The command validates final identity/version/signing, builds signed release APK/AAB, stages version-derived names and writes SHA-256 checksums under Gradle build output. Release infrastructure also archives the R8 mapping and signing-certificate fingerprint. Signing keys never enter Git or GitHub Release assets.
+
+For the initial Android v2.0.0 publication, release automation may bootstrap the long-lived upload key exactly once. The private keystore and credentials are stored only as a short-retention private workflow artifact for the release owner to archive securely; future releases must reuse that retained key rather than generate another one.
 
 ## HarmonyOS
 
-Use `.github/workflows/harmony-device.yml` or `scripts/check-harmony.sh` on the official DevEco/HarmonyOS SDK 6.x toolchain. Release signing uses publisher-owned signing configuration outside Git. Archive the HAP/APP, native symbols and package checksums in release infrastructure.
+HarmonyOS remains source-complete but pre-release until its official toolchain/HAP and device gates are executed. Use `.github/workflows/harmony-device.yml` or `scripts/check-harmony.sh` on the official DevEco/HarmonyOS SDK toolchain when Harmony release qualification begins. Android release status must never be presented as Harmony production evidence.
 
-## Acceptance
+## Android release acceptance
 
-A production release requires:
+An Android production release requires:
 
-- all source gates in `QUALITY_GATES.md`;
-- Harmony HAP build for the exact candidate source tree;
-- Android/Harmony device matrix evidence;
-- golden cross-platform parity evidence;
-- final store signing/privacy/listing checks;
-- immutable version/tag provenance and rollback package metadata.
+- all hosted source gates in `QUALITY_GATES.md` green for the exact candidate tree;
+- `androidStoreCheck` green with production identity/version/signing;
+- signed release APK and AAB;
+- signing verification for APK/AAB;
+- R8 mapping, SHA-256 manifest and certificate fingerprint;
+- immutable Git tag/GitHub Release provenance;
+- the retained upload key archived outside the repository.
+
+Harmony HAP/real-device evidence is intentionally deferred and does not block an Android-only v2.x release.
 
 ## Final hard-cut history publication
 
-This repository originally committed experimental prototypes, extracted reference APKs and generated Android packages. Deleting those paths from the working tree does not remove their blobs from reachable Git history. The terminal publication therefore uses a deliberate history cut after all physical/toolchain gates above are green.
+This repository originally committed experimental prototypes, extracted reference APKs and generated Android packages. Android v2.0.0 publication therefore establishes the current terminal source tree as a new root `main` commit rather than retaining those blobs in reachable branch/tag history.
 
-The release operator must:
+The publication workflow must:
 
-1. record the verified candidate tree SHA and HAP/Android/device/store evidence;
-2. create a clean temporary clone/fetch of the terminal branch;
-3. create an orphan branch containing exactly the verified terminal tree and a single root commit;
-4. run `./scripts/check-native.sh`, `./scripts/verify-terminal.sh` and `cd apps/android && ./gradlew --no-daemon --warning-mode all androidCheck` against that orphan commit;
-5. confirm the orphan tree SHA is byte-for-byte identical to the verified candidate tree;
-6. force-update `main` to the verified orphan root commit;
-7. create the terminal version tag/release from that new `main` commit only;
-8. delete the migration branch and any old tags/branches that make the experimental history reachable;
-9. re-clone from GitHub and verify only the terminal root lineage is reachable from repository refs.
+1. build and verify signed Android v2.0.0 artifacts from the exact candidate tree;
+2. remove only its one-time publisher workflow and obsolete hard-cut helper from the index;
+3. create a parentless root commit from that final tree;
+4. verify the root tree with Native, Android and terminal source gates;
+5. force-update `main` with `--force-with-lease` against the known old main;
+6. create tag `v2.0.0` and the Android GitHub Release from that root commit;
+7. delete the migration branch and ensure no ordinary branch/tag references the experimental lineage.
 
-Do not perform this rewrite before the Harmony HAP and device/store gates are complete, because the rewrite is the final publication boundary rather than a development migration mechanism.
-
-After the rewrite, earlier blobs are unreachable from repository refs. Physical deletion of unreachable GitHub server objects depends on GitHub garbage collection and is not controlled by repository code; no branch, tag, release or documented reference may intentionally keep those objects reachable.
+Earlier Git objects then become unreachable from normal repository refs. Physical deletion of unreachable GitHub server objects depends on GitHub garbage collection and is not controlled by repository code.
 
 Version `2.x` is a hard-cut product line. Earlier experimental private metadata/ABI is not an upgrade-compatibility contract.
