@@ -2,39 +2,41 @@ plugins {
     id "com.android.application"
 }
 
-def configuredApplicationId = providers.gradleProperty("jingduApplicationId")
-        .getOrElse("com.junchen.jingdu")
+def applicationIdValue = providers.gradleProperty("jingduApplicationId").getOrElse("com.junchen.jingdu")
 def versionCodeProperty = providers.gradleProperty("jingduVersionCode")
-def configuredVersionCode = versionCodeProperty
-        .map { Integer.parseInt(it) }.getOrElse(1)
 def versionNameProperty = providers.gradleProperty("jingduVersionName")
-def configuredVersionName = versionNameProperty
-        .getOrElse("1.0.0")
+def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrElse(2)
+def versionNameValue = versionNameProperty.getOrElse("2.0.0")
 def signingPropertiesFile = rootProject.file("keystore.properties")
 def signingProperties = new Properties()
-def signingSecretsAllowed = !gradle.startParameter.configurationCacheRequested
-if (signingSecretsAllowed && signingPropertiesFile.isFile()) {
+def signingAllowed = !gradle.startParameter.configurationCacheRequested
+if (signingAllowed && signingPropertiesFile.isFile()) {
     signingPropertiesFile.withInputStream { signingProperties.load(it) }
 }
 def signingKeys = ["storeFile", "storePassword", "keyAlias", "keyPassword"]
-def releaseSigningConfigured = signingSecretsAllowed && signingPropertiesFile.isFile()
-        && signingKeys.every { key ->
-            def value = signingProperties.getProperty(key)
-            value != null && !value.trim().isEmpty()
-        }
+def releaseSigningConfigured = signingAllowed && signingPropertiesFile.isFile() && signingKeys.every { key ->
+    def value = signingProperties.getProperty(key)
+    value != null && !value.trim().isEmpty()
+}
 
 android {
     namespace = "com.junchen.jingdu"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = configuredApplicationId
+        applicationId = applicationIdValue
         minSdk = 26
         targetSdk = 36
-        versionCode = configuredVersionCode
-        versionName = configuredVersionName
-        testInstrumentationRunner =
-                "com.junchen.jingdu.CoreRuntimeInstrumentation"
+        versionCode = versionCodeValue
+        versionName = versionNameValue
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -Wall -Wextra -Wpedantic"
+            }
+        }
     }
 
     signingConfigs {
@@ -52,22 +54,20 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            resValue "string", "app_name", "净读 TXT Debug"
         }
         release {
             minifyEnabled = true
-            shrinkResources = true
-            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"),
-                    "proguard-rules.pro"
-            if (releaseSigningConfigured) {
-                signingConfig = signingConfigs.release
-            }
+            shrinkResources = false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            if (releaseSigningConfigured) signingConfig = signingConfigs.release
         }
     }
 
-    buildFeatures {
-        buildConfig = true
-        resValues = true
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     lint {
@@ -81,41 +81,22 @@ android {
     }
 }
 
-dependencies {
-    implementation project(":core")
-}
-
 tasks.register("validateStoreRelease") {
     group = "verification"
-    description = "Rejects placeholder identity, beta versioning, or absent upload signing."
     doLast {
-        if (configuredApplicationId == "com.jingdu.txt.w0"
-                || configuredApplicationId.endsWith(".w0")) {
-            throw new GradleException("set a final non-W0 -PjingduApplicationId")
+        if (applicationIdValue != "com.junchen.jingdu") {
+            throw new GradleException("production applicationId is fixed to com.junchen.jingdu")
         }
-        if (!(configuredApplicationId ==~ /[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+/)) {
-            throw new GradleException("jingduApplicationId is not a canonical package name")
+        if (!versionCodeProperty.isPresent() || versionCodeValue <= 0) {
+            throw new GradleException("set explicit positive -PjingduVersionCode")
         }
-        if (configuredApplicationId.startsWith("com.example.")) {
-            throw new GradleException("jingduApplicationId must not use the example namespace")
-        }
-        if (!versionCodeProperty.isPresent() || configuredVersionCode <= 0) {
-            throw new GradleException("set an explicit positive -PjingduVersionCode")
-        }
-        if (!versionNameProperty.isPresent()
-                || configuredVersionName.toLowerCase(Locale.ROOT).contains("beta")
-                || configuredVersionName.toLowerCase(Locale.ROOT).contains("w0")) {
-            throw new GradleException("set a production -PjingduVersionName")
+        if (!versionNameProperty.isPresent() || !(versionNameValue ==~ /\d+\.\d+\.\d+/)) {
+            throw new GradleException("set semantic -PjingduVersionName")
         }
         if (gradle.startParameter.configurationCacheRequested) {
-            throw new GradleException(
-                    "run androidStoreCheck with --no-configuration-cache to protect signing secrets")
+            throw new GradleException("release signing must run with --no-configuration-cache")
         }
-        if (!releaseSigningConfigured) {
-            throw new GradleException("configure ignored keystore.properties for upload signing")
-        }
-        if (!file(signingProperties.getProperty("storeFile")).isFile()) {
-            throw new GradleException("configured upload keystore does not exist")
-        }
+        if (!releaseSigningConfigured) throw new GradleException("configure ignored keystore.properties")
+        if (!file(signingProperties.getProperty("storeFile")).isFile()) throw new GradleException("upload keystore missing")
     }
 }

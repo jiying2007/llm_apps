@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "JunchenJingdu"
-include(":app", ":core")
+rootProject.name = "JingduAndroid"
+include(":app")

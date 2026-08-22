@@ -2,140 +2,52 @@ plugins {
     id "com.android.application" version "9.0.1" apply false
 }
 
-def releaseVersion = providers.gradleProperty("jingduVersionName").getOrElse("1.0.0")
-def releaseDirectory = layout.projectDirectory.dir("dist/android/${releaseVersion}")
+def releaseVersion = providers.gradleProperty("jingduVersionName").getOrElse("2.0.0")
 
-tasks.register("generateUploadKey") {
-    group = "release"
-    description = "Generates the local Junchen Jingdu upload key and ignored signing properties."
-    notCompatibleWithConfigurationCache("one-time secret material generation")
-    doLast {
-        File propertiesFile = rootProject.file("keystore.properties")
-        File keyDirectory = rootProject.file("release-keystore")
-        File keyFile = new File(keyDirectory, "junchen-jingdu-upload.jks")
-        if (propertiesFile.exists() || keyFile.exists()) {
-            throw new GradleException("upload signing files already exist; refusing to overwrite them")
-        }
-        if (!keyDirectory.isDirectory() && !keyDirectory.mkdirs()) {
-            throw new GradleException("cannot create release-keystore directory")
-        }
-
-        byte[] secretBytes = new byte[36]
-        new java.security.SecureRandom().nextBytes(secretBytes)
-        String password = Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes)
-        String passwordEnvironment = "JINGDU_GENERATED_KEY_PASSWORD"
-        File keytool = new File(System.getProperty("java.home"), "bin/keytool")
-        List<String> command = [keytool.absolutePath,
-                "-genkeypair", "-alias", "jingdu-upload", "-keyalg", "RSA",
-                "-keysize", "4096", "-validity", "10000", "-storetype", "PKCS12",
-                "-keystore", keyFile.absolutePath, "-storepass:env", passwordEnvironment,
-                "-keypass:env", passwordEnvironment,
-                "-dname", "CN=Junchen Jingdu, OU=Android, O=Junchen, C=CN"]
-        ProcessBuilder builder = new ProcessBuilder(command)
-        builder.environment().put(passwordEnvironment, password)
-        builder.redirectErrorStream(true)
-        Process process = builder.start()
-        String output = process.inputStream.getText("UTF-8")
-        int result = process.waitFor()
-        if (result != 0) {
-            if (keyFile.exists()) keyFile.delete()
-            throw new GradleException("keytool failed: " + output.trim())
-        }
-
-        Properties properties = new Properties()
-        properties.setProperty("storeFile", keyFile.absolutePath)
-        properties.setProperty("storePassword", password)
-        properties.setProperty("keyAlias", "jingdu-upload")
-        properties.setProperty("keyPassword", password)
-        propertiesFile.withOutputStream { stream ->
-            properties.store(stream, "Generated locally. Never commit, upload, or send this file in chat.")
-        }
-        try {
-            java.nio.file.Files.setPosixFilePermissions(propertiesFile.toPath(),
-                    java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))
-            java.nio.file.Files.setPosixFilePermissions(keyFile.toPath(),
-                    java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"))
-        } catch (UnsupportedOperationException ignored) {
-        }
-        logger.lifecycle("Generated upload key and ignored signing properties; back up both securely.")
-    }
-}
-
-tasks.register("w0Check") {
+tasks.register("androidCheck") {
     group = "verification"
-    description = "Compatibility alias for the historical gate; runs the formal core and Android checks."
-    dependsOn(":core:runCoreTests", ":app:lintDebug", ":app:assembleDebug")
-}
-
-tasks.register("androidMvpCheck") {
-    group = "verification"
-    description = "Runs core, debug/release lint, APK, R8 and unsigned release AAB gates."
-    dependsOn(":core:runCoreTests", ":app:lintDebug", ":app:lintRelease",
-            ":app:assembleDebug", ":app:bundleRelease")
+    description = "Builds the single-core Android application and runs both lint variants."
+    dependsOn(":app:lintDebug", ":app:lintRelease", ":app:assembleDebug", ":app:bundleRelease")
 }
 
 tasks.register("androidStoreCheck") {
     group = "verification"
-    description = "Runs production identity/signing validation and release gates."
-    dependsOn(":app:validateStoreRelease", ":core:runCoreTests",
-            ":app:lintRelease", ":app:assembleRelease", ":app:bundleRelease")
+    description = "Validates final identity/signing and builds release APK/AAB."
+    dependsOn(":app:validateStoreRelease", ":app:lintRelease", ":app:assembleRelease", ":app:bundleRelease")
 }
 
 tasks.register("stageAndroidRelease", Copy) {
     group = "release"
-    description = "Stages signed delivery artifacts for the requested semantic version."
     dependsOn("androidStoreCheck", ":app:assembleDebug")
-    into(releaseDirectory)
-    from("app/build/outputs/apk/debug/app-debug.apk") {
-        rename { "jingdu-${releaseVersion}-debug.apk" }
-    }
-    from("app/build/outputs/apk/release/app-release.apk") {
-        rename { "jingdu-${releaseVersion}-release.apk" }
-    }
-    from("app/build/outputs/bundle/release/app-release.aab") {
-        rename { "jingdu-${releaseVersion}-release.aab" }
-    }
-    from("app/build/outputs/mapping/release/mapping.txt") {
-        rename { "mapping-${releaseVersion}.txt" }
-    }
-    from("../../docs/txt-reader/release/assets/store-icon-512.png")
-    from("../../docs/txt-reader/release/assets/feature-graphic-1024x500.png")
+    into(layout.buildDirectory.dir("release/${releaseVersion}"))
+    from("app/build/outputs/apk/debug/app-debug.apk") { rename { "jingdu-${releaseVersion}-debug.apk" } }
+    from("app/build/outputs/apk/release/app-release.apk") { rename { "jingdu-${releaseVersion}-release.apk" } }
+    from("app/build/outputs/bundle/release/app-release.aab") { rename { "jingdu-${releaseVersion}-release.aab" } }
+    from("app/build/outputs/mapping/release/mapping.txt") { rename { "mapping-${releaseVersion}.txt" } }
 }
 
 tasks.register("writeAndroidReleaseChecksums") {
     group = "release"
-    description = "Writes SHA-256 checksums for the requested semantic version."
     dependsOn("stageAndroidRelease")
     doLast {
-        File dir = releaseDirectory.asFile
-        List<String> artifactNames = ["jingdu-${releaseVersion}-debug.apk",
+        File dir = layout.buildDirectory.dir("release/${releaseVersion}").get().asFile
+        List<String> names = [
+                "jingdu-${releaseVersion}-debug.apk",
                 "jingdu-${releaseVersion}-release.apk",
                 "jingdu-${releaseVersion}-release.aab",
-                "mapping-${releaseVersion}.txt",
-                "store-icon-512.png",
-                "feature-graphic-1024x500.png"]
-        StringBuilder checksums = new StringBuilder()
-        artifactNames.each { name ->
+                "mapping-${releaseVersion}.txt"]
+        StringBuilder text = new StringBuilder()
+        names.each { name ->
             File artifact = new File(dir, name)
-            if (!artifact.isFile()) throw new GradleException("missing staged artifact: " + name)
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256")
+            if (!artifact.isFile()) throw new GradleException("missing release artifact: ${name}")
+            def digest = java.security.MessageDigest.getInstance("SHA-256")
             artifact.withInputStream { stream ->
                 byte[] buffer = new byte[8192]
                 int count
                 while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
             }
-            checksums.append(java.util.HexFormat.of().formatHex(digest.digest()))
-                    .append("  ").append(name).append('\n')
+            text.append(java.util.HexFormat.of().formatHex(digest.digest())).append("  ").append(name).append('\n')
         }
-        java.nio.file.Files.createDirectories(dir.toPath())
-        java.nio.file.Files.writeString(new File(dir, "SHA256SUMS").toPath(),
-                checksums.toString(), java.nio.charset.StandardCharsets.UTF_8)
+        new File(dir, "SHA256SUMS").setText(text.toString(), "UTF-8")
     }
-}
-
-project(":app").tasks.matching { it.name == "bundleRelease" }.configureEach {
-    mustRunAfter(":app:validateStoreRelease")
-}
-project(":app").tasks.matching { it.name == "assembleRelease" }.configureEach {
-    mustRunAfter(":app:validateStoreRelease")
 }
