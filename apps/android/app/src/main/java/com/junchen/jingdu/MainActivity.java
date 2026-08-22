@@ -181,9 +181,12 @@ public final class MainActivity extends Activity {
     private void openBook(BookRepository.Book book, boolean clean) {
         stopAuto();
         tts.stop(null);
-        long restored = currentBook != null && currentBook.id.equals(book.id)
-                ? reader.position() : book.progress;
-        if (currentBook != null) repository.saveProgress(currentBook, reader.position());
+        long restored = clean ? 0 :
+                (currentBook != null && currentBook.id.equals(book.id) && !cleanMode
+                        ? reader.position() : book.progress);
+        if (currentBook != null && !cleanMode) {
+            repository.saveProgress(currentBook, reader.position());
+        }
         currentBook = null;
         reader.close();
         cleanMode = false;
@@ -203,7 +206,7 @@ public final class MainActivity extends Activity {
 
         runWork("正在生成净读视图…", () -> {
             File file = buildClean(book);
-            reader.open(file, restored);
+            reader.open(file, 0);
             return book;
         }, opened -> {
             currentBook = opened;
@@ -216,7 +219,7 @@ public final class MainActivity extends Activity {
         if (currentBook == null) return;
         try {
             text.setText(reader.page());
-            repository.saveProgress(currentBook, reader.position());
+            if (!cleanMode) repository.saveProgress(currentBook, reader.position());
             long percent = reader.length() == 0 ? 0 : Math.min(100, reader.position() * 100 / reader.length());
             status.setText(currentBook.name + " · " + percent + "% · " + currentBook.encoding
                     + " · " + currentBook.normalizedSha256.substring(0, 8)
@@ -276,6 +279,10 @@ public final class MainActivity extends Activity {
 
     private void showBookmarks() {
         if (currentBook == null) return;
+        if (cleanMode) {
+            toast("净读预览不写入原文书签");
+            return;
+        }
         ArrayList<Long> positions = new ArrayList<>();
         for (String value : bookmarkSet()) {
             try { positions.add(Long.parseLong(value)); } catch (Exception ignored) { }
@@ -503,7 +510,9 @@ public final class MainActivity extends Activity {
 
     @Override protected void onPause() {
         super.onPause();
-        if (currentBook != null) repository.saveProgress(currentBook, reader.position());
+        if (currentBook != null && !cleanMode) {
+            repository.saveProgress(currentBook, reader.position());
+        }
     }
 
     @Override protected void onDestroy() {
