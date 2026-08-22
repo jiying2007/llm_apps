@@ -1,25 +1,39 @@
 # llm_apps / 净读 TXT
 
-Production repository for the same offline TXT reader on Android and HarmonyOS.
+Production source for one offline TXT reader implemented as two native applications over one C++17 document core.
 
-## Terminal architecture
+## Layout
 
-- `core/native/`: single C++17 business/algorithm core with stable C ABI.
-- `apps/android/`: Android native app; Java platform/UI layer + JNI bridge only.
-- `apps/harmony/`: HarmonyOS Stage/ArkUI app; ArkTS platform/UI layer + Node-API bridge only.
-- legacy encodings are decoded by the platform import adapters into a private normalized UTF-8 copy; the selected source file is never modified.
-- generated packages, signing keys, extracted competitor APKs, old prototypes, compatibility migrations and transition trees are not source assets and are rejected by CI.
+- `core/native/` — the only cross-platform document/algorithm implementation; stable C ABI v2.
+- `apps/android/` — Android UI/platform shell and JNI bridge.
+- `apps/harmony/` — HarmonyOS Stage/ArkUI shell and Node-API bridge.
+- `docs/` — normative architecture, ABI, data, encoding, performance, test, device and release contracts.
+- `scripts/` — local/CI verification entry points.
+
+## Product invariants
+
+- selected external TXT files are never modified;
+- import creates an app-private source copy;
+- `book id == SHA256(source bytes)` on both platforms;
+- source bytes are decoded to app-private normalized UTF-8;
+- all post-normalization search/chapter/read/repair/speech semantics use the same native core;
+- long file operations run off the UI thread;
+- no network permission/runtime third-party SDK is part of the current product path;
+- no compatibility core, old ABI bridge, prototype production root or committed release package is allowed.
 
 ## Local gates
 
 ```bash
 ./scripts/check-native.sh
 cd apps/android && ./gradlew --no-daemon androidCheck
+cd ../..
 ./scripts/verify-terminal.sh
 ```
 
-HarmonyOS requires DevEco Studio / HarmonyOS SDK 6.0+ and builds from `apps/harmony` with the official Hvigor toolchain. The Harmony app imports files through DocumentViewPicker, uses the same shared native core through Node-API, and uses Core Speech Kit for system TTS.
+HarmonyOS real HAP build requires the official DevEco/HarmonyOS SDK 6.x environment and is automated in `.github/workflows/harmony-device.yml` for a `self-hosted,harmonyos` runner.
 
-## Release rule
+## Documentation
 
-`main` is releasable source only. APK/AAB/HAP, mapping files and signatures are build/release artifacts, never committed. A release is valid only when source CI passes and the corresponding Android/Harmony signed packages pass their device/store gates.
+Start with `docs/ARCHITECTURE.md`. `CORE_CONTRACT.md` and `DATA_MODEL.md` define cross-platform semantics; `ENCODING.md`, `PERFORMANCE.md`, `TESTING.md`, `DEVICE_MATRIX.md`, `QUALITY_GATES.md` and `RELEASE.md` define operational gates.
+
+`main` is intended to remain releasable source. APK/AAB/HAP, mapping/symbol packages and signing material belong to build/release infrastructure rather than Git.
