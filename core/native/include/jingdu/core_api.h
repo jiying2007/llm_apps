@@ -11,26 +11,24 @@ extern "C" {
 #define JD_SHA256_HEX_SIZE 65U
 
 typedef uint64_t jd_handle;
+typedef uint32_t jd_status;
+typedef uint32_t jd_detect_flags;
+
+#define JD_OK ((jd_status)0U)
+#define JD_EINVAL ((jd_status)1U)
+#define JD_ENOENT ((jd_status)2U)
+#define JD_EIO ((jd_status)3U)
+#define JD_EUTF8 ((jd_status)4U)
+#define JD_ENOMEM ((jd_status)5U)
+#define JD_EHANDLE ((jd_status)6U)
+
+#define JD_DETECT_NONE ((jd_detect_flags)0U)
+#define JD_DETECT_SAMPLE_TRUNCATED ((jd_detect_flags)(1U << 0))
 
 typedef struct jd_buffer {
   char* data;
   uint64_t size;
 } jd_buffer;
-
-enum jd_status {
-  JD_OK = 0,
-  JD_EINVAL = 1,
-  JD_ENOENT = 2,
-  JD_EIO = 3,
-  JD_EUTF8 = 4,
-  JD_ENOMEM = 5,
-  JD_EHANDLE = 6
-};
-
-enum jd_detect_flags {
-  JD_DETECT_NONE = 0,
-  JD_DETECT_SAMPLE_TRUNCATED = 1U << 0
-};
 
 uint32_t jd_abi_version(void);
 const char* jd_core_version(void);
