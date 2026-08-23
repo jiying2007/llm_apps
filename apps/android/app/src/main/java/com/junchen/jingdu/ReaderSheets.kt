@@ -55,6 +55,8 @@ import kotlin.math.roundToInt
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(selected = !state.cleanMode, onClick = { if (state.cleanMode) actions.onToggleCleanPreview() }, label = { Text(stringResource(R.string.original_text)) }); FilterChip(selected = state.cleanMode, onClick = { if (!state.cleanMode) actions.onToggleCleanPreview() }, label = { Text(stringResource(R.string.clean_preview)) }); AssistChip(onClick = actions.onExportClean, label = { Text(stringResource(R.string.export_txt)) }) } }
         item { ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(stringResource(R.string.smart_clean), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.smart_clean_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; if (state.proUnlocked) AssistChip(onClick = {}, label = { Text("Pro") }, leadingIcon = { Icon(Icons.Outlined.WorkspacePremium, null) }) }
+            Text(stringResource(R.string.smart_clean3_pack, BuiltinCleanRules.PACK_VERSION), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.smart_clean3_refiner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free)) }
             if (state.smartCleanAnalyzed && state.noiseCandidates.isEmpty()) Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (state.noiseCandidates.isNotEmpty()) {
@@ -68,11 +70,7 @@ import kotlin.math.roundToInt
                             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.Top) {
                                 Checkbox(c.selected, { actions.onToggleNoiseCandidate(index) })
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(
-                                        "${riskLabel(c.risk)} · ${localizeNoiseReason(c.reason)} · ${c.score}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
+                                    Text("${riskLabel(c.risk)} · ${localizeNoiseReason(c.reason)} · ${c.score}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                     Text(stringResource(R.string.smart_clean_impact, c.count, c.impactChars), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(riskExplanation(c.risk), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(c.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -86,9 +84,7 @@ import kotlin.math.roundToInt
                     if (!state.proUnlocked) { Icon(Icons.Outlined.Lock, null); Spacer(Modifier.width(8.dp)) }
                     Text(if (state.proUnlocked) stringResource(R.string.apply_selected_preview) else stringResource(R.string.unlock_pro_apply, suffix))
                 }
-                if (state.smartCleanUndoAvailable) {
-                    OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) }
-                }
+                if (state.smartCleanUndoAvailable) OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) }
                 if (!state.proUnlocked) TextButton(onClick = actions.onRestorePro, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restore_pro_question)) }
             } else if (state.smartCleanUndoAvailable) {
                 OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) }
@@ -113,6 +109,6 @@ import kotlin.math.roundToInt
 @Composable internal fun EncodingSheet(state: AppUiState, actions: JingduActions) { ModalBottomSheet(onDismissRequest = actions.onClosePanel) { Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp)) { SheetTitle(stringResource(R.string.text_encoding), stringResource(R.string.encoding_subtitle)); LazyColumn(Modifier.heightIn(max = 520.dp)) { items(BookRepository.ENCODINGS.toList()) { encoding -> Row(Modifier.fillMaxWidth().selectable(state.currentBook?.encoding == encoding) { actions.onEncodingSelected(encoding) }.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) { Text(if (encoding == BookRepository.AUTO) stringResource(R.string.auto_detect) else encoding, modifier = Modifier.weight(1f)); if (state.currentBook?.encoding == encoding) Text(stringResource(R.string.current), color = MaterialTheme.colorScheme.primary) }; HorizontalDivider() } } } } }
 
 @Composable private fun SheetTitle(title: String, subtitle: String) { Column(Modifier.fillMaxWidth().padding(bottom = 14.dp)) { Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(4.dp)); Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-@Composable private fun localizeNoiseReason(code: String): String = when (code) { "url" -> stringResource(R.string.noise_reason_url); "promo" -> stringResource(R.string.noise_reason_promo); "repeated" -> stringResource(R.string.noise_reason_repeated); "promo_repeated" -> stringResource(R.string.noise_reason_promo_repeated); else -> code }
+@Composable private fun localizeNoiseReason(code: String): String = when (code) { "url" -> stringResource(R.string.noise_reason_url); "promo" -> stringResource(R.string.noise_reason_promo); "repeated" -> stringResource(R.string.noise_reason_repeated); "promo_repeated" -> stringResource(R.string.noise_reason_promo_repeated); "inline_fragment" -> stringResource(R.string.noise_reason_inline_fragment); "garbled_line" -> stringResource(R.string.noise_reason_garbled_line); else -> code }
 @Composable private fun riskLabel(risk: NoiseRisk): String = when (risk) { NoiseRisk.HIGH -> stringResource(R.string.smart_clean_risk_high); NoiseRisk.MEDIUM -> stringResource(R.string.smart_clean_risk_medium); NoiseRisk.LOW -> stringResource(R.string.smart_clean_risk_low) }
 @Composable private fun riskExplanation(risk: NoiseRisk): String = when (risk) { NoiseRisk.HIGH -> stringResource(R.string.smart_clean_explain_high); NoiseRisk.MEDIUM -> stringResource(R.string.smart_clean_explain_medium); NoiseRisk.LOW -> stringResource(R.string.smart_clean_explain_low) }
