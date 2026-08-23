@@ -37,6 +37,14 @@ final class ReaderController implements Closeable {
         return NativeCore.read(handle, position, WINDOW_CHARS);
     }
 
+    String readAt(long offset, long maximum) throws IOException {
+        ensureOpen();
+        long safeOffset = Math.min(Math.max(0, offset), Math.max(0, length - 1));
+        long safeMaximum = Math.min(Math.max(0, maximum), 64 * 1024);
+        return NativeCore.read(handle, safeOffset, safeMaximum);
+    }
+
+    File documentFile() { return documentFile; }
     long position() { return position; }
     long length() { return length; }
 
