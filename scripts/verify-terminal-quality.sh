@@ -74,7 +74,7 @@ grep -q 'MAX_UNIQUE = 160' apps/android/app/src/main/java/com/junchen/jingdu/Sma
 grep -q 'inline_fragment' apps/android/app/src/main/java/com/junchen/jingdu/SmartCleanRefiner.java
 grep -q 'garbled_line' apps/android/app/src/main/java/com/junchen/jingdu/SmartCleanRefiner.java
 grep -q 'classifyCandidate(text: String)' apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt
-! grep -q 'whole document' apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt || true
+grep -q 'DisabledSemanticCandidateClassifier' apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt
 
 grep -q 'enum class ChineseDisplayMode' apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
 grep -q 'chineseOverrides' apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
@@ -86,6 +86,10 @@ grep -q 'sourceCharsForDisplayed(text, displayText' apps/android/app/src/main/ja
 grep -q 'ChineseDisplayConverter.searchVariants' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 grep -q 'SmartCleanRefiner.scan' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 grep -q 'ChineseDisplayConverter.convert(packed.substring' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+grep -q 'chineseMode = chineseMode' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
+grep -q 'chineseOverrides = chineseOverrides' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
+grep -q 'else ChineseDisplayMode.ORIGINAL' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
+grep -q 'else ""' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
 grep -q 'io.github.laisuk:openccjava:1.4.2' apps/android/app/build.gradle
 grep -q 'OpenccJava' THIRD_PARTY_NOTICES.md
 grep -q 'OpenCC dictionaries' THIRD_PARTY_NOTICES.md
