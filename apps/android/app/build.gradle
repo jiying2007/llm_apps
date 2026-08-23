@@ -73,6 +73,13 @@ android {
         }
     }
 
+    sourceSets {
+        main {
+            // Package the canonical repository license files into APK/AAB assets; do not maintain duplicate legal copies.
+            assets.srcDir rootProject.file("../../third_party")
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = false
