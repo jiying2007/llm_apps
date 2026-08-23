@@ -19,14 +19,18 @@ Release infrastructure archives signed APK/AAB, R8 mapping, SHA-256 manifest and
 
 GitHub source provenance is automated by `.github/workflows/source-release.yml`. It is deliberately separate from Google Play production rollout.
 
-To publish an immutable source release after the exact `main` candidate is green, the repository owner creates a temporary branch named `release/source-vX.Y.Z` from the current `main` HEAD. The workflow refuses any trigger branch that does not point exactly at `main`, refuses a version that disagrees with both Android version defaults, waits for the exact `main` push CI to complete successfully, and reruns terminal/store contracts before publishing.
+To publish an immutable source release after the exact `main` candidate is green, create or fast-forward a temporary branch named `release/source-vX.Y.Z` to the current `main` HEAD. The workflow is triggered by a push to that branch, so a failed source-release attempt is safely replayable by moving the same trigger branch to the next exact `main` commit after the workflow fix. It refuses any trigger branch that does not point exactly at `main`, refuses a version that disagrees with both Android version defaults, waits for the exact `main` push CI to complete successfully, and reruns terminal/store contracts before publishing.
+
+The trigger does not rely on `github.actor == repository_owner`, because repository automation may create or update refs through a GitHub App identity. Safety instead comes from the immutable constraints: only the source-declared semantic version can be released, the trigger must equal current `main`, and an existing tag is never moved to another commit.
 
 On success the workflow:
 
 1. creates or verifies Git tag `vX.Y.Z` at the exact `main` commit;
 2. creates an idempotent GitHub Source Release with explicit notice that no signed APK/AAB or Play rollout evidence is implied;
-3. prunes same-repository branches belonging only to already-merged PRs and not used by an open PR;
+3. prunes only temporary development branches (`feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`) that belong to merged same-repository PRs and are not used by an open PR;
 4. removes the temporary `release/source-vX.Y.Z` trigger branch.
+
+Long-lived branch names outside those explicit temporary prefixes are never pruned automatically merely because they once appeared as a merged PR head.
 
 The workflow has no signing key and cannot activate Play products or publish Play Console listings. A GitHub Source Release is provenance evidence, not production-store evidence.
 
