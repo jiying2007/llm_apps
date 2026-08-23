@@ -77,7 +77,7 @@ data class NoiseCandidateModel(
 }
 data class TtsVoiceModel(val name: String, val label: String)
 
-internal data class AppUiState(
+data class AppUiState(
     val screen: AppScreen = AppScreen.LIBRARY,
     val books: List<BookCardModel> = emptyList(),
     val currentBook: BookCardModel? = null,
