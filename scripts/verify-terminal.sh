@@ -42,13 +42,18 @@ required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
   .github/workflows/ci.yml .github/workflows/harmony-device.yml
-  docs/PRODUCT.md docs/UX.md docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
+  docs/PRODUCT.md docs/PRODUCT_REQUIREMENTS.md docs/UX.md docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
   docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md
   docs/HARMONY_RUNNER.md docs/RELEASE.md
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
   apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/UiComponents.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/UiFormatters.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
@@ -69,6 +74,7 @@ for path in "${required[@]}"; do
 done
 
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
 grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
@@ -81,11 +87,12 @@ grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/
 grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
-grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
-grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
-grep -q 'onTextLayout' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
-grep -q '本地 TXT · 无广告 · 不上传' apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
+grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+grep -q 'onTextLayout' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+grep -q 'onValueChangeFinished' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+grep -q '本地 TXT · 无广告 · 不上传' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
 grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
 grep -q 'compileSdk = 37' apps/android/app/build.gradle
 grep -q 'id "org.jetbrains.kotlin.plugin.compose" version "2.4.10"' apps/android/build.gradle
