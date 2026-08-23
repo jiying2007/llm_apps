@@ -16,19 +16,19 @@ internal fun interface SemanticCandidateClassifier {
 /**
  * Tiny quantized linear model for ambiguous Smart Clean candidates. It uses a 64-bucket hashed
  * character-bigram vector plus a small set of auditable structural features. Weights are signed
- * int8-range values generated from the repository Smart Clean corpus; inference allocates no model
- * tensor/runtime and is deliberately precision-first. High-confidence AD can strengthen a
- * candidate, BODY can protect it, and the wide middle region stays UNCERTAIN.
+ * int8-range values generated deterministically from quality/smartclean/train-v1.tsv; inference
+ * allocates no model tensor/runtime and is deliberately precision-first. High-confidence AD can
+ * strengthen a candidate, BODY can protect it, and the wide middle region stays UNCERTAIN.
  */
 internal object TinyLocalSemanticCandidateClassifier : SemanticCandidateClassifier {
     const val MODEL_VERSION = 1
     private const val AD_THRESHOLD = 20
     private const val BODY_THRESHOLD = -12
     private val weights = intArrayOf(
-        -4, 1, 0, -3, -4, -5, -6, 3, 3, 0, 0, -2, -1, -2, -8, 0,
-        -3, -3, 0, 4, 0, 1, 4, -1, 0, -1, -4, 0, -4, -5, -4, -2,
-        -1, -3, -2, 0, 3, -4, 1, -4, -4, -1, -3, -7, -1, -1, -7, -1,
-        -3, -3, -1, -4, 1, -4, 1, 1, -4, 1, -3, -3, -1, -4, 2, 0,
+        0, -2, 1, 0, 0, 0, -2, 0, -1, -6, 1, -2, -1, -1, 0, -1,
+        -3, 1, 0, -1, 0, -1, -1, 0, 0, -1, -4, 0, 0, -2, 0, -5,
+        -3, -1, -1, -5, -7, 0, -2, 2, -1, -2, -5, 0, 1, -1, -3, 0,
+        2, -4, 0, -1, -1, -1, 2, -2, -2, 0, -1, -1, -1, 0, 0, -2,
     )
     private val strongMarkers = listOf(
         "http://", "https://", "www.", ".com", ".net", ".cn", ".tw", ".hk",
