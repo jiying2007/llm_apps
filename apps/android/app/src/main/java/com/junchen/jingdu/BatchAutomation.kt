@@ -46,36 +46,36 @@ internal class BatchAutomation(
                     reader.open(repository.normalizedFile(book), 0)
                     val candidates = reader.noiseCandidates()
                     val toc = SmartToc.analyze(reader)
+                    val doctor = TxtDoctor.diagnose(reader, book, toc, candidates)
                     val safe = candidates.filter { candidate -> safeCandidate(book.id, candidate) }
                     var applied = 0
                     if (applySafe && safe.isNotEmpty()) {
                         val key = "rules.${book.id}"
                         val previousPacked = activityPreferences.getString(key, "") ?: ""
-                        cleanHistory.save(book.id, previousPacked)
                         val existing = RuleCodec.parse(previousPacked)
                         val additions = safe.map { RepairRule(it.text(), "", RepairRuleMode.LITERAL) }
                         val updated = (existing + additions)
                             .distinctBy { Triple(it.mode, it.find, it.replacement) }
                             .take(500)
-                        val packed = RuleCodec.pack(updated)
-                        activityPreferences.edit().putString(key, packed).apply()
                         applied = (updated.size - existing.size).coerceAtLeast(0)
-
-                        val effective = RuleCodec.pack(RuleCodec.combined(updated, globalRules, true))
-                        val revision = repository.repairRevision(book, effective)
-                        val output = repository.cleanFile(book, revision)
-                        if (!output.isFile) reader.exportRules(effective, output)
-                        repository.pruneCleanRevisions(book, output)
+                        if (applied > 0) {
+                            cleanHistory.save(book.id, previousPacked)
+                            val packed = RuleCodec.pack(updated)
+                            activityPreferences.edit().putString(key, packed).apply()
+                            val effective = RuleCodec.pack(RuleCodec.combined(updated, globalRules, true))
+                            val revision = repository.repairRevision(book, effective)
+                            val output = repository.cleanFile(book, revision)
+                            if (!output.isFile) reader.exportRules(effective, output)
+                            repository.pruneCleanRevisions(book, output)
+                        }
                     }
-                    val cleanScore = (100 - candidates.count { it.score() >= 72 } * 3).coerceIn(0, 100)
-                    val health = ((toc.score * 0.45) + (cleanScore * 0.55)).toInt().coerceIn(0, 100)
                     results += BatchBookResult(
                         bookId = book.id,
                         name = book.name,
                         noiseCandidates = candidates.size,
                         safeCandidates = safe.size,
                         tocAnomalies = toc.anomalyCount,
-                        healthScore = health,
+                        healthScore = doctor.healthScore,
                         appliedRules = applied,
                     )
                 }
