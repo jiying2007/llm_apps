@@ -120,6 +120,11 @@ grep -q 'google_play_production: false' scripts/publish-source-release.py
 grep -q 'RELEASE_PREFIX = "release/source-v"' scripts/publish-source-release.py
 grep -q 'TEMP_PREFIXES = ("feat/", "fix/", "chore/", "ci/", "refactor/", "docs/", "test/", "perf/")' scripts/publish-source-release.py
 grep -q 'source provenance only' scripts/publish-source-release.py
+grep -q 'if existing is not None and release_status != 404:' scripts/publish-source-release.py
+grep -q 'source release already published at immutable' scripts/publish-source-release.py
+grep -q 'orphan immutable tag' scripts/publish-source-release.py
+grep -q 'tag + GitHub Release already exist' docs/RELEASE.md
+grep -q 'permanent no-op on all later `main` pushes' docs/RELEASE.md
 grep -q 'publish-source-release' docs/RELEASE.md
 grep -q 'There is no separate Source Release workflow' docs/RELEASE.md
 
