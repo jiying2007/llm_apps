@@ -37,7 +37,10 @@ internal class FolderLibraryStore(context: Context) {
     fun removeRoot(uri: Uri) {
         val updated = prefs.getStringSet(KEY_ROOTS, emptySet()).orEmpty().toMutableSet()
         updated.remove(uri.toString())
-        prefs.edit().putStringSet(KEY_ROOTS, updated).apply()
+        val editor = prefs.edit().putStringSet(KEY_ROOTS, updated)
+        val prefix = seenPrefixForTree(uri)
+        prefs.all.keys.filter { it.startsWith(prefix) }.forEach(editor::remove)
+        editor.apply()
     }
 
     fun scanTxt(root: Uri, maxFiles: Int = 500): List<FolderEntry> {
@@ -86,20 +89,38 @@ internal class FolderLibraryStore(context: Context) {
         return output.distinctBy { it.uri.toString() }
     }
 
-    /** Unknown size/mtime is intentionally treated as changed so providers cannot hide updates. */
-    fun needsImport(entry: FolderEntry): Boolean =
-        !entry.hasReliableMetadata || prefs.getString(seenKey(entry.uri), null) != entry.signature
-
-    fun markImported(entry: FolderEntry) {
-        if (entry.hasReliableMetadata) prefs.edit().putString(seenKey(entry.uri), entry.signature).apply()
-        else prefs.edit().remove(seenKey(entry.uri)).apply()
+    /**
+     * Unknown size/mtime is deliberately treated as changed. The remembered imported book id is
+     * also checked so deleting Jingdu's private copy makes the next folder sync re-import it even
+     * when the provider's document metadata itself did not change.
+     */
+    fun needsImport(entry: FolderEntry, existingBookIds: Set<String>): Boolean {
+        if (!entry.hasReliableMetadata) return true
+        val prefix = seenPrefix(entry.uri)
+        val previousSignature = prefs.getString("$prefix.signature", null)
+        val previousBookId = prefs.getString("$prefix.bookId", null)
+        return previousSignature != entry.signature || previousBookId.isNullOrBlank() || previousBookId !in existingBookIds
     }
 
-    fun clearSeen(uri: Uri) { prefs.edit().remove(seenKey(uri)).apply() }
+    fun markImported(entry: FolderEntry, bookId: String) {
+        val prefix = seenPrefix(entry.uri)
+        if (entry.hasReliableMetadata && bookId.isNotBlank()) {
+            prefs.edit()
+                .putString("$prefix.signature", entry.signature)
+                .putString("$prefix.bookId", bookId)
+                .apply()
+        } else {
+            prefs.edit().remove("$prefix.signature").remove("$prefix.bookId").apply()
+        }
+    }
 
-    private fun seenKey(uri: Uri): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(uri.toString().toByteArray(Charsets.UTF_8))
-        return "seen." + digest.take(12).joinToString("") { "%02x".format(it) }
+    private fun seenPrefix(uri: Uri): String = "seen.${fingerprint(uri.toString())}"
+
+    private fun seenPrefixForTree(uri: Uri): String = "tree.${fingerprint(uri.toString())}."
+
+    private fun fingerprint(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+        return digest.take(12).joinToString("") { "%02x".format(it) }
     }
 
     companion object {
