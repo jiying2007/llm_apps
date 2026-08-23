@@ -5,6 +5,7 @@ required=(
   docs/PERFORMANCE_SLO.md
   docs/SMART_CLEAN_ARCHITECTURE.md
   THIRD_PARTY_NOTICES.md
+  third_party/NOTICE.md
   third_party/licenses/OpenccJava-MIT.txt
   third_party/licenses/OpenCC-Apache-2.0.txt
   core/native/tests/core_performance_gate_test.cpp
@@ -93,6 +94,7 @@ grep -q 'chineseOverrides = chineseOverrides' apps/android/app/src/main/java/com
 grep -q 'else ChineseDisplayMode.ORIGINAL' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
 grep -q 'else ""' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
 grep -q 'io.github.laisuk:openccjava:1.4.2' apps/android/app/build.gradle
+grep -q 'assets.srcDir rootProject.file("../../third_party")' apps/android/app/build.gradle
 
 grep -q '^MIT License$' third_party/licenses/OpenccJava-MIT.txt
 grep -q 'Copyright (c) 2025 https://github.com/laisuk' third_party/licenses/OpenccJava-MIT.txt
@@ -102,6 +104,7 @@ grep -q 'Derivative Works that You distribute' third_party/licenses/OpenCC-Apach
 grep -q 'OpenccJava-MIT.txt' THIRD_PARTY_NOTICES.md
 grep -q 'OpenCC-Apache-2.0.txt' THIRD_PARTY_NOTICES.md
 grep -q 'repository root has no `NOTICE` file' THIRD_PARTY_NOTICES.md
+grep -q 'This directory is packaged into the Android APK/AAB as application assets.' third_party/NOTICE.md
 
 if grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml; then
   echo 'Smart Clean/OpenCC must not add Android INTERNET permission' >&2
