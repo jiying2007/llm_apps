@@ -6,8 +6,8 @@ plugins {
 def applicationIdValue = providers.gradleProperty("jingduApplicationId").getOrElse("com.junchen.jingdu")
 def versionCodeProperty = providers.gradleProperty("jingduVersionCode")
 def versionNameProperty = providers.gradleProperty("jingduVersionName")
-def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrElse(3)
-def versionNameValue = versionNameProperty.getOrElse("2.1.0")
+def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrElse(4)
+def versionNameValue = versionNameProperty.getOrElse("2.2.0")
 def signingPropertiesFile = rootProject.file("keystore.properties")
 def signingProperties = new Properties()
 if (signingPropertiesFile.isFile()) {
@@ -109,6 +109,8 @@ dependencies {
     implementation "androidx.compose.material3:material3"
     implementation "androidx.compose.material:material-icons-extended"
     implementation "androidx.compose.ui:ui-tooling-preview"
+    implementation "com.android.billingclient:billing:9.1.0"
+    implementation "com.google.android.play:review:2.0.2"
     debugImplementation "androidx.compose.ui:ui-tooling"
 
     androidTestImplementation "androidx.compose.ui:ui-test-junit4"
