@@ -36,6 +36,7 @@ data class AppUiState(
     val searchQuery: String = "",
     val searchResults: List<SearchResultModel> = emptyList(),
     val chapters: List<ChapterModel> = emptyList(),
+    val chaptersLoaded: Boolean = false,
     val bookmarks: List<BookmarkModel> = emptyList(),
     val repairRules: List<RepairRule> = emptyList(),
     val ttsPlaying: Boolean = false,
