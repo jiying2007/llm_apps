@@ -28,14 +28,14 @@ import kotlin.math.roundToInt
     ModalBottomSheet(onDismissRequest = actions.onClosePanel) { Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
         SheetTitle(stringResource(R.string.full_text_search), stringResource(R.string.search_subtitle))
         OutlinedTextField(value = state.searchQuery, onValueChange = actions.onSearchQueryChanged, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text(stringResource(R.string.search_hint)) }, trailingIcon = { IconButton(onClick = { actions.onSearch(state.searchQuery) }) { Icon(Icons.Default.Search, stringResource(R.string.search)) } })
-        Spacer(Modifier.height(12.dp)); if (state.searchResults.isEmpty()) Text(stringResource(R.string.search_empty), color = MaterialTheme.colorScheme.onSurfaceVariant) else LazyColumn(Modifier.heightIn(max = 480.dp)) { items(state.searchResults, key = { it.offset }) { hit -> TextButton(onClick = { actions.onJump(hit.offset) }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) { Text(hit.context, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start) } } }
+        Spacer(Modifier.height(12.dp)); if (state.searchResults.isEmpty()) Text(stringResource(R.string.search_empty), color = MaterialTheme.colorScheme.onSurfaceVariant) else LazyColumn(Modifier.heightIn(max = 480.dp)) { items(state.searchResults, key = { it.offset }) { hit -> TextButton(onClick = { actions.onJump(hit.offset) }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) { Text(ChineseDisplayConverter.convert(hit.context, state.settings.chineseMode, state.settings.chineseOverrides), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start) } } }
     } }
 }
 
 @Composable internal fun ChaptersSheet(state: AppUiState, actions: JingduActions) {
     ModalBottomSheet(onDismissRequest = actions.onClosePanel) { Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
         SheetTitle(stringResource(R.string.chapters), if (state.chapters.isEmpty()) stringResource(R.string.chapters_empty) else stringResource(R.string.chapters_count, state.chapters.size))
-        LazyColumn(Modifier.heightIn(max = 560.dp)) { items(state.chapters, key = { it.offset }) { chapter -> TextButton(onClick = { actions.onJump(chapter.offset) }, modifier = Modifier.fillMaxWidth()) { Text(chapter.title, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start) } } }
+        LazyColumn(Modifier.heightIn(max = 560.dp)) { items(state.chapters, key = { it.offset }) { chapter -> TextButton(onClick = { actions.onJump(chapter.offset) }, modifier = Modifier.fillMaxWidth()) { Text(ChineseDisplayConverter.convert(chapter.title, state.settings.chineseMode, state.settings.chineseOverrides), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start) } } }
     } }
 }
 
