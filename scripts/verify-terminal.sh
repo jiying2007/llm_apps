@@ -56,7 +56,8 @@ required=(
   fastlane/metadata/android/zh-HK/title.txt fastlane/metadata/android/zh-HK/short_description.txt fastlane/metadata/android/zh-HK/full_description.txt
   fastlane/metadata/android/en-US/title.txt fastlane/metadata/android/en-US/short_description.txt fastlane/metadata/android/en-US/full_description.txt
   store/play/CUSTOM_LISTINGS.zh-CN.md store/play/SCREENSHOT_BRIEF.zh-CN.md
-  store/play/CUSTOM_LISTINGS.zh-Hant.md store/play/SCREENSHOT_BRIEF.zh-Hant.md
+  store/play/CUSTOM_LISTINGS.zh-TW.md store/play/SCREENSHOT_BRIEF.zh-TW.md
+  store/play/CUSTOM_LISTINGS.zh-HK.md store/play/SCREENSHOT_BRIEF.zh-HK.md
   store/play/CUSTOM_LISTINGS.en-US.md store/play/SCREENSHOT_BRIEF.en-US.md
   scripts/verify-play-store.sh scripts/verify-android-i18n.py
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
