@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import org.json.JSONObject
 
-internal data class PrivacyAuditResult(
+data class PrivacyAuditResult(
     val networkPermissionAbsent: Boolean,
     val bookTextUploadCapability: Boolean,
     val analyticsSdkPresent: Boolean,
