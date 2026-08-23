@@ -1,5 +1,6 @@
 plugins {
     id "com.android.application"
+    id "androidx.baselineprofile"
     id "org.jetbrains.kotlin.plugin.compose"
 }
 
@@ -62,12 +63,6 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             if (releaseSigningConfigured) signingConfig = signingConfigs.release
         }
-        benchmark {
-            initWith release
-            signingConfig = signingConfigs.debug
-            matchingFallbacks = ["release"]
-            debuggable = false
-        }
     }
 
     buildFeatures {
@@ -127,6 +122,8 @@ dependencies {
     androidTestImplementation "androidx.compose.ui:ui-test-junit4"
     debugImplementation "androidx.compose.ui:ui-test-manifest"
     androidTestImplementation "androidx.test.ext:junit:1.3.0"
+
+    baselineProfile project(":macrobenchmark")
 }
 
 tasks.register("validateStoreRelease") {
