@@ -34,9 +34,15 @@ internal object TxtDoctor {
     private const val SAMPLE_WINDOWS = 8
     private const val SAMPLE_CHARS = 4096L
 
-    fun diagnose(reader: ReaderController, book: BookRepository.Book): TxtDoctorReport {
-        val toc = SmartToc.analyze(reader)
-        val noise = reader.noiseCandidates()
+    fun diagnose(reader: ReaderController, book: BookRepository.Book): TxtDoctorReport =
+        diagnose(reader, book, SmartToc.analyze(reader), reader.noiseCandidates())
+
+    fun diagnose(
+        reader: ReaderController,
+        book: BookRepository.Book,
+        toc: TocQualityReport,
+        noise: List<ReaderController.NoiseCandidate>,
+    ): TxtDoctorReport {
         var replacements = 0
         var suspiciousControls = 0
         var totalCodePoints = 0L
