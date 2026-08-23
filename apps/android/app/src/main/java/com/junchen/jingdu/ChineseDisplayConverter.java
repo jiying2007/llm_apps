@@ -93,7 +93,7 @@ final class ChineseDisplayConverter {
 
     private static List<OverridePair> parseOverrides(String raw) {
         ArrayList<OverridePair> output = new ArrayList<>();
-        if (raw == null || raw.isBlank()) return output;
+        if (raw == null || raw.trim().isEmpty()) return output;
         for (String line : raw.split("\\R")) {
             if (output.size() >= MAX_OVERRIDES) break;
             String value = line.trim();
