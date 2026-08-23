@@ -123,11 +123,12 @@ private fun ReaderPage(text: String, settings: ReaderSettings, modifier: Modifie
 @Composable
 private fun ReaderBottomBar(fraction: Float, ttsPlaying: Boolean, autoPaging: Boolean, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Float) -> Unit, onTts: () -> Unit) {
     var sliderValue by remember(fraction) { mutableFloatStateOf(fraction) }
+    val progressDescription = stringResource(R.string.reading_progress)
     Surface(tonalElevation = 3.dp) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onPrevious) { Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.previous_page)) }
-                Slider(value = sliderValue, onValueChange = { sliderValue = it }, onValueChangeFinished = { onSeek(sliderValue) }, modifier = Modifier.weight(1f).semantics { contentDescription = "progress" })
+                Slider(value = sliderValue, onValueChange = { sliderValue = it }, onValueChangeFinished = { onSeek(sliderValue) }, modifier = Modifier.weight(1f).semantics { contentDescription = progressDescription })
                 IconButton(onClick = onNext) { Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.next_page)) }
                 IconButton(onClick = onTts) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (ttsPlaying) stringResource(R.string.pause_read_aloud) else stringResource(R.string.start_read_aloud)) }
             }
