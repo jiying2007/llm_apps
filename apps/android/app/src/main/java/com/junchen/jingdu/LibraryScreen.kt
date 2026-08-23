@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,187 +60,70 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .statusBarsPaddingCompat()
-                    .padding(horizontal = 24.dp, vertical = 18.dp)
-            ) {
+            Column(Modifier.fillMaxWidth().statusBarsPaddingCompat().padding(horizontal = 24.dp, vertical = 18.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "净读",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    if (state.books.isNotEmpty()) {
-                        TextButton(onClick = actions.onBatchImport) { Text("批量导入") }
-                    }
+                    Text(stringResource(R.string.app_title), modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                    if (state.books.isNotEmpty()) TextButton(onClick = actions.onBatchImport) { Text(stringResource(R.string.batch_import)) }
                 }
-                Text(
-                    "本地 TXT · 无广告 · 不上传",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(stringResource(R.string.library_tagline), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = actions.onImport,
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("导入 TXT") },
-            )
-        },
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = actions.onImport, icon = { Icon(Icons.Default.Add, contentDescription = null) }, text = { Text(stringResource(R.string.import_txt)) }) },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        if (state.books.isEmpty()) {
-            EmptyLibrary(Modifier.padding(padding), actions.onImport, actions.onBatchImport)
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(300.dp),
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 112.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                items(state.books, key = { it.id }) { book ->
-                    BookCard(
-                        book = book,
-                        onOpen = { actions.onOpenBook(book.id) },
-                        onDelete = { deleteTarget = book.id },
-                    )
-                }
-            }
-        }
+        if (state.books.isEmpty()) EmptyLibrary(Modifier.padding(padding), actions.onImport, actions.onBatchImport)
+        else LazyVerticalGrid(
+            columns = GridCells.Adaptive(300.dp), modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 112.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) { items(state.books, key = { it.id }) { book -> BookCard(book, { actions.onOpenBook(book.id) }, { deleteTarget = book.id }) } }
     }
-
     deleteTarget?.let { target ->
         AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("从书架移除？") },
-            text = { Text("只删除应用私有副本，设备上的源 TXT 不会被删除。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    actions.onDeleteLibraryBook(target)
-                    deleteTarget = null
-                }) { Text("删除") }
-            },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
+            onDismissRequest = { deleteTarget = null }, title = { Text(stringResource(R.string.remove_from_library_title)) },
+            text = { Text(stringResource(R.string.remove_from_library_body)) },
+            confirmButton = { TextButton(onClick = { actions.onDeleteLibraryBook(target); deleteTarget = null }) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
 
 @Composable
 private fun EmptyLibrary(modifier: Modifier, onImport: () -> Unit, onBatchImport: () -> Unit) {
-    Column(
-        modifier = modifier.fillMaxSize().padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Surface(
-            modifier = Modifier.size(88.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.primaryContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.MenuBook,
-                    contentDescription = null,
-                    modifier = Modifier.size(42.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
+    Column(modifier = modifier.fillMaxSize().padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Surface(modifier = Modifier.size(88.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) {
+            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer) }
         }
-        Spacer(Modifier.height(24.dp))
-        Text("把本地 TXT 变得好读", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "自动识别常见中文编码，支持大文件、搜索、目录、智能净读和离线朗读。源文件始终保持不变。",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = onImport) {
-            Icon(Icons.Default.MenuBook, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("选择 TXT 文件")
-        }
-        TextButton(onClick = onBatchImport) { Text("一次选择多本 TXT") }
+        Spacer(Modifier.height(24.dp)); Text(stringResource(R.string.empty_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(10.dp)); Text(stringResource(R.string.empty_body), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(24.dp)); Button(onClick = onImport) { Icon(Icons.Default.MenuBook, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.select_txt)) }
+        TextButton(onClick = onBatchImport) { Text(stringResource(R.string.select_multiple_txt)) }
     }
 }
 
 @Composable
 private fun BookCard(book: BookCardModel, onOpen: () -> Unit, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
-    ElevatedCard(
-        onClick = onOpen,
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
+    ElevatedCard(onClick = onOpen, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                modifier = Modifier.size(width = 58.dp, height = 78.dp),
-                shape = MaterialTheme.shapes.medium,
-                color = coverColor(book.id),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = book.name.trim().firstOrNull()?.toString()?.uppercase() ?: "TXT",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                    )
-                }
+            Surface(modifier = Modifier.size(width = 58.dp, height = 78.dp), shape = MaterialTheme.shapes.medium, color = coverColor(book.id)) {
+                Box(contentAlignment = Alignment.Center) { Text(book.name.trim().firstOrNull()?.toString()?.uppercase() ?: "TXT", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White) }
             }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    stripTxt(book.name),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "${book.encoding} · ${formatBytes(book.sizeBytes)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-                LinearProgressIndicator(
-                    progress = { book.progressFraction },
-                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(MaterialTheme.shapes.small),
-                )
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        if (book.charCount > 0) "${(book.progressFraction * 100).roundToInt()}%" else "打开后计算进度",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        formatTouched(book.touchedAt),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Text(stripTxt(book.name), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(6.dp)); Text("${book.encoding} · ${formatBytes(book.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp)); LinearProgressIndicator(progress = { book.progressFraction }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(MaterialTheme.shapes.small))
+                Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(if (book.charCount > 0) "${(book.progressFraction * 100).roundToInt()}%" else stringResource(R.string.progress_pending), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(formatTouched(book.touchedAt, stringResource(R.string.not_read)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Box {
-                IconButton(onClick = { menu = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "书籍操作")
-                }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.book_actions)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("继续阅读") },
-                        leadingIcon = { Icon(Icons.Default.MenuBook, contentDescription = null) },
-                        onClick = { menu = false; onOpen() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("删除私有副本") },
-                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                        onClick = { menu = false; onDelete() },
-                    )
+                    DropdownMenuItem(text = { Text(stringResource(R.string.continue_reading)) }, leadingIcon = { Icon(Icons.Default.MenuBook, contentDescription = null) }, onClick = { menu = false; onOpen() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.delete_private_copy)) }, leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }, onClick = { menu = false; onDelete() })
                 }
             }
         }

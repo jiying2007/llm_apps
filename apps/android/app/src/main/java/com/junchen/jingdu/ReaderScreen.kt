@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -62,128 +63,49 @@ import kotlin.math.roundToInt
 internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: SnackbarHostState) {
     val book = state.currentBook ?: return
     var more by remember { mutableStateOf(false) }
-    val fraction = if (state.length <= 0) 0f else {
-        (state.position.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
-    }
-
+    val fraction = if (state.length <= 0) 0f else (state.position.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = actions.onBackToLibrary) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回书架")
-                    }
-                },
+                navigationIcon = { IconButton(onClick = actions.onBackToLibrary) { Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back_to_library)) } },
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stripTxt(book.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            if (state.cleanMode) "净读预览" else "${(fraction * 100).roundToInt()}% · ${book.encoding}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Text(if (state.cleanMode) stringResource(R.string.clean_preview) else stringResource(R.string.reader_status, (fraction * 100).roundToInt(), book.encoding), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 actions = {
-                    IconButton(onClick = { actions.onOpenPanel(ReaderPanel.SEARCH) }) {
-                        Icon(Icons.Default.Search, contentDescription = "全文搜索")
-                    }
-                    IconButton(onClick = { actions.onOpenPanel(ReaderPanel.CHAPTERS) }) {
-                        Icon(Icons.Default.MenuBook, contentDescription = "目录")
-                    }
+                    IconButton(onClick = { actions.onOpenPanel(ReaderPanel.SEARCH) }) { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.full_text_search)) }
+                    IconButton(onClick = { actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.Default.MenuBook, contentDescription = stringResource(R.string.chapters)) }
                     Box {
-                        IconButton(onClick = { more = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "更多阅读工具")
-                        }
+                        IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_reading_tools)) }
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-                            DropdownMenuItem(
-                                text = { Text("书签") },
-                                leadingIcon = { Icon(Icons.Outlined.BookmarkBorder, contentDescription = null) },
-                                onClick = { more = false; actions.onOpenPanel(ReaderPanel.BOOKMARKS) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("净读") },
-                                leadingIcon = { Icon(Icons.Outlined.AutoFixHigh, contentDescription = null) },
-                                onClick = { more = false; actions.onOpenPanel(ReaderPanel.CLEAN) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("文本编码") },
-                                leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) },
-                                onClick = { more = false; actions.onOpenPanel(ReaderPanel.ENCODING) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("阅读设置") },
-                                leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                                onClick = { more = false; actions.onOpenPanel(ReaderPanel.SETTINGS) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("删除私有副本") },
-                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                                onClick = { more = false; actions.onRequestDeleteCurrent() },
-                            )
+                            DropdownMenuItem(text = { Text(stringResource(R.string.bookmarks)) }, leadingIcon = { Icon(Icons.Outlined.BookmarkBorder, null) }, onClick = { more = false; actions.onOpenPanel(ReaderPanel.BOOKMARKS) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.clean)) }, leadingIcon = { Icon(Icons.Outlined.AutoFixHigh, null) }, onClick = { more = false; actions.onOpenPanel(ReaderPanel.CLEAN) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.text_encoding)) }, leadingIcon = { Icon(Icons.Outlined.TextFields, null) }, onClick = { more = false; actions.onOpenPanel(ReaderPanel.ENCODING) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.reading_settings)) }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { more = false; actions.onOpenPanel(ReaderPanel.SETTINGS) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.delete_private_copy)) }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { more = false; actions.onRequestDeleteCurrent() })
                         }
                     }
                 },
             )
         },
-        bottomBar = {
-            ReaderBottomBar(
-                fraction = fraction,
-                ttsPlaying = state.ttsPlaying,
-                autoPaging = state.autoPaging,
-                onPrevious = actions.onNavigatePrevious,
-                onNext = actions.onNavigateNext,
-                onSeek = actions.onSeekFraction,
-                onTts = actions.onToggleTts,
-            )
-        },
+        bottomBar = { ReaderBottomBar(fraction, state.ttsPlaying, state.autoPaging, actions.onNavigatePrevious, actions.onNavigateNext, actions.onSeekFraction, actions.onToggleTts) },
         snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        ReaderPage(
-            text = state.pageText,
-            settings = state.settings,
-            modifier = Modifier.padding(padding),
-            onVisibleCharsChanged = actions.onVisibleCharsChanged,
-        )
-    }
+    ) { padding -> ReaderPage(state.pageText, state.settings, Modifier.padding(padding), actions.onVisibleCharsChanged) }
 }
 
 @Composable
-private fun ReaderPage(
-    text: String,
-    settings: ReaderSettings,
-    modifier: Modifier,
-    onVisibleCharsChanged: (Long) -> Unit,
-) {
-    val pageBackground = when (settings.palette) {
-        ReaderPalette.PAPER -> Color(0xFFF7F0DE)
-        ReaderPalette.LIGHT -> Color(0xFFFFFBFF)
-        ReaderPalette.NIGHT -> Color(0xFF151713)
-    }
+private fun ReaderPage(text: String, settings: ReaderSettings, modifier: Modifier, onVisibleCharsChanged: (Long) -> Unit) {
+    val pageBackground = when (settings.palette) { ReaderPalette.PAPER -> Color(0xFFF7F0DE); ReaderPalette.LIGHT -> Color(0xFFFFFBFF); ReaderPalette.NIGHT -> Color(0xFF151713) }
     val pageText = if (settings.palette == ReaderPalette.NIGHT) Color(0xFFE8E5DA) else Color(0xFF24241F)
     val family = if (settings.typeface == ReaderTypeface.SERIF) FontFamily.Serif else FontFamily.SansSerif
-
     Surface(modifier = modifier.fillMaxSize(), color = pageBackground) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val maxTextWidth = if (maxWidth >= 840.dp) 760.dp else maxWidth
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = settings.horizontalPaddingDp.dp, vertical = 18.dp),
-                contentAlignment = Alignment.TopCenter,
-            ) {
+            Box(Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = 18.dp), contentAlignment = Alignment.TopCenter) {
                 SelectionContainer {
-                    Text(
-                        text = text,
-                        modifier = Modifier.widthIn(max = maxTextWidth).fillMaxHeight(),
-                        style = TextStyle(
-                            color = pageText,
-                            fontFamily = family,
-                            fontSize = settings.fontSizeSp.sp,
-                            lineHeight = (settings.fontSizeSp * settings.lineHeightMultiplier).sp,
-                            textAlign = TextAlign.Justify,
-                        ),
-                        overflow = TextOverflow.Clip,
+                    Text(text = text, modifier = Modifier.widthIn(max = maxTextWidth).fillMaxHeight(), style = TextStyle(color = pageText, fontFamily = family, fontSize = settings.fontSizeSp.sp, lineHeight = (settings.fontSizeSp * settings.lineHeightMultiplier).sp, textAlign = TextAlign.Justify), overflow = TextOverflow.Clip,
                         onTextLayout = { layout ->
                             if (layout.lineCount > 0 && text.isNotEmpty() && layout.size.height > 0) {
                                 val visibleLine = layout.getLineForVerticalPosition((layout.size.height - 1).toFloat())
@@ -191,8 +113,7 @@ private fun ReaderPage(
                                 val count = text.codePointCount(0, end).toLong()
                                 if (count >= ReaderController.MIN_PAGE_CHARS) onVisibleCharsChanged(count)
                             }
-                        },
-                    )
+                        })
                 }
             }
         }
@@ -200,46 +121,17 @@ private fun ReaderPage(
 }
 
 @Composable
-private fun ReaderBottomBar(
-    fraction: Float,
-    ttsPlaying: Boolean,
-    autoPaging: Boolean,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onSeek: (Float) -> Unit,
-    onTts: () -> Unit,
-) {
+private fun ReaderBottomBar(fraction: Float, ttsPlaying: Boolean, autoPaging: Boolean, onPrevious: () -> Unit, onNext: () -> Unit, onSeek: (Float) -> Unit, onTts: () -> Unit) {
     var sliderValue by remember(fraction) { mutableFloatStateOf(fraction) }
     Surface(tonalElevation = 3.dp) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onPrevious) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "上一页")
-                }
-                Slider(
-                    value = sliderValue,
-                    onValueChange = { sliderValue = it },
-                    onValueChangeFinished = { onSeek(sliderValue) },
-                    modifier = Modifier.weight(1f).semantics { contentDescription = "阅读进度" },
-                )
-                IconButton(onClick = onNext) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = "下一页")
-                }
-                IconButton(onClick = onTts) {
-                    Icon(
-                        if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (ttsPlaying) "暂停朗读" else "开始朗读",
-                    )
-                }
+                IconButton(onClick = onPrevious) { Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.previous_page)) }
+                Slider(value = sliderValue, onValueChange = { sliderValue = it }, onValueChangeFinished = { onSeek(sliderValue) }, modifier = Modifier.weight(1f).semantics { contentDescription = "progress" })
+                IconButton(onClick = onNext) { Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.next_page)) }
+                IconButton(onClick = onTts) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (ttsPlaying) stringResource(R.string.pause_read_aloud) else stringResource(R.string.start_read_aloud)) }
             }
-            if (autoPaging || ttsPlaying) {
-                Text(
-                    if (ttsPlaying) "正在朗读" else "自动翻页中",
-                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
+            if (autoPaging || ttsPlaying) Text(if (ttsPlaying) stringResource(R.string.reading_aloud) else stringResource(R.string.auto_paging_active), modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
