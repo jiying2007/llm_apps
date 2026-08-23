@@ -1,19 +1,24 @@
 # 净读 TXT
 
-**离线、隐私优先的本地 TXT 长文本阅读器。** 重点不是支持最多格式，而是把乱码文本打开正确、把干扰内容清干净，并让长时间阅读保持舒服、稳定和快速。
+**离线、隐私优先的本地 TXT 小说阅读器。** 不追求最多格式，而是把乱码 TXT 打开正确、把广告/水印/网站尾巴找出来并安全净化，让长篇小说读得舒服、稳定、快速。
 
 > Open messy TXT correctly, clean distracting text locally, and keep reading comfortably for hours.
 
 ## Product
 
-- **本地优先**：无账号、无广告、无网络权限，TXT 内容不上传。
-- **中文 TXT 深度支持**：AUTO 编码检测覆盖 UTF-8 / UTF-16 / GB18030 / GBK / Big5，并允许基于已保存的私有 source 副本重新解码。
-- **净读**：按书保存字面清理规则，原文/净读预览独立，支持导出新的净读 TXT，永不修改源文件。
-- **大文件可信**：导入、打开/索引、搜索、目录、净读生成和导出均不在 UI 线程执行；10/100/300 MiB 是正式验证尺寸。
-- **长期阅读**：书架/进度、全文搜索、目录、revision-safe 书签、Material 3 排版、纸张/明亮/夜间主题、系统 TTS、自动翻页和睡眠定时。
-- **自适应 Android UI**：Kotlin + Jetpack Compose Material 3，edge-to-edge，手机/横屏/平板/折叠屏保持合适行长和信息层级。
+- **中文 TXT 深度支持**：AUTO + UTF-8 / UTF-16 / GB18030 / GBK / Big5，可从私有 source 副本重新解码。
+- **智能净读**：共享 C++ Core 本地扫描高频重复、网址/域名和常见推广水印；Free 可完整查看候选，Pro 可一键应用。
+- **安全规则**：Free 精确规则；Pro whole-line `*` 通配、全局规则库、推荐中文网文规则、规则导入/导出。
+- **大文件可信**：与文件规模相关的工作不跑 UI thread；不可变 revision + `.jdx` 稀疏索引缓存；10/100/300 MiB 为正式资格尺寸。
+- **长期阅读**：书架/进度、搜索、目录、revision-safe 书签、Material 3 排版、TTS、自动翻页、睡眠定时、批量 TXT 导入。
+- **本地资产**：Pro 可选择系统离线 TTS voice，并导出/恢复阅读设置 + 全局规则；备份不含书籍正文。
+- **隐私**：无账号、无广告/analytics SDK、Android manifest 不直接申请 `INTERNET`，TXT 不上传，源文件永不修改。
 
-产品范围、非目标和成功指标见 [`docs/PRODUCT.md`](docs/PRODUCT.md)，Android 交互/视觉规范见 [`docs/UX.md`](docs/UX.md)。
+## Free / Pro
+
+Free 是完整阅读器，不锁搜索/目录/书签/基础排版/TTS。`jingdu_pro_lifetime` 是 Google Play 一次性买断，主要销售智能净读自动化、通配/全局规则、离线 voice 选择和本地资产备份；当前没有订阅。
+
+详见 `docs/PRODUCT.md` 与 `docs/GROWTH_MONETIZATION.md`。
 
 ## Architecture
 
@@ -23,21 +28,24 @@ Android Compose / Kotlin platform shell -- JNI -----+
 HarmonyOS ArkUI / ArkTS platform shell ----- NAPI --+
 ```
 
-- `core/native/` — 唯一跨平台文本/算法实现，稳定 C ABI v2。
-- `apps/android/` — Compose Android 产品壳、平台能力和 JNI bridge。
-- `apps/harmony/` — HarmonyOS Stage/ArkUI 产品壳和 Node-API bridge。
-- `docs/` — 产品、UX、架构、ABI、数据、编码、性能、测试和发布的规范事实源。
-- `scripts/` — 本地/CI 强制门禁。
+- `core/native/` — 唯一跨平台文本/算法实现，包括编码、索引、搜索、目录、Repair、Smart Clean。
+- `apps/android/` — Compose 产品壳、平台生命周期/TTS/Google Play Billing & Review、JNI。
+- `apps/harmony/` — HarmonyOS Stage/ArkUI + Node-API shell（当前 source-complete/pre-release）。
+- `fastlane/metadata/android/` — 默认 Play 商店元数据。
+- `store/play/` — keyword-targeted Custom Listing 规格和截图制作 brief。
+- `docs/` — 产品、商业化、UX、架构、ABI、性能、测试、发布事实源。
+- `scripts/` — Native/terminal/Play metadata CI 门禁。
 
 ## Product invariants
 
-- 外部 TXT 永不修改，导入只创建 app-private source copy；
 - `book id == SHA256(source bytes)`；
-- normalized/clean 文件是不可变 content-addressed revision；
-- 所有 post-normalization read/search/chapter/repair/speech 语义只来自同一个 C++ Core；
-- 原文 progress/bookmark 不接收净读派生 offset；
-- 与文件规模相关的操作不运行在 UI thread；
-- 不允许 Java shared core、兼容 Core、旧 ABI bridge、prototype production root 或提交 release binary。
+- normalized/clean 是不可变 content-addressed revision；
+- `.jdx` 只是可丢弃性能 cache，不是身份；
+- post-normalization read/search/chapter/repair/speech/Smart Clean 语义来自同一个 C++ Core；
+- 原文 progress/bookmark 不接收 Clean offset；
+- Smart Clean 只给建议，用户显式 Apply 才改变派生 Clean 输出；
+- 商业化不允许把基本阅读能力移到 Pro；
+- 不允许兼容 Core、旧 ABI bridge、prototype production root、提交 release binary/signing material。
 
 ## Gates
 
@@ -45,19 +53,26 @@ HarmonyOS ArkUI / ArkTS platform shell ----- NAPI --+
 ./scripts/check-native.sh
 cd apps/android && ./gradlew --no-daemon --warning-mode all androidCheck
 cd ../..
+./scripts/verify-play-store.sh
 ./scripts/verify-terminal.sh
 ```
 
-Hosted CI 还会编译 Compose AndroidTest 并验证 Android/Harmony 架构 contract。HarmonyOS 真 HAP 仍使用官方 HarmonyOS/DevEco 工具链和 `self-hosted,harmonyos` runner；详见 `docs/HARMONY_RUNNER.md`。
+Hosted CI 运行 `native-core / android / play-store-contract / harmony-contract / terminal-contract`。Harmony 真 HAP 仍依赖官方 HarmonyOS/DevEco toolchain 与 `self-hosted,harmonyos` runner，不阻断 Android-only v2.2 source merge/release。
+
+## Google Play discovery / commerce
+
+- 默认简中商店名：`净读 - TXT 小说阅读器`。
+- Custom Listing 分为 TXT Reader、乱码编码、Smart Clean、本地小说 4 个搜索意图。
+- Lifetime Pro 商品：`jingdu_pro_lifetime`。
+- Play Console 实际商品激活、价格实验、listing 上传和 staged rollout 按 `docs/PLAY_CONSOLE_SETUP.md` / `docs/RELEASE.md` 执行；当前源码工具不能代替真实 Console 发布操作。
 
 ## Documentation
 
-建议阅读顺序：
-
-1. `PRODUCT.md` — 产品定位、用户、核心任务、非目标；
-2. `UX.md` — Android 信息架构、阅读体验、响应式和可访问性；
-3. `ARCHITECTURE.md` / `CORE_CONTRACT.md` / `DATA_MODEL.md` — 技术与跨端事实源；
-4. `ENCODING.md` / `PERFORMANCE.md` / `TESTING.md` / `DEVICE_MATRIX.md` — 质量标准；
-5. `QUALITY_GATES.md` / `RELEASE.md` — 合并与发布边界。
+推荐顺序：
+1. `PRODUCT.md` / `PRODUCT_REQUIREMENTS.md`
+2. `GROWTH_MONETIZATION.md` / `UX.md`
+3. `ARCHITECTURE.md` / `CORE_CONTRACT.md` / `DATA_MODEL.md`
+4. `ENCODING.md` / `PERFORMANCE.md` / `TESTING.md` / `DEVICE_MATRIX.md`
+5. `PLAY_CONSOLE_SETUP.md` / `QUALITY_GATES.md` / `RELEASE.md`
 
 `main` 保持可发布源码；APK/AAB/HAP、mapping/symbol package 和签名材料只属于构建/发布基础设施。
