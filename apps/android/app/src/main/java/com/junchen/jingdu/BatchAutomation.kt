@@ -4,7 +4,7 @@ import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal data class BatchBookResult(
+data class BatchBookResult(
     val bookId: String,
     val name: String,
     val noiseCandidates: Int,
@@ -14,7 +14,7 @@ internal data class BatchBookResult(
     val appliedRules: Int,
 )
 
-internal data class BatchAutomationReport(
+data class BatchAutomationReport(
     val booksScanned: Int,
     val totalCandidates: Int,
     val safeCandidates: Int,
