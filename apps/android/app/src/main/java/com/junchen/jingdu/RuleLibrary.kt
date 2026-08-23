@@ -1,0 +1,106 @@
+package com.junchen.jingdu
+
+import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
+
+internal class RuleLibrary(context: Context) {
+    private val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun load(): List<RepairRule> = decode(preferences.getString(KEY_RULES, "[]") ?: "[]")
+
+    fun save(rules: List<RepairRule>) {
+        val normalized = rules
+            .filter { it.find.isNotBlank() }
+            .take(MAX_RULES)
+            .distinctBy { Triple(it.mode, it.find, it.replacement) }
+        preferences.edit().putString(KEY_RULES, encode(normalized)).apply()
+    }
+
+    fun add(rule: RepairRule): List<RepairRule> {
+        val updated = (load() + rule).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(MAX_RULES)
+        save(updated)
+        return updated
+    }
+
+    fun remove(index: Int): List<RepairRule> {
+        val current = load()
+        if (index !in current.indices) return current
+        val updated = current.filterIndexed { i, _ -> i != index }
+        save(updated)
+        return updated
+    }
+
+    fun installRecommended(): List<RepairRule> {
+        val updated = (load() + RECOMMENDED).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(MAX_RULES)
+        save(updated)
+        return updated
+    }
+
+    fun exportJson(): String = JSONObject()
+        .put("schema", 1)
+        .put("type", "jingdu-global-clean-rules")
+        .put("rules", JSONArray(encode(load())))
+        .toString(2)
+
+    fun importJson(text: String): List<RepairRule> {
+        val root = JSONObject(text)
+        if (root.optInt("schema") != 1 || root.optString("type") != "jingdu-global-clean-rules") {
+            throw IllegalArgumentException("不是受支持的净读规则文件")
+        }
+        val rulesArray = root.optJSONArray("rules") ?: JSONArray()
+        val imported = decode(rulesArray.toString())
+        if (imported.isEmpty()) throw IllegalArgumentException("规则文件中没有有效规则")
+        val updated = (load() + imported).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(MAX_RULES)
+        save(updated)
+        return updated
+    }
+
+    private fun encode(rules: List<RepairRule>): String {
+        val array = JSONArray()
+        rules.forEach { rule ->
+            if (!validField(rule.find) || !validField(rule.replacement)) return@forEach
+            array.put(
+                JSONObject()
+                    .put("mode", rule.mode.name)
+                    .put("find", rule.find)
+                    .put("replacement", rule.replacement),
+            )
+        }
+        return array.toString()
+    }
+
+    private fun decode(text: String): List<RepairRule> {
+        val output = mutableListOf<RepairRule>()
+        val array = try { JSONArray(text) } catch (_: Throwable) { return emptyList() }
+        for (index in 0 until minOf(array.length(), MAX_RULES)) {
+            val item = array.optJSONObject(index) ?: continue
+            val find = item.optString("find")
+            val replacement = item.optString("replacement")
+            if (find.isBlank() || !validField(find) || !validField(replacement)) continue
+            val mode = runCatching { RepairRuleMode.valueOf(item.optString("mode")) }
+                .getOrDefault(RepairRuleMode.LITERAL)
+            output += RepairRule(find, replacement, mode)
+        }
+        return output.distinctBy { Triple(it.mode, it.find, it.replacement) }
+    }
+
+    private fun validField(value: String): Boolean =
+        value.length <= MAX_FIELD_CHARS && value.none { it == '\u001e' || it == '\u001f' }
+
+    companion object {
+        private const val PREFS = "jingdu.rules.global.v1"
+        private const val KEY_RULES = "rules"
+        private const val MAX_RULES = 500
+        private const val MAX_FIELD_CHARS = 1024
+
+        val RECOMMENDED = listOf(
+            RepairRule("*最新网址*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*备用网址*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*请收藏本站*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*请记住本站*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*手机用户请访问*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*关注公众号*", "", RepairRuleMode.LINE_GLOB),
+        )
+    }
+}
