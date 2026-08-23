@@ -13,6 +13,7 @@ final class ReaderController implements Closeable {
 
     record Hit(long offset, String context) {}
     record Chapter(long offset, String title) {}
+    record NoiseCandidate(int score, int count, String reason, String text) {}
     record Speech(long nextOffset, String text) {}
 
     private long handle;
@@ -77,6 +78,25 @@ final class ReaderController implements Closeable {
             }
         }
         return chapters;
+    }
+
+    List<NoiseCandidate> noiseCandidates() throws IOException {
+        ensureOpen();
+        ArrayList<NoiseCandidate> candidates = new ArrayList<>();
+        for (String line : NativeCore.noiseCandidates(handle, 80).split("\n")) {
+            if (line.isEmpty()) continue;
+            String[] fields = line.split("\t", 4);
+            if (fields.length != 4) continue;
+            try {
+                candidates.add(new NoiseCandidate(
+                        Integer.parseInt(fields[0]),
+                        Integer.parseInt(fields[1]),
+                        fields[2],
+                        fields[3]));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return candidates;
     }
 
     Speech speech(long from) throws IOException {
