@@ -3,12 +3,18 @@ package com.junchen.jingdu
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -17,6 +23,7 @@ import kotlin.math.roundToInt
 
 @Composable internal fun ProductSettingsSheet(state: AppUiState, actions: JingduActions) {
     val settings = state.settings
+    var overridesDraft by rememberSaveable(settings.chineseOverrides) { mutableStateOf(settings.chineseOverrides) }
     ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
         LazyColumn(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item { Column(Modifier.fillMaxWidth()) { Text(stringResource(R.string.reading_settings), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(4.dp)); Text(stringResource(R.string.settings_subtitle), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
@@ -25,6 +32,37 @@ import kotlin.math.roundToInt
             item { ReaderSlider(stringResource(R.string.font_size), settings.fontSizeSp, 16f..34f, "${settings.fontSizeSp.roundToInt()}sp") { actions.onSettingsChanged(settings.copy(fontSizeSp = it)) } }
             item { ReaderSlider(stringResource(R.string.line_spacing), settings.lineHeightMultiplier, 1.2f..2.0f, String.format("%.2f×", settings.lineHeightMultiplier)) { actions.onSettingsChanged(settings.copy(lineHeightMultiplier = it)) } }
             item { ReaderSlider(stringResource(R.string.side_margins), settings.horizontalPaddingDp, 12f..48f, "${settings.horizontalPaddingDp.roundToInt()}dp") { actions.onSettingsChanged(settings.copy(horizontalPaddingDp = it)) } }
+            item { HorizontalDivider() }
+            item {
+                SettingSection(stringResource(R.string.chinese_conversion)) {
+                    Text(stringResource(R.string.chinese_conversion_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
+                        items(ChineseDisplayMode.entries) { mode ->
+                            FilterChip(
+                                selected = settings.chineseMode == mode,
+                                onClick = { actions.onSettingsChanged(settings.copy(chineseMode = mode)) },
+                                label = { Text(chineseModeLabel(mode)) },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = overridesDraft,
+                        onValueChange = { overridesDraft = it.take(16 * 1024) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.chinese_overrides)) },
+                        supportingText = {
+                            Column {
+                                Text(stringResource(R.string.chinese_overrides_body))
+                                Text(stringResource(R.string.chinese_overrides_count, ChineseDisplayConverter.overrideCount(overridesDraft)))
+                            }
+                        },
+                        placeholder = { Text(stringResource(R.string.chinese_overrides_hint)) },
+                        minLines = 3,
+                        maxLines = 6,
+                    )
+                    Button(onClick = { actions.onSettingsChanged(settings.copy(chineseOverrides = overridesDraft)) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.save_dictionary)) }
+                }
+            }
             item { HorizontalDivider() }
             item { SettingSection(stringResource(R.string.read_aloud)) { ReaderSlider(stringResource(R.string.speech_rate), settings.ttsRate, 0.6f..1.8f, String.format("%.1f×", settings.ttsRate)) { actions.onSettingsChanged(settings.copy(ttsRate = it)) }; ReaderSlider(stringResource(R.string.speech_pitch), settings.ttsPitch, 0.7f..1.4f, String.format("%.1f×", settings.ttsPitch)) { actions.onSettingsChanged(settings.copy(ttsPitch = it)) }; OutlinedButton(onClick = actions.onToggleTts, modifier = Modifier.fillMaxWidth()) { Icon(if (state.ttsPlaying) Icons.Default.Pause else Icons.Default.VolumeUp, null); Spacer(Modifier.width(8.dp)); Text(stringResource(if (state.ttsPlaying) R.string.pause_read_aloud else R.string.read_from_here)) } } }
             item { ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Outlined.RecordVoiceOver, null, tint = MaterialTheme.colorScheme.primary); Text(stringResource(R.string.offline_voice), fontWeight = FontWeight.SemiBold); AssistChip(onClick = {}, label = { Text("Pro") }) }; Text(stringResource(R.string.offline_voice_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); val suffix = state.proPrice?.let { stringResource(R.string.price_suffix, it) } ?: ""; if (!state.proUnlocked) OutlinedButton(onClick = actions.onUpgradePro, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Lock, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.unlock_pro_voice, suffix)) } else if (state.ttsVoices.isEmpty()) Text(stringResource(R.string.no_offline_voice), color = MaterialTheme.colorScheme.onSurfaceVariant) else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(settings.ttsVoiceName.isEmpty(), { actions.onSettingsChanged(settings.copy(ttsVoiceName = "")) }, label = { Text(stringResource(R.string.system_default)) }); state.ttsVoices.take(12).forEach { v -> FilterChip(settings.ttsVoiceName == v.name, { actions.onSettingsChanged(settings.copy(ttsVoiceName = v.name)) }, label = { Text(v.label) }) }; if (state.ttsVoices.size > 12) Text(stringResource(R.string.more_offline_voices, state.ttsVoices.size - 12), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } }
@@ -36,6 +74,15 @@ import kotlin.math.roundToInt
         }
     }
 }
+
+@Composable private fun chineseModeLabel(mode: ChineseDisplayMode): String = stringResource(when (mode) {
+    ChineseDisplayMode.ORIGINAL -> R.string.chinese_original
+    ChineseDisplayMode.SIMPLIFIED -> R.string.chinese_simplified
+    ChineseDisplayMode.TRADITIONAL -> R.string.chinese_traditional
+    ChineseDisplayMode.TAIWAN -> R.string.chinese_taiwan
+    ChineseDisplayMode.TAIWAN_PHRASES -> R.string.chinese_taiwan_phrases
+    ChineseDisplayMode.HONG_KONG -> R.string.chinese_hong_kong
+})
 
 @Composable private fun ReaderSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, valueText: String, onChange: (Float) -> Unit) { Column { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.bodyMedium); Text(valueText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }; Slider(value = value, onValueChange = onChange, valueRange = range) } }
 @Composable private fun SettingSection(title: String, content: @Composable () -> Unit) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold); content() } }
