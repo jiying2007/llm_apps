@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 final class ReaderController implements Closeable {
@@ -53,16 +54,20 @@ final class ReaderController implements Closeable {
 
     List<Hit> search(String query) throws IOException {
         ensureOpen();
-        ArrayList<Hit> hits = new ArrayList<>();
-        for (String line : NativeCore.search(handle, query, 500).split("\n")) {
-            int tab = line.indexOf('\t');
-            if (tab <= 0) continue;
-            try {
-                hits.add(new Hit(Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
-            } catch (NumberFormatException ignored) {
+        LinkedHashMap<Long, Hit> merged = new LinkedHashMap<>();
+        for (String variant : ChineseScript.searchVariants(query)) {
+            for (String line : NativeCore.search(handle, variant, 500).split("\n")) {
+                int tab = line.indexOf('\t');
+                if (tab <= 0) continue;
+                try {
+                    long offset = Long.parseLong(line.substring(0, tab));
+                    merged.putIfAbsent(offset, new Hit(offset, line.substring(tab + 1)));
+                } catch (NumberFormatException ignored) {
+                }
             }
+            if (merged.size() >= 500) break;
         }
-        return hits;
+        return merged.values().stream().sorted((left, right) -> Long.compare(left.offset(), right.offset())).limit(500).toList();
     }
 
     List<Chapter> chapters() throws IOException {
@@ -72,8 +77,7 @@ final class ReaderController implements Closeable {
             int tab = line.indexOf('\t');
             if (tab <= 0) continue;
             try {
-                chapters.add(new Chapter(
-                        Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
+                chapters.add(new Chapter(Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
             } catch (NumberFormatException ignored) {
             }
         }
@@ -88,11 +92,7 @@ final class ReaderController implements Closeable {
             String[] fields = line.split("\t", 4);
             if (fields.length != 4) continue;
             try {
-                candidates.add(new NoiseCandidate(
-                        Integer.parseInt(fields[0]),
-                        Integer.parseInt(fields[1]),
-                        fields[2],
-                        fields[3]));
+                candidates.add(new NoiseCandidate(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), fields[2], fields[3]));
             } catch (NumberFormatException ignored) {
             }
         }
