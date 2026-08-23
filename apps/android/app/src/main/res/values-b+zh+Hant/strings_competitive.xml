@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="txt_doctor">TXT 體檢</string>
+    <string name="txt_doctor_body">在修復前完全本機檢查編碼、文字品質、章節結構和干擾內容。</string>
+    <string name="txt_health_score">TXT 健康度 · %1$d/100</string>
+    <string name="doctor_encoding">編碼健康</string>
+    <string name="doctor_toc">章節結構</string>
+    <string name="doctor_toc_detail">%1$d 個章節 · %2$d 處結構異常</string>
+    <string name="doctor_clean">文字潔淨度</string>
+    <string name="doctor_clean_detail">偵測到 %1$d 個淨化候選</string>
+    <string name="doctor_text">文字完整性</string>
+    <string name="doctor_text_detail">%1$d 個可疑取樣視窗 · %2$d 個替換字元</string>
+
+    <string name="smart_toc">智慧目錄</string>
+    <string name="smart_toc_quality">品質 %1$d/100 · %2$d 章 · %3$d 處異常</string>
+    <string name="smart_toc_anomalies">重複 %1$d · 跳號 %2$d · 可疑標題 %3$d</string>
+    <string name="toc_add_here">在目前位置新增章節</string>
+    <string name="toc_custom_title">自訂章節標題</string>
+    <string name="toc_add_action">新增</string>
+    <string name="toc_hide_heading">隱藏此標題</string>
+    <string name="toc_reset_repairs">重設本機目錄修復</string>
+    <string name="toc_source_user_or_special">本機修復 / 特殊標題</string>
+
+    <string name="smart_clean4">智慧淨化 4</string>
+    <string name="smart_clean4_body">準確率優先的本機候選判斷 · 輕量模型 v%1$d · 不以模型掃描整本</string>
+    <string name="smart_clean4_signal">%1$s · %2$d 次 · 基礎 %3$d · 語意 %4$s · 調整後 %5$d</string>
+    <string name="smart_clean4_memory">本機判斷記憶 · %1$s</string>
+    <string name="keep_text">保留</string>
+    <string name="protect_text">永久保護</string>
+    <string name="delete_and_remember">刪除並記住</string>
+    <string name="open_standard_clean">開啟淨化預覽</string>
+
+    <string name="privacy_verification">隱私驗證</string>
+    <string name="privacy_verification_body">從已安裝應用程式本身驗證離線承諾。匯出的稽核只包含設定和數量，不包含任何書籍正文。</string>
+    <string name="privacy_no_internet">沒有 Android INTERNET 權限</string>
+    <string name="privacy_no_upload">沒有正文上傳能力</string>
+    <string name="privacy_no_analytics">沒有執行階段統計 SDK</string>
+    <string name="privacy_no_ads">沒有廣告 SDK</string>
+    <string name="privacy_local_counts">本機書庫 %1$d · 資料夾 %2$d · 淨化回饋 %3$d</string>
+    <string name="export_privacy_audit">匯出隱私稽核</string>
+    <string name="verified">已驗證</string>
+    <string name="not_verified">未驗證</string>
+
+    <string name="reading_aloud_background">背景朗讀 · 支援鎖定畫面和耳機控制</string>
+
+    <string name="add_folder_library">加入 TXT 資料夾</string>
+    <string name="sync_folders">同步資料夾 · %1$d</string>
+    <string name="folder_sync_complete">資料夾同步完成</string>
+    <string name="folder_sync_result">%1$d 個目錄 · 發現 %2$d · 匯入/更新 %3$d · 未變更 %4$d · 失敗 %5$d</string>
+    <string name="refresh_library">重新整理書庫</string>
+
+    <string name="batch_optimize">批次最佳化 · Pro</string>
+    <string name="batch_optimize_report">批次 TXT 報告</string>
+    <string name="batch_report_summary">%1$d 本 · %2$d 個候選 · %3$d 個安全候選 · %4$d 處目錄異常 · %5$d 本失敗</string>
+    <string name="batch_report_applied">已套用 %1$d 條新的安全淨化規則，並產生衍生淨化版本。</string>
+    <string name="apply_safe_batch">套用安全候選</string>
+    <string name="batch_book_preview">%1$s · 健康度 %2$d/100 · %3$d 個安全候選</string>
+
+    <string name="first_readable_title">先讀預覽</string>
+    <string name="first_readable_meta">%1$s · %2$s · 前 %3$d KiB</string>
+    <string name="full_import_background">現在即可閱讀這段有界預覽，完整私有匯入和索引會繼續在本機完成。</string>
+    <string name="open_full_book">開啟完整書籍</string>
+
+    <string name="competitive_ok">確定</string>
+    <string name="competitive_close">關閉</string>
+</resources>
