@@ -54,12 +54,23 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) { if (state.panel != null) actions.onClosePanel() else actions.onBackToLibrary() }
         Box(Modifier.fillMaxSize()) {
-            when (state.screen) { AppScreen.LIBRARY -> LibraryScreen(state, actions, snackbar); AppScreen.READER -> ReaderScreen(state, actions, snackbar) }
+            when (state.screen) {
+                AppScreen.LIBRARY, AppScreen.IMPORT_PREVIEW -> LibraryScreen(state, actions, snackbar)
+                AppScreen.READER -> ReaderScreen(state, actions, snackbar)
+            }
             state.busyLabel?.let { BusyOverlay(it) }
         }
         when (state.panel) {
-            ReaderPanel.SEARCH -> SearchSheet(state, actions); ReaderPanel.CHAPTERS -> ChaptersSheet(state, actions); ReaderPanel.BOOKMARKS -> BookmarksSheet(state, actions)
-            ReaderPanel.CLEAN -> CleanSheet(state, actions); ReaderPanel.SETTINGS -> ProductSettingsSheet(state, actions); ReaderPanel.ENCODING -> EncodingSheet(state, actions); null -> Unit
+            ReaderPanel.SEARCH -> SearchSheet(state, actions)
+            ReaderPanel.CHAPTERS -> SmartChaptersSheet(state, actions)
+            ReaderPanel.BOOKMARKS -> BookmarksSheet(state, actions)
+            ReaderPanel.CLEAN -> CleanSheet(state, actions)
+            ReaderPanel.SETTINGS -> ProductSettingsSheet(state, actions)
+            ReaderPanel.ENCODING -> EncodingSheet(state, actions)
+            ReaderPanel.DOCTOR -> DoctorSheet(state, actions)
+            ReaderPanel.SMART_CLEAN_LAB -> SmartCleanLabSheet(state, actions)
+            ReaderPanel.PRIVACY -> PrivacySheet(state, actions)
+            null -> Unit
         }
         if (state.deleteConfirmation) AlertDialog(
             onDismissRequest = actions.onDismissDelete,
