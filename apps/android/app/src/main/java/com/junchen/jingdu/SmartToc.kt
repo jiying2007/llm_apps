@@ -2,14 +2,14 @@ package com.junchen.jingdu
 
 import kotlin.math.abs
 
-internal data class SmartChapter(
+data class SmartChapter(
     val offset: Long,
     val title: String,
     val source: String = "core",
     val confidence: Int = 100,
 )
 
-internal data class TocQualityReport(
+data class TocQualityReport(
     val chapters: List<SmartChapter>,
     val score: Int,
     val duplicateTitles: Int,
