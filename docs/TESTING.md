@@ -14,6 +14,8 @@ Required automated coverage includes:
 - chapter extraction;
 - speech segmentation;
 - deterministic repair revisions and repair export;
+- persistent sparse-index sidecar creation;
+- corrupt/stale cache fallback and repair;
 - large-file stress, concurrent reads and handle lifecycle.
 
 No test may rely on C/C++ `assert` for correctness because Release builds define `NDEBUG`; test checks must execute in Release configurations.
@@ -25,11 +27,13 @@ Both platforms must test the same persistence invariants:
 - normalized files are named `document-<normalizedSha256>.txt`;
 - clean files are named `clean-<repairRevision>.txt`;
 - no production reader uses mutable fixed `document.txt`/`clean.txt` paths or a `clean.revision` sidecar;
+- `.jdx` index files are disposable derived caches and never product identity;
 - re-importing identical source bytes reuses source identity;
 - changing the decode so `normalizedSha256` changes creates a new immutable normalized path and resets source-view progress;
 - a candidate reader session is opened before the previous session is closed;
 - failed/interrupted candidate creation leaves the previous session/files usable;
 - obsolete revisions are pruned only after the new session is published;
+- orphan `.jdx` / `.jdx.tmp` files are pruned after their document revision disappears;
 - clean-view offsets never overwrite normalized-source progress/bookmarks.
 
 The hosted repository contract checks structural invariants; device tests exercise interruption/process-death behavior.
@@ -43,7 +47,7 @@ Minimum UI smoke coverage:
 - empty Library exposes product positioning and the primary import action;
 - Reader exposes back, search, chapters, progress and TTS semantics;
 - icon-only controls have content descriptions;
-- the old programmatic Views `MainActivity.java` is absent;
+- the old programmatic Views `MainActivity.java` and monolithic `JingduUi.kt` are absent;
 - adaptive grid / bounded wide-reader measure / bottom sheets are part of the architecture contract.
 
 Device/UI validation additionally covers:
@@ -53,17 +57,30 @@ Device/UI validation additionally covers:
 - TalkBack reading order and minimum touch targets;
 - phone portrait/landscape, split screen, tablet and foldable-size windows;
 - theme/type/line-height/margin changes without losing position;
-- progress slider and sequential previous-page behavior;
+- progress slider seeks on gesture completion rather than every drag frame;
+- viewport-driven sequential paging and exact in-session previous-page history;
 - ACTION_VIEW and ACTION_SEND import;
 - re-decode without reopening the external source picker;
 - revision-safe bookmarks and Clean offset isolation;
+- configuration recreation restores Reader only when Reader was active;
+- restored position is rejected if normalized revision changed;
+- process recreation never restores raw native handles/TTS/audio-focus state;
+- pending export survives configuration recreation only if the private source file still exists;
 - TTS/audio focus, auto page and sleep timer.
 
 UI tests should prefer semantics/user-observable behavior over implementation-node structure so Compose refactors do not create brittle tests.
 
 ## Android performance
 
-10/100/300 MiB device runs verify that import, open/index, search, chapter scan, Clean generation, re-decode and export never intentionally execute on the main thread. Library rendering must not open/index every book. Reader page navigation must remain bounded regardless of full document size.
+10/100/300 MiB device runs verify that import, first open/index, search, chapter scan, Clean generation, re-decode and export never intentionally execute on the main thread. Library rendering must not open/index every book. Reader page navigation must remain bounded regardless of full document size.
+
+Specific large-file checks:
+
+- Search/Chapters reuse the current immutable session rather than reopening the document;
+- first open generates a `.jdx` cache when the private directory is writable;
+- repeat open of the same revision loads validated cache metadata instead of rescanning the full document;
+- corrupt sidecar transparently rebuilds from source;
+- deleting/pruning revisions removes orphan cache files.
 
 ## HarmonyOS
 
@@ -71,4 +88,4 @@ Hosted CI verifies source/bridge/storage contracts. The `harmony-device.yml` wor
 
 ## Cross-platform parity
 
-Use the same golden source files on both platforms. For each file compare source SHA, normalized SHA, encoding selection, character count, fixed window reads, search offsets, chapter offsets, repair revision and clean-output SHA. A mismatch is a release blocker before declaring the two-platform product jointly production-ready.
+Use the same golden source files on both platforms. For each file compare source SHA, normalized SHA, encoding selection, character count, fixed window reads, search offsets, chapter offsets, repair revision and clean-output SHA. The disposable `.jdx` cache is explicitly excluded from parity identity. A semantic mismatch is a release blocker before declaring the two-platform product jointly production-ready.
