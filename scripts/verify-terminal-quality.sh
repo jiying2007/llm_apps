@@ -5,6 +5,8 @@ required=(
   docs/PERFORMANCE_SLO.md
   docs/SMART_CLEAN_ARCHITECTURE.md
   THIRD_PARTY_NOTICES.md
+  third_party/licenses/OpenccJava-MIT.txt
+  third_party/licenses/OpenCC-Apache-2.0.txt
   core/native/tests/core_performance_gate_test.cpp
   apps/android/app/src/main/java/com/junchen/jingdu/CleanHistory.kt
   apps/android/app/src/main/java/com/junchen/jingdu/LibraryMetadataStore.kt
@@ -91,8 +93,15 @@ grep -q 'chineseOverrides = chineseOverrides' apps/android/app/src/main/java/com
 grep -q 'else ChineseDisplayMode.ORIGINAL' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
 grep -q 'else ""' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
 grep -q 'io.github.laisuk:openccjava:1.4.2' apps/android/app/build.gradle
-grep -q 'OpenccJava' THIRD_PARTY_NOTICES.md
-grep -q 'OpenCC dictionaries' THIRD_PARTY_NOTICES.md
+
+grep -q '^MIT License$' third_party/licenses/OpenccJava-MIT.txt
+grep -q 'Copyright (c) 2025 https://github.com/laisuk' third_party/licenses/OpenccJava-MIT.txt
+grep -q '^Apache License$' third_party/licenses/OpenCC-Apache-2.0.txt
+grep -q '^Version 2.0, January 2004$' third_party/licenses/OpenCC-Apache-2.0.txt
+grep -q 'Derivative Works that You distribute' third_party/licenses/OpenCC-Apache-2.0.txt
+grep -q 'OpenccJava-MIT.txt' THIRD_PARTY_NOTICES.md
+grep -q 'OpenCC-Apache-2.0.txt' THIRD_PARTY_NOTICES.md
+grep -q 'repository root has no `NOTICE` file' THIRD_PARTY_NOTICES.md
 
 if grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml; then
   echo 'Smart Clean/OpenCC must not add Android INTERNET permission' >&2
