@@ -138,7 +138,7 @@ final class BookRepository {
                     size,
                     sourceSha,
                     normalizedSha,
-                    sameRevision ? existing.progress : 0,
+                    existing != null ? existing.progress : 0,
                     sameRevision ? existing.charCount : 0,
                     System.currentTimeMillis());
             upsert(book);
@@ -170,7 +170,7 @@ final class BookRepository {
                     book.size,
                     book.sourceSha256,
                     normalizedSha,
-                    sameRevision ? book.progress : 0,
+                    book.progress,
                     sameRevision ? book.charCount : 0,
                     System.currentTimeMillis());
             upsert(updated);
@@ -190,6 +190,7 @@ final class BookRepository {
     synchronized void updateCharCount(Book book, long charCount) {
         if (book == null || charCount <= 0 || book.charCount == charCount) return;
         book.charCount = charCount;
+        if (book.progress >= charCount) book.progress = Math.max(0, charCount - 1);
         upsert(book);
     }
 
