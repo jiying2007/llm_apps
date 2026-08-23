@@ -36,11 +36,7 @@ internal class BillingManager(
 
     private val billingClient = BillingClient.newBuilder(activity.applicationContext)
         .setListener(this)
-        .enablePendingPurchases(
-            PendingPurchasesParams.newBuilder()
-                .enableOneTimeProducts()
-                .build(),
-        )
+        .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
         .enableAutoServiceReconnection()
         .build()
 
@@ -50,45 +46,33 @@ internal class BillingManager(
             connected = true
             queryOwned(showResult = false)
             queryProduct()
-        } else {
-            billingClient.startConnection(this)
-        }
+        } else billingClient.startConnection(this)
     }
 
-    fun close() {
-        if (billingClient.isReady) billingClient.endConnection()
-    }
+    fun close() { if (billingClient.isReady) billingClient.endConnection() }
 
     fun purchase() {
         if (unlocked) {
-            onMessage("净读 Pro 已解锁。")
+            onMessage(activity.getString(R.string.billing_already_unlocked))
             return
         }
         val details = productDetails
         val token = offerToken
         if (!billingClient.isReady || details == null || token.isNullOrEmpty()) {
-            onMessage("当前无法连接 Google Play 购买服务，请稍后重试。")
+            onMessage(activity.getString(R.string.billing_unavailable))
             return
         }
-        val productParams = BillingFlowParams.ProductDetailsParams.newBuilder()
-            .setProductDetails(details)
-            .setOfferToken(token)
-            .build()
-        val result = billingClient.launchBillingFlow(
-            activity,
-            BillingFlowParams.newBuilder()
-                .setProductDetailsParamsList(listOf(productParams))
-                .build(),
-        )
+        val productParams = BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(details).setOfferToken(token).build()
+        val result = billingClient.launchBillingFlow(activity, BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(productParams)).build())
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-            onMessage("暂时无法发起购买：${result.debugMessage}")
+            onMessage(activity.getString(R.string.billing_launch_failed, result.debugMessage))
         }
     }
 
     fun restore() {
         if (!billingClient.isReady) {
             start()
-            onMessage("正在连接 Google Play 并恢复购买…")
+            onMessage(activity.getString(R.string.billing_restoring))
             return
         }
         queryOwned(showResult = true)
@@ -112,20 +96,13 @@ internal class BillingManager(
             BillingClient.BillingResponseCode.OK -> processPurchases(purchases.orEmpty(), authoritative = false)
             BillingClient.BillingResponseCode.USER_CANCELED -> Unit
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> queryOwned(showResult = true)
-            else -> onMessage("购买未完成：${result.debugMessage}")
+            else -> onMessage(activity.getString(R.string.billing_incomplete, result.debugMessage))
         }
     }
 
     private fun queryProduct() {
         val params = QueryProductDetailsParams.newBuilder()
-            .setProductList(
-                listOf(
-                    QueryProductDetailsParams.Product.newBuilder()
-                        .setProductId(PRODUCT_ID)
-                        .setProductType(BillingClient.ProductType.INAPP)
-                        .build(),
-                ),
-            )
+            .setProductList(listOf(QueryProductDetailsParams.Product.newBuilder().setProductId(PRODUCT_ID).setProductType(BillingClient.ProductType.INAPP).build()))
             .build()
         billingClient.queryProductDetailsAsync(params) { result, queryResult ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
@@ -144,18 +121,12 @@ internal class BillingManager(
     }
 
     private fun queryOwned(showResult: Boolean) {
-        val params = QueryPurchasesParams.newBuilder()
-            .setProductType(BillingClient.ProductType.INAPP)
-            .build()
+        val params = QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()
         billingClient.queryPurchasesAsync(params) { result, purchases ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 val restored = processPurchases(purchases, authoritative = true)
-                if (showResult) {
-                    onMessage(if (restored) "已恢复净读 Pro。" else "当前 Google Play 账号没有净读 Pro 购买记录。")
-                }
-            } else if (showResult) {
-                onMessage("恢复购买失败：${result.debugMessage}")
-            }
+                if (showResult) onMessage(activity.getString(if (restored) R.string.billing_restored else R.string.billing_not_owned))
+            } else if (showResult) onMessage(activity.getString(R.string.billing_restore_failed, result.debugMessage))
         }
     }
 
@@ -166,13 +137,9 @@ internal class BillingManager(
             if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return@forEach
             ownsPro = true
             if (!purchase.isAcknowledged) {
-                val params = AcknowledgePurchaseParams.newBuilder()
-                    .setPurchaseToken(purchase.purchaseToken)
-                    .build()
+                val params = AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()
                 billingClient.acknowledgePurchase(params) { result ->
-                    if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-                        onMessage("Pro 已解锁，但购买确认尚未完成，请保持联网后重新打开净读。")
-                    }
+                    if (result.responseCode != BillingClient.BillingResponseCode.OK) onMessage(activity.getString(R.string.billing_ack_pending))
                 }
             }
         }
@@ -188,14 +155,7 @@ internal class BillingManager(
 
     private fun publish() {
         activity.runOnUiThread {
-            onState(
-                BillingState(
-                    unlocked = unlocked,
-                    available = productDetails != null && !offerToken.isNullOrEmpty(),
-                    connected = connected,
-                    price = formattedPrice,
-                ),
-            )
+            onState(BillingState(unlocked = unlocked, available = productDetails != null && !offerToken.isNullOrEmpty(), connected = connected, price = formattedPrice))
         }
     }
 
