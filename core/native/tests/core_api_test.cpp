@@ -61,7 +61,11 @@ int main() {
   const std::string cachePath = std::string(path) + ".jdx";
   {
     std::ofstream file(path, std::ios::binary);
-    file << "第一章 开始\nhello 世界\nChapter 2 Next\nhello again\n";
+    file << "第一章 开始\nhello 世界\n请收藏本站 www.example.com\n"
+         << "正文内容一\n请收藏本站 www.example.com\n"
+         << "正文内容二\n请收藏本站 www.example.com\n"
+         << "正文内容三\n请收藏本站 www.example.com\n"
+         << "Chapter 2 Next\nhello again\n";
   }
   check(jd_file_sha256(path, hash, sizeof(hash)) == JD_OK, "file SHA status");
   check(std::string(hash).size() == 64, "file SHA length");
@@ -82,6 +86,8 @@ int main() {
   check(jd_read(0, 0, 10, &invalidBuffer) == JD_EHANDLE, "invalid handle read status");
   check(jd_search(0, "hello", 10, &invalidBuffer) == JD_EHANDLE,
         "invalid handle search status");
+  check(jd_noise_candidates(0, 10, &invalidBuffer) == JD_EHANDLE,
+        "invalid handle noise analysis status");
 
   jd_handle handle = 0;
   check(jd_open_utf8(path, &handle) == JD_OK && handle != 0, "open");
@@ -98,6 +104,12 @@ int main() {
   check(chapters.find("第一章") != std::string::npos &&
             chapters.find("Chapter 2") != std::string::npos,
         "chapters content");
+  check(jd_noise_candidates(handle, 20, &buffer) == JD_OK, "noise analysis status");
+  const std::string noise = take(&buffer);
+  check(noise.find("请收藏本站 www.example.com") != std::string::npos,
+        "noise analysis detects promotional repeated line");
+  check(noise.find("\t4\t") != std::string::npos,
+        "noise analysis reports exact repeated count");
   check(jd_speech_chunk(handle, 0, 20, &buffer) == JD_OK &&
             take(&buffer).find('\t') != std::string::npos,
         "speech chunk");
