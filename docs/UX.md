@@ -1,98 +1,107 @@
-# UX — Android
+# UX — Android v2.2
 
 ## Design direction
 
-The Android app follows a calm Material 3 reading experience rather than a permanent command toolbar. Library and Reader are the two product states; search, chapters, bookmarks, Clean, encoding and reading settings are contextual sheets.
+Jingdu is a calm Material 3 reading product, not an engineering toolbar and not a paywall-first app. Library and Reader are the two product states. Search, chapters, bookmarks, Clean, encoding and settings are contextual sheets.
 
-The UI is implemented with Jetpack Compose so Android can follow the current Compose-first platform direction, edge-to-edge behavior, predictive back and adaptive layouts without preserving the old Views toolbar architecture.
+Commercial UX follows one rule: **show useful local results before asking for money**. Free users must be able to read normally and inspect Smart Clean candidates; Pro appears only when automation/reusable assets are requested.
 
-## Visual hierarchy
+## Library
 
-### Library
-- Large product title: `净读`.
-- Supporting line: `本地 TXT · 无广告 · 不上传`.
-- One high-emphasis import action.
-- Book cards prioritize title and reading progress; technical metadata is secondary.
-- Empty state explains the product value before asking the user to choose a file.
+- In-app brand stays `净读`; store discovery title may include `TXT 小说阅读器`.
+- Supporting promise: `本地 TXT · 无广告 · 不上传`.
+- Primary action imports one TXT; batch import is secondary and uses SAF multi-select.
+- Cards prioritize title/progress; encoding/size/last-read are secondary.
+- Empty state explains mojibake rescue, Clean and privacy before file selection.
 
-### Reader
-- The text surface receives the largest visual area and the lowest visual noise.
-- Book title is available but visually subordinate to content.
-- Search and chapter navigation are top-level reader actions.
-- Page navigation and progress are grouped at the bottom.
-- Clean/encoding/settings/delete are progressive-disclosure actions.
+## Reader
 
-## Reading surface
+- Text owns the screen.
+- Search and chapters are top-level actions.
+- Previous/progress/next/TTS are persistent bottom actions.
+- Bookmarks/Clean/encoding/settings/delete remain progressive-disclosure actions.
+- System back closes a sheet before Reader → Library; predictive back remains compatible.
 
-Three page tones are supported:
+## Clean conversion flow
 
-- **Paper** — warm background for long sessions; default.
-- **Light** — neutral high-contrast white.
-- **Night** — low-luminance surface with warm off-white text.
+### Smart Clean is not a hidden Pro teaser
+1. User opens Clean.
+2. `免费扫描干扰文本` runs locally.
+3. Results show reason, exact text, count and confidence.
+4. User can include/exclude candidates.
+5. Only `应用已选建议` asks for Pro when not owned.
+6. After purchase, the same selection is applied and Clean preview opens.
 
-Reader typography:
-- respects Android font scaling;
-- adjustable 16–34sp base size;
-- adjustable line height;
-- system sans and serif choices;
-- adjustable horizontal margins;
-- long line length is capped on tablets/foldables instead of stretching across the window.
+No first-launch Pro modal and no artificial blur/hidden candidate text.
 
-## Navigation
+### Per-book rules
+- Exact literal rules remain Free.
+- Empty replacement means delete.
+- Safe whole-line wildcard `*` is labeled Pro and explains that it matches a whole line.
+- No arbitrary regex editor in v2.2.
 
-- System back closes the active sheet first, then returns Reader → Library.
-- No custom interception of the platform back key; predictive back remains compatible.
-- Volume Up/Down keeps previous/next-page support.
-- Search/chapter jumps reset sequential page history.
-- Clean preview uses an independent offset domain and never persists original-view progress/bookmarks.
+### Global rule library
+- Clearly labeled Pro/user-owned asset.
+- Recommended rules are opt-in and editable.
+- Import/export is visible only as an explicit user action.
+- Applying rules never mutates source TXT.
 
-## Sheets
+## Reading settings
 
-### Search
-Search field stays visible above results. Results show context and jump directly to the hit.
-
-### Chapters
-Chapter titles are a scrollable destination list. Generated chapter scans run off the main thread.
-
-### Bookmarks
-Original-view bookmarks show approximate progress. Adding a bookmark is a first-class action. Clean preview explicitly disables bookmark persistence.
-
-### Clean
-Rules are visible and individually removable. Users can add a literal `find → replace` rule, preview the current clean revision, return to original text, or export a clean TXT.
-
-### Reading settings
-Settings are grouped by intent rather than implementation detail:
+Free groups:
 1. page tone;
-2. typography;
-3. TTS;
-4. auto page and sleep timer.
+2. font/font size/line height/margins;
+3. base TTS rate/pitch and start/stop;
+4. auto paging;
+5. sleep timer.
 
-## Adaptive layout
+Pro groups:
+- offline TTS voice selection, showing only voices the system engine marks as not requiring network;
+- local settings/global-rule backup and restore.
 
-- Compact width: one-column library and centered reader.
-- Medium width: book cards use an adaptive grid.
-- Expanded width: reader keeps a bounded text measure; chrome uses the extra width rather than stretching paragraphs.
-- Landscape and split screen must remain usable at compact height.
+Backup copy explicitly says book正文 is excluded and nothing is uploaded.
 
-## Accessibility
+## Pro purchase surface
 
-- Material controls provide at least 48dp touch targets.
-- Every icon-only action has a content description.
-- Color is never the only status signal.
-- Reader type scales with system accessibility settings.
-- Progress is exposed as text as well as a slider.
-- Busy state uses a visible progress indicator plus descriptive text.
-- Destructive actions require explicit confirmation.
+- Product is one-time lifetime, never described as subscription.
+- CTA uses Google Play `formattedPrice` when available.
+- If Billing/product details are unavailable, show retry/restore wording without blocking Free features.
+- Existing owners always get a visible `恢复购买` / re-check path.
+- `PENDING` purchases do not show Pro unlocked.
 
-## Motion
+## Review prompt
 
-Use short state transitions only where they explain hierarchy. Reading itself has no decorative animation. Page movement should feel immediate; no simulated paper-curl animation is planned.
+- No review on first launch.
+- Request only after meaningful local milestones such as multiple book opens, Smart Clean use or encoding rescue.
+- No “Do you like Jingdu?” pre-gate.
+- Respect Play’s system UI and local cooldown.
+
+## Reading surface / navigation
+
+- 16–34sp base type, adjustable line height/margins, system sans/serif, Paper/Light/Night.
+- Expanded windows cap text measure rather than stretching paragraphs.
+- Viewport layout reports visible code-point span for sequential paging.
+- Search/chapter jumps reset sequential page history.
+- Clean offsets never persist into original progress/bookmarks.
+
+## Adaptive / accessibility
+
+- Material controls retain 48dp targets.
+- Icon-only actions have content descriptions.
+- 200% font scale keeps primary navigation usable.
+- Color is never the sole state signal.
+- Busy work has progress indicator + descriptive text.
+- Destructive actions require confirmation.
+- Pro is never communicated by color alone; use text/icon labels.
 
 ## Error language
 
-Errors state what failed and what the user can do next. Avoid exposing native status codes unless they are included as secondary diagnostic detail.
-
-Examples:
+Errors explain next action rather than native status codes. Examples:
 - `无法识别文本编码。可以在“编码”里手动选择后重试。`
-- `导出失败，目标位置可能不可写。`
-- `系统朗读引擎尚未就绪，请稍后重试。`
+- `当前无法连接 Google Play 购买服务，请稍后重试。`
+- `系统朗读引擎暂无可选离线 voice。`
+- `备份恢复失败：文件格式无效或版本不受支持。`
+
+## Store-to-product continuity
+
+The first-run experience must deliver the same promises shown in Play screenshots: encoding rescue, local Smart Clean, long-form comfort and privacy. Store imagery must not advertise features that are only roadmap items.
