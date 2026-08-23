@@ -5,7 +5,7 @@ python3 - <<'PY'
 from pathlib import Path
 
 root = Path('.')
-locales = ['zh-CN', 'en-US']
+locales = ['zh-CN', 'zh-TW', 'zh-HK', 'en-US']
 limits = {'title.txt': 30, 'short_description.txt': 80, 'full_description.txt': 4000}
 for locale in locales:
     base = root / 'fastlane' / 'metadata' / 'android' / locale
@@ -19,9 +19,17 @@ for locale in locales:
         if len(value) > limit:
             raise SystemExit(f'{path}: {len(value)} characters > {limit}')
 
-zh_title = (root / 'fastlane/metadata/android/zh-CN/title.txt').read_text(encoding='utf-8').strip()
-if zh_title != '净读 - TXT 小说阅读器':
-    raise SystemExit('unexpected zh-CN default title')
+expected_titles = {
+    'zh-CN': '净读 - TXT 小说阅读器',
+    'zh-TW': '淨讀 - TXT 小說閱讀器',
+    'zh-HK': '淨讀 - TXT 小說閱讀器',
+}
+for locale, expected in expected_titles.items():
+    title = (root / f'fastlane/metadata/android/{locale}/title.txt').read_text(encoding='utf-8').strip()
+    if title != expected:
+        raise SystemExit(f'unexpected {locale} default title: {title!r}')
+
+zh_title = expected_titles['zh-CN']
 for banned in ('免费', '#1', '最强', '第一', '折扣', '限时'):
     if banned in zh_title:
         raise SystemExit(f'promotional/ranking term in Play title: {banned}')
@@ -45,6 +53,8 @@ for path in (
         raise SystemExit(f'missing growth/store SSOT: {path}')
 PY
 
+python3 ./scripts/verify-android-i18n.py
+
 grep -q 'getOrElse(4)' apps/android/app/build.gradle
 grep -q 'getOrElse("2.2.0")' apps/android/app/build.gradle
 grep -q 'com.android.billingclient:billing:9.1.0' apps/android/app/build.gradle
@@ -56,10 +66,10 @@ grep -q 'queryPurchasesAsync' apps/android/app/src/main/java/com/junchen/jingdu/
 grep -q 'Purchase.PurchaseState.PURCHASED' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
 grep -q 'acknowledgePurchase' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
 
-grep -q '免费扫描干扰文本' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
-grep -q '解锁 Pro 应用建议' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
-grep -q '离线朗读声音' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
-grep -q '本地资产备份' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
+grep -q 'R.string.scan_noise_free' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+grep -q 'R.string.unlock_pro_apply' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+grep -q 'R.string.offline_voice' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
+grep -q 'R.string.local_asset_backup' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
 grep -q 'OpenMultipleDocuments' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'ReviewManagerFactory' apps/android/app/src/main/java/com/junchen/jingdu/ReviewPrompter.kt
 
