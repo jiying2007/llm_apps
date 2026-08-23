@@ -1,6 +1,8 @@
 package com.junchen.jingdu
 
 import android.content.SharedPreferences
+import org.json.JSONArray
+import org.json.JSONObject
 
 internal data class BatchBookResult(
     val bookId: String,
@@ -104,5 +106,33 @@ internal class BatchAutomation(
         return adjusted >= 88 && candidate.count() >= 1
     }
 
-    companion object { private const val MAX_BOOKS = 100 }
+    companion object {
+        private const val MAX_BOOKS = 100
+
+        fun toJson(report: BatchAutomationReport): String {
+            val books = JSONArray()
+            report.books.forEach { item ->
+                books.put(JSONObject()
+                    .put("bookId", item.bookId)
+                    .put("name", item.name)
+                    .put("healthScore", item.healthScore)
+                    .put("noiseCandidates", item.noiseCandidates)
+                    .put("safeCandidates", item.safeCandidates)
+                    .put("tocAnomalies", item.tocAnomalies)
+                    .put("appliedRules", item.appliedRules))
+            }
+            return JSONObject()
+                .put("schema", 1)
+                .put("type", "jingdu-batch-automation-report")
+                .put("booksScanned", report.booksScanned)
+                .put("totalCandidates", report.totalCandidates)
+                .put("safeCandidates", report.safeCandidates)
+                .put("tocAnomalies", report.tocAnomalies)
+                .put("appliedRules", report.appliedRules)
+                .put("failedBooks", report.failedBooks)
+                .put("containsBookText", false)
+                .put("books", books)
+                .toString(2)
+        }
+    }
 }
