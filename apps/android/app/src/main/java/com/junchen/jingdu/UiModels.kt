@@ -1,6 +1,6 @@
 package com.junchen.jingdu
 
-enum class AppScreen { LIBRARY, READER, IMPORT_PREVIEW }
+enum class AppScreen { LIBRARY, READER }
 enum class ReaderPanel { SEARCH, CHAPTERS, BOOKMARKS, CLEAN, SETTINGS, ENCODING, DOCTOR, SMART_CLEAN_LAB, PRIVACY }
 enum class RepairRuleMode { LITERAL, LINE_GLOB }
 enum class LibraryBookStatus { UNREAD, READING, FINISHED }
@@ -92,27 +92,18 @@ data class AppUiState(
     val searchResults: List<SearchResultModel> = emptyList(),
     val chapters: List<ChapterModel> = emptyList(),
     val chaptersLoaded: Boolean = false,
-    val tocReport: TocQualityReport? = null,
     val bookmarks: List<BookmarkModel> = emptyList(),
     val repairRules: List<RepairRule> = emptyList(),
     val globalRules: List<RepairRule> = emptyList(),
     val noiseCandidates: List<NoiseCandidateModel> = emptyList(),
     val smartCleanAnalyzed: Boolean = false,
     val smartCleanUndoAvailable: Boolean = false,
-    val doctorReport: TxtDoctorReport? = null,
-    val doctorAnalyzed: Boolean = false,
-    val importPreview: ImportPreview? = null,
-    val batchReport: BatchAutomationReport? = null,
-    val folderRootCount: Int = 0,
-    val privacyAudit: PrivacyAuditResult? = null,
     val proUnlocked: Boolean = false,
     val proAvailable: Boolean = false,
     val proConnected: Boolean = false,
     val proPrice: String? = null,
     val ttsVoices: List<TtsVoiceModel> = emptyList(),
     val ttsPlaying: Boolean = false,
-    val ttsHighlightOffset: Long = -1,
-    val ttsHighlightNextOffset: Long = -1,
     val autoPaging: Boolean = false,
     val sleepMinutes: Int = 0,
     val settings: ReaderSettings = ReaderSettings(),
