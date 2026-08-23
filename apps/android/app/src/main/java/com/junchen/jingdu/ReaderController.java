@@ -66,7 +66,7 @@ final class ReaderController implements Closeable {
                 if (tab <= 0) continue;
                 try {
                     long offset = Long.parseLong(line.substring(0, tab));
-                    merged.putIfAbsent(offset, new Hit(offset, ChineseDisplayConverter.convert(line.substring(tab + 1))));
+                    merged.putIfAbsent(offset, new Hit(offset, line.substring(tab + 1)));
                 } catch (NumberFormatException ignored) {
                 }
             }
@@ -85,7 +85,7 @@ final class ReaderController implements Closeable {
             int tab = line.indexOf('\t');
             if (tab <= 0) continue;
             try {
-                chapters.add(new Chapter(Long.parseLong(line.substring(0, tab)), ChineseDisplayConverter.convert(line.substring(tab + 1))));
+                chapters.add(new Chapter(Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
             } catch (NumberFormatException ignored) {
             }
         }
