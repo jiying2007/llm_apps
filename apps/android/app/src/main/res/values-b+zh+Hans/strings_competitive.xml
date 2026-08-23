@@ -54,6 +54,10 @@
 
     <string name="add_folder_library">添加 TXT 文件夹</string>
     <string name="sync_folders">同步文件夹 · %1$d</string>
+    <string name="manage_folder_library">管理文件夹 · %1$d</string>
+    <string name="folder_library_roots">TXT 文件夹目录</string>
+    <string name="folder_library_empty">当前没有保留的文件夹目录。</string>
+    <string name="remove_folder_root">移除此文件夹目录</string>
     <string name="folder_sync_complete">文件夹同步完成</string>
     <string name="folder_sync_result">%1$d 个目录 · 发现 %2$d · 导入/更新 %3$d · 未变化 %4$d · 失败 %5$d</string>
     <string name="refresh_library">刷新书库</string>
@@ -70,9 +74,6 @@
     <string name="full_import_background">现在即可阅读这段有界预览，完整私有导入和索引会继续在本地完成。</string>
     <string name="open_full_book">打开完整书籍</string>
 
-    <string name="add">添加</string>
-    <string name="ok">确定</string>
-    <string name="close">关闭</string>
     <string name="competitive_ok">确定</string>
     <string name="competitive_close">关闭</string>
 </resources>
