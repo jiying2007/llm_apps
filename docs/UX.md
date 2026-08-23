@@ -6,10 +6,12 @@ Jingdu is a calm Material 3 reading product, not an engineering toolbar and not 
 
 Commercial UX follows one rule: **show useful local results before asking for money**. Free users must be able to read normally and inspect Smart Clean candidates; Pro appears only when automation/reusable assets are requested.
 
+All user-facing copy is resource-backed. Android supports Simplified Chinese, Traditional Chinese and English; layouts must tolerate wording expansion and 200% font scale without relying on fixed Chinese string lengths. UI locale and document language are separate concepts.
+
 ## Library
 
-- In-app brand stays `净读`; store discovery title may include `TXT 小说阅读器`.
-- Supporting promise: `本地 TXT · 无广告 · 不上传`.
+- In-app brand follows the active locale (`净读` / `淨讀` / `Jingdu`); store discovery titles may include localized TXT-reader keywords.
+- Supporting privacy promise is localized from resources rather than embedded in Compose source.
 - Primary action imports one TXT; batch import is secondary and uses SAF multi-select.
 - Cards prioritize title/progress; encoding/size/last-read are secondary.
 - Empty state explains mojibake rescue, Clean and privacy before file selection.
@@ -18,19 +20,22 @@ Commercial UX follows one rule: **show useful local results before asking for mo
 
 - Text owns the screen.
 - Search and chapters are top-level actions.
-- Previous/progress/next/TTS are persistent bottom actions.
+- Previous/progress/next/TTS are persistent bottom actions and have localized accessibility descriptions.
 - Bookmarks/Clean/encoding/settings/delete remain progressive-disclosure actions.
 - System back closes a sheet before Reader → Library; predictive back remains compatible.
+- Long English or Traditional-Chinese labels must wrap/ellipsize according to Material hierarchy instead of forcing fixed widths.
 
 ## Clean conversion flow
 
 ### Smart Clean is not a hidden Pro teaser
 1. User opens Clean.
-2. `免费扫描干扰文本` runs locally.
-3. Results show reason, exact text, count and confidence.
+2. The localized free-scan action runs locally.
+3. Results show localized reason plus exact text, count and confidence.
 4. User can include/exclude candidates.
-5. Only `应用已选建议` asks for Pro when not owned.
+5. Only applying selected suggestions asks for Pro when not owned.
 6. After purchase, the same selection is applied and Clean preview opens.
+
+Core candidate reasons are stable codes (`url`, `promo`, `repeated`, `promo_repeated`); the Android UI maps those codes to the active locale. Smart Clean content detection itself covers Simplified and Traditional common promotion/watermark forms and never follows the UI locale.
 
 No first-launch Pro modal and no artificial blur/hidden candidate text.
 
@@ -42,9 +47,16 @@ No first-launch Pro modal and no artificial blur/hidden candidate text.
 
 ### Global rule library
 - Clearly labeled Pro/user-owned asset.
-- Recommended rules are opt-in and editable.
+- Recommended Simplified and Traditional rules are opt-in and editable.
 - Import/export is visible only as an explicit user action.
 - Applying rules never mutates source TXT.
+
+## Search
+
+- Exact text search remains primary.
+- Android may additionally try curated one-to-one Simplified/Traditional character variants and merge duplicate offsets.
+- The UI does not claim general-purpose conversion; ambiguous mappings are intentionally not guessed.
+- Cross-script search behavior follows document/query text, not the selected UI language.
 
 ## Reading settings
 
@@ -59,14 +71,17 @@ Pro groups:
 - offline TTS voice selection, showing only voices the system engine marks as not requiring network;
 - local settings/global-rule backup and restore.
 
+When no voice has been explicitly selected, Android infers a suitable `zh-CN`, `zh-TW`, `zh-HK` or English TTS locale from the current document text. A user-selected offline voice always has priority over automatic language selection.
+
 Backup copy explicitly says book正文 is excluded and nothing is uploaded.
 
 ## Pro purchase surface
 
 - Product is one-time lifetime, never described as subscription.
 - CTA uses Google Play `formattedPrice` when available.
+- Billing/error messages are localized with Android resources.
 - If Billing/product details are unavailable, show retry/restore wording without blocking Free features.
-- Existing owners always get a visible `恢复购买` / re-check path.
+- Existing owners always get a visible localized restore/re-check path.
 - `PENDING` purchases do not show Pro unlocked.
 
 ## Review prompt
@@ -87,21 +102,30 @@ Backup copy explicitly says book正文 is excluded and nothing is uploaded.
 ## Adaptive / accessibility
 
 - Material controls retain 48dp targets.
-- Icon-only actions have content descriptions.
+- Icon-only actions have localized content descriptions.
 - 200% font scale keeps primary navigation usable.
 - Color is never the sole state signal.
-- Busy work has progress indicator + descriptive text.
+- Busy work has progress indicator + localized descriptive text.
 - Destructive actions require confirmation.
 - Pro is never communicated by color alone; use text/icon labels.
+- Locale changes must not alter document identity, reader offset semantics, rule persistence or TTS voice preference.
 
 ## Error language
 
-Errors explain next action rather than native status codes. Examples:
-- `无法识别文本编码。可以在“编码”里手动选择后重试。`
-- `当前无法连接 Google Play 购买服务，请稍后重试。`
-- `系统朗读引擎暂无可选离线 voice。`
-- `备份恢复失败：文件格式无效或版本不受支持。`
+Errors explain next action rather than exposing native status codes. Translation belongs in Android resources; stable internal error/reason codes may cross business boundaries, but localized display text must not be persisted as identity or protocol data.
+
+Representative categories include encoding/import failure, Google Play unavailability, TTS readiness/audio focus, invalid rule/backup format and export destination failure. All active locales must retain equivalent actionability rather than literal machine translation.
+
+## Localization verification
+
+- `en-US`, `zh-Hans` and `zh-Hant` resource key sets must stay identical.
+- Format placeholders (`%1$s`, `%1$d`, etc.) must stay aligned across locales.
+- Major Compose and runtime-controller files may not contain hard-coded CJK UI copy.
+- Compose AndroidTest resolves labels/descriptions through `targetContext.getString(...)`, so the same smoke test contract works under the active locale.
+- Hosted CI assembles AndroidTest sources; real-device locale switching at `zh-CN`, `zh-TW`, `zh-HK`, `en-US` belongs in the Android qualification/device matrix.
+
+See `LOCALIZATION.md` for resource and store-locale structure.
 
 ## Store-to-product continuity
 
-The first-run experience must deliver the same promises shown in Play screenshots: encoding rescue, local Smart Clean, long-form comfort and privacy. Store imagery must not advertise features that are only roadmap items.
+The first-run experience must deliver the same promises shown in localized Play screenshots: encoding rescue, local Smart Clean, long-form comfort and privacy. Store imagery must not advertise features that are only roadmap items, and English localization must not imply EPUB/cloud catalog support that the product does not provide.
