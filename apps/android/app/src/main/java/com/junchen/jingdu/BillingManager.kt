@@ -46,7 +46,13 @@ internal class BillingManager(
 
     fun start() {
         publish()
-        if (!billingClient.isReady) billingClient.startConnection(this)
+        if (billingClient.isReady) {
+            connected = true
+            queryOwned(showResult = false)
+            queryProduct()
+        } else {
+            billingClient.startConnection(this)
+        }
     }
 
     fun close() {
