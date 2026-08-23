@@ -65,20 +65,28 @@ uint32_t promotionalStrength(const std::string& value, std::string* reason) {
                    lower.find("www.") != std::string::npos ||
                    lower.find(".com") != std::string::npos ||
                    lower.find(".net") != std::string::npos ||
-                   lower.find(".cn") != std::string::npos;
+                   lower.find(".cn") != std::string::npos ||
+                   lower.find(".tw") != std::string::npos ||
+                   lower.find(".hk") != std::string::npos;
   if (url) {
-    if (reason != nullptr) *reason = "网址";
+    if (reason != nullptr) *reason = "url";
     return 82;
   }
 
+  // Content-language detection belongs in the document pipeline, not the UI locale. Keep
+  // Simplified and Traditional markers together so the same Core behaves identically on all shells.
   constexpr const char* strong[] = {
       "最新网址", "备用网址", "请收藏本站", "请记住本站", "手机用户请访问",
       "关注公众号", "微信公众号", "下载app", "下载APP", "加入书签",
       "求收藏", "求推荐票", "感谢投票", "最快更新", "无弹窗",
-      "本书来自", "更多精彩", "搜索书名", "请牢记域名"};
+      "本书来自", "更多精彩", "搜索书名", "请牢记域名",
+      "最新網址", "備用網址", "請收藏本站", "請記住本站", "手機用戶請訪問",
+      "關注公眾號", "微信公眾號", "下載app", "下載APP", "加入書籤",
+      "求收藏", "求推薦票", "感謝投票", "最快更新", "無彈窗",
+      "本書來自", "更多精彩", "搜尋書名", "請牢記域名", "請牢記網域"};
   for (const char* marker : strong) {
     if (value.find(marker) != std::string::npos) {
-      if (reason != nullptr) *reason = "推广";
+      if (reason != nullptr) *reason = "promo";
       return 88;
     }
   }
@@ -86,7 +94,7 @@ uint32_t promotionalStrength(const std::string& value, std::string* reason) {
   constexpr const char* weak[] = {"subscribe", "follow us", "download app", "official site"};
   for (const char* marker : weak) {
     if (lower.find(marker) != std::string::npos) {
-      if (reason != nullptr) *reason = "推广";
+      if (reason != nullptr) *reason = "promo";
       return 72;
     }
   }
@@ -311,10 +319,10 @@ extern "C" jd_status jd_noise_candidates(jd_handle handle, uint32_t limit, jd_bu
     if (candidate.score == 0 && repeated == 0) continue;
     if (candidate.score != 0 && repeated != 0) {
       candidate.score = std::min<uint32_t>(100, std::max(candidate.score, repeated) + 6);
-      candidate.reason += "+高频";
+      candidate.reason = "promo_repeated";
     } else if (repeated != 0) {
       candidate.score = repeated;
-      candidate.reason = "高频重复";
+      candidate.reason = "repeated";
     }
     ranked.push_back(std::move(candidate));
   }
