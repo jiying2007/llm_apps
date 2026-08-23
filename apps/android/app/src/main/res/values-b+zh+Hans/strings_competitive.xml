@@ -42,6 +42,15 @@
     <string name="not_verified">未验证</string>
 
     <string name="reading_aloud_background">后台朗读 · 支持锁屏和耳机控制</string>
+    <string name="tts_media_channel">朗读</string>
+    <string name="tts_media_channel_body">后台本地 TXT 朗读控制</string>
+    <string name="tts_media_artist">净读 · 本地 TXT</string>
+    <string name="tts_media_body">本地朗读</string>
+    <string name="tts_media_previous">上一段</string>
+    <string name="tts_media_play">播放</string>
+    <string name="tts_media_pause">暂停</string>
+    <string name="tts_media_next">下一段</string>
+    <string name="tts_media_stop">停止</string>
 
     <string name="add_folder_library">添加 TXT 文件夹</string>
     <string name="sync_folders">同步文件夹 · %1$d</string>
