@@ -1,8 +1,8 @@
 # Release
 
-Source control contains releasable source, not signed packages or signing material.
+Source control contains releasable source and store metadata, not signed packages or signing material.
 
-## Android v2.x
+## Android v2.x build
 
 ```bash
 cd apps/android
@@ -13,42 +13,56 @@ cd apps/android
   androidStoreCheck writeAndroidReleaseChecksums
 ```
 
-The command validates final identity/version/signing, builds signed release APK/AAB, stages version-derived names and writes SHA-256 checksums under Gradle build output. Release infrastructure also archives the R8 mapping and signing-certificate fingerprint. Signing keys never enter Git or GitHub Release assets.
+Release infrastructure archives signed APK/AAB, R8 mapping, SHA-256 manifest and signing-certificate fingerprint. Future releases reuse the retained Android upload key created for v2.0.0; never generate a replacement key for routine releases.
 
-For the initial Android v2.0.0 publication, release automation may bootstrap the long-lived upload key exactly once. The private keystore and credentials are stored only as a short-retention private workflow artifact for the release owner to archive securely; future releases must reuse that retained key rather than generate another one.
+## Android v2.2 commercial release
+
+v2.2 adds a lifetime Pro product but keeps Free as a complete reader.
+
+### Play Console prerequisites
+
+Before any production rollout, follow `PLAY_CONSOLE_SETUP.md` and verify:
+- INAPP one-time product id exactly `jingdu_pro_lifetime`;
+- product is active and localized price configured;
+- license testers cover successful purchase, cancel, pending, acknowledgement, reinstall restore and offline launch after verified ownership;
+- no subscription product is required for v2.2;
+- default listing metadata comes from `fastlane/metadata/android`;
+- Custom Listing/search keyword specs and screenshot brief under `store/play/` are applied where supported;
+- Data safety/privacy declarations match actual app behavior.
+
+Source CI cannot create/activate Play Console products or publish listings in the current environment; repository assets/runbooks make those external actions deterministic.
+
+### Store artifact acceptance
+
+An Android v2.2 production release requires:
+- exact candidate Hosted gates green;
+- `androidStoreCheck` green with production identity/version/signing;
+- signed APK/AAB verified with retained upload key;
+- mapping/checksum/certificate evidence archived;
+- Play license-test purchase/restore/acknowledge evidence;
+- store listing screenshots/text uploaded and reviewed;
+- staged rollout rather than immediate 100% production where practical;
+- immutable Git tag/GitHub Release provenance.
+
+## Growth release checklist
+
+Before rollout:
+1. run `./scripts/verify-play-store.sh`;
+2. verify default zh-CN title is `净读 - TXT 小说阅读器`;
+3. confirm screenshot claims reflect device-tested behavior;
+4. verify Free Smart Clean scan shows full candidate text before paywall;
+5. verify Pro CTA displays Play `formattedPrice`;
+6. exercise global-rule import/export and settings/rules backup;
+7. verify no backup/export contains book正文;
+8. verify In-App Review is not shown on first launch;
+9. capture Play experiment plan (icon/first screenshot/short description/price one variable at a time).
 
 ## HarmonyOS
 
-HarmonyOS remains source-complete but pre-release until its official toolchain/HAP and device gates are executed. Use `.github/workflows/harmony-device.yml` or `scripts/check-harmony.sh` on the official DevEco/HarmonyOS SDK toolchain when Harmony release qualification begins. Android release status must never be presented as Harmony production evidence.
+HarmonyOS remains source-complete/pre-release until official HAP/device gates execute. Android v2.2 commerce/store readiness is not Harmony production evidence.
 
-## Android release acceptance
+## Historical hard cut
 
-An Android production release requires:
+Android v2.0.0 already established the current terminal source line as a new root and removed ordinary refs to the experimental lineage. v2.2 is a normal forward release on that hard-cut line; do not rewrite history again merely for a product update.
 
-- all hosted source gates in `QUALITY_GATES.md` green for the exact candidate tree;
-- `androidStoreCheck` green with production identity/version/signing;
-- signed release APK and AAB;
-- signing verification for APK/AAB;
-- R8 mapping, SHA-256 manifest and certificate fingerprint;
-- immutable Git tag/GitHub Release provenance;
-- the retained upload key archived outside the repository.
-
-Harmony HAP/real-device evidence is intentionally deferred and does not block an Android-only v2.x release.
-
-## Final hard-cut history publication
-
-This repository originally committed experimental prototypes, extracted reference APKs and generated Android packages. Android v2.0.0 publication therefore establishes the current terminal source tree as a new root `main` commit rather than retaining those blobs in reachable branch/tag history.
-
-The publication workflow must:
-
-1. build and verify signed Android v2.0.0 artifacts from the exact candidate tree;
-2. remove only its one-time publisher workflow and obsolete hard-cut helper from the index;
-3. create a parentless root commit from that final tree;
-4. verify the root tree with Native, Android and terminal source gates;
-5. force-update `main` with `--force-with-lease` against the known old main;
-6. create tag `v2.0.0` and the Android GitHub Release from that root commit;
-7. delete the migration branch and ensure no ordinary branch/tag references the experimental lineage.
-
-Earlier Git objects then become unreachable from normal repository refs. Physical deletion of unreachable GitHub server objects depends on GitHub garbage collection and is not controlled by repository code.
-
-Version `2.x` is a hard-cut product line. Earlier experimental private metadata/ABI is not an upgrade-compatibility contract.
+Version 2.x does not promise compatibility with pre-2.x experimental private metadata/ABI.
