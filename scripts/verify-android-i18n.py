@@ -21,7 +21,7 @@ def keys(path: Path) -> set[str]:
         raise SystemExit(f"suspiciously small locale resource: {path.relative_to(ROOT)} ({len(names)} keys)")
     return names
 
-base_name, base_path = next(iter(LOCALES.items()))
+_, base_path = next(iter(LOCALES.items()))
 base_keys = keys(base_path)
 for locale, path in LOCALES.items():
     current = keys(path)
@@ -42,21 +42,29 @@ build = (ROOT / "apps/android/app/build.gradle").read_text(encoding="utf-8")
 if "generateLocaleConfig = true" not in build:
     raise SystemExit("AGP automatic LocaleConfig generation must remain enabled")
 
-# Compose presentation files must not regress to embedded Chinese user-facing copy.
 cjk = re.compile(r"[\u3400-\u9fff]")
-ui_files = [
+base = ROOT / "apps/android/app/src/main/java/com/junchen/jingdu"
+presentation_files = [
     "JingduApp.kt",
     "LibraryScreen.kt",
     "ReaderScreen.kt",
     "ReaderSheets.kt",
     "ProductSettingsSheet.kt",
 ]
-base = ROOT / "apps/android/app/src/main/java/com/junchen/jingdu"
-for name in ui_files:
+for name in presentation_files:
     text = (base / name).read_text(encoding="utf-8")
     if cjk.search(text):
         raise SystemExit(f"hard-coded CJK UI copy found in {name}; move it to strings.xml")
     if "stringResource(R.string." not in text:
         raise SystemExit(f"localized UI resource use missing in {name}")
+
+# Runtime/controller messages must also be resource-backed. Content dictionaries such as
+# ChineseScript/Smart-Clean marker tables are intentionally excluded because they model document text.
+for name in ["MainActivity.kt", "BillingManager.kt"]:
+    text = (base / name).read_text(encoding="utf-8")
+    if cjk.search(text):
+        raise SystemExit(f"hard-coded CJK runtime copy found in {name}; use R.string resources")
+    if "R.string." not in text:
+        raise SystemExit(f"runtime localization resource use missing in {name}")
 
 print("Android i18n contract OK: en-US / zh-Hans / zh-Hant")
