@@ -37,18 +37,33 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
     val book = state.currentBook ?: return
     var more by remember { mutableStateOf(false) }
     var servicePlaying by remember(book.id) { mutableStateOf(false) }
+    var serviceActive by remember(book.id) { mutableStateOf(false) }
     var ttsOffset by remember(book.id) { mutableLongStateOf(-1L) }
     var ttsNextOffset by remember(book.id) { mutableLongStateOf(-1L) }
     val fraction = if (state.length <= 0) 0f else (state.position.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
 
-    DisposableEffect(context, book.id) {
+    fun stopBackgroundTts() {
+        if (serviceActive) {
+            context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STOP))
+        }
+        servicePlaying = false
+        serviceActive = false
+        ttsOffset = -1L
+        ttsNextOffset = -1L
+    }
+
+    DisposableEffect(context, book.id, state.panel) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(receiverContext: Context?, intent: Intent?) {
                 if (intent?.action != TtsPlaybackService.ACTION_STATE) return
-                servicePlaying = intent.getBooleanExtra(TtsPlaybackService.EXTRA_PLAYING, false)
-                ttsOffset = intent.getLongExtra(TtsPlaybackService.EXTRA_OFFSET, -1L)
+                val active = intent.getBooleanExtra(TtsPlaybackService.EXTRA_ACTIVE, false)
+                val playing = intent.getBooleanExtra(TtsPlaybackService.EXTRA_PLAYING, false)
+                val offset = intent.getLongExtra(TtsPlaybackService.EXTRA_OFFSET, -1L)
+                serviceActive = active
+                servicePlaying = playing
+                ttsOffset = offset
                 ttsNextOffset = intent.getLongExtra(TtsPlaybackService.EXTRA_NEXT_OFFSET, -1L)
-                if (ttsOffset >= 0 && ttsOffset != state.position) actions.onJump(ttsOffset)
+                if (playing && state.panel == null && offset >= 0 && offset != state.position) actions.onJump(offset)
             }
         }
         val filter = IntentFilter(TtsPlaybackService.ACTION_STATE)
@@ -57,36 +72,47 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
             @Suppress("DEPRECATION")
             context.registerReceiver(receiver, filter)
         }
+        if (serviceActive) context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STATE))
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 
-    LaunchedEffect(state.sleepMinutes, servicePlaying) {
-        if (servicePlaying) context.startService(Intent(context, TtsPlaybackService::class.java)
-            .setAction(TtsPlaybackService.ACTION_SLEEP)
-            .putExtra(TtsPlaybackService.EXTRA_MINUTES, state.sleepMinutes))
+    LaunchedEffect(state.sleepMinutes, serviceActive) {
+        if (serviceActive) context.startService(
+            Intent(context, TtsPlaybackService::class.java)
+                .setAction(TtsPlaybackService.ACTION_SLEEP)
+                .putExtra(TtsPlaybackService.EXTRA_MINUTES, state.sleepMinutes),
+        )
     }
 
     fun startBackgroundTts() {
         if (state.cleanMode) { actions.onToggleTts(); return }
-        val source = BookRepository(context).list().firstOrNull { it.id == book.id }
+        val repository = BookRepository(context)
+        val source = repository.list().firstOrNull { it.id == book.id }
         if (source == null) { actions.onToggleTts(); return }
-        val file = BookRepository(context).normalizedFile(source)
+        val file = repository.normalizedFile(source)
         val intent = Intent(context, TtsPlaybackService::class.java)
             .setAction(TtsPlaybackService.ACTION_START)
             .putExtra(TtsPlaybackService.EXTRA_PATH, file.absolutePath)
+            .putExtra(TtsPlaybackService.EXTRA_BOOK_ID, book.id)
             .putExtra(TtsPlaybackService.EXTRA_TITLE, stripTxt(book.name))
             .putExtra(TtsPlaybackService.EXTRA_OFFSET, state.position)
             .putExtra(TtsPlaybackService.EXTRA_RATE, state.settings.ttsRate)
             .putExtra(TtsPlaybackService.EXTRA_PITCH, state.settings.ttsPitch)
             .putExtra(TtsPlaybackService.EXTRA_VOICE, state.settings.ttsVoiceName)
+        serviceActive = true
+        servicePlaying = true
         if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
     }
 
     fun toggleBackgroundTts() {
         if (state.cleanMode) { actions.onToggleTts(); return }
-        if (!servicePlaying) startBackgroundTts()
+        if (!serviceActive) startBackgroundTts()
         else context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_TOGGLE))
     }
+
+    fun manualPrevious() { stopBackgroundTts(); actions.onNavigatePrevious() }
+    fun manualNext() { stopBackgroundTts(); actions.onNavigateNext() }
+    fun manualSeek(value: Float) { stopBackgroundTts(); actions.onSeekFraction(value) }
 
     val anyTtsPlaying = servicePlaying || state.ttsPlaying
     Scaffold(
@@ -118,7 +144,7 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
                 },
             )
         },
-        bottomBar = { ReaderBottomBar(fraction, anyTtsPlaying, state.autoPaging, actions.onNavigatePrevious, actions.onNavigateNext, actions.onSeekFraction, ::toggleBackgroundTts) },
+        bottomBar = { ReaderBottomBar(fraction, anyTtsPlaying, state.autoPaging, ::manualPrevious, ::manualNext, ::manualSeek, ::toggleBackgroundTts) },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         ReaderPage(
@@ -126,7 +152,7 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
             settings = state.settings,
             modifier = Modifier.padding(padding),
             onVisibleCharsChanged = actions.onVisibleCharsChanged,
-            ttsHighlight = anyTtsPlaying && ttsOffset == state.position,
+            ttsHighlight = servicePlaying && ttsOffset == state.position,
             ttsChunkSourceChars = (ttsNextOffset - ttsOffset).coerceAtLeast(0),
         )
     }
