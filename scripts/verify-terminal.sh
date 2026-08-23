@@ -38,13 +38,21 @@ if git grep -n 'configurationCacheRequested' -- apps/android; then
   exit 1
 fi
 
+if git grep -n '<uses-permission[^>]*android.permission.INTERNET' -- apps/android/app/src/main/AndroidManifest.xml; then
+  echo 'Android INTERNET permission violates offline reading contract' >&2
+  exit 1
+fi
+
 required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
   .github/workflows/ci.yml .github/workflows/harmony-device.yml
   docs/PRODUCT.md docs/PRODUCT_REQUIREMENTS.md docs/UX.md docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
   docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md
-  docs/HARMONY_RUNNER.md docs/RELEASE.md
+  docs/GROWTH_MONETIZATION.md docs/PLAY_CONSOLE_SETUP.md docs/HARMONY_RUNNER.md docs/RELEASE.md
+  fastlane/metadata/android/zh-CN/title.txt fastlane/metadata/android/zh-CN/short_description.txt fastlane/metadata/android/zh-CN/full_description.txt
+  fastlane/metadata/android/en-US/title.txt fastlane/metadata/android/en-US/short_description.txt fastlane/metadata/android/en-US/full_description.txt
+  store/play/CUSTOM_LISTINGS.zh-CN.md store/play/SCREENSHOT_BRIEF.zh-CN.md scripts/verify-play-store.sh
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
   core/native/src/index_cache.h core/native/src/index_cache.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
@@ -58,6 +66,11 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/NativeIndexCache.java
+  apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReviewPrompter.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/RuleCodec.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/RuleLibrary.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
   apps/android/app/src/main/res/values/themes.xml
   apps/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
@@ -80,17 +93,24 @@ test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
 grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
+grep -q 'jd_noise_candidates' core/native/include/jingdu/core_api.h
+grep -q 'lineGlobMatches' core/native/src/core_api_cached.cpp
 grep -q 'load_index_cache' core/native/src/core_api_cached.cpp
 grep -q 'JDX1' core/native/src/index_cache.cpp
 grep -q 'sourceSha256' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
 grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'OpenMultipleDocuments' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'onSaveInstanceState' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'restoreSession' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'STATE_NORMALIZED_SHA' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'previousBook.normalizedSha256 == book.normalizedSha256' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'bookmarkKey(book)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'analyzeSmartClean' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'RuleLibrary' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'UserBackup' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'jingdu_pro_lifetime' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
 grep -q 'NativeIndexCache.pruneOrphans' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
@@ -98,13 +118,17 @@ grep -q 'NativeCore.search(handle' apps/android/app/src/main/java/com/junchen/ji
 grep -q 'NativeCore.chapters(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
 grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+grep -q '智能净读' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
 grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
 grep -q 'onTextLayout' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
 grep -q 'onValueChangeFinished' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
 grep -q '本地 TXT · 无广告 · 不上传' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
+grep -q 'billing:9.1.0' apps/android/app/build.gradle
+grep -q 'review:2.0.2' apps/android/app/build.gradle
 grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
 grep -q 'compileSdk = 37' apps/android/app/build.gradle
-grep -q 'id "org.jetbrains.kotlin.plugin.compose" version "2.4.10"' apps/android/build.gradle
+grep -q 'getOrElse(4)' apps/android/app/build.gradle
+grep -q 'getOrElse("2.2.0")' apps/android/app/build.gradle
 
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'previous.normalizedSha256 === book.normalizedSha256' apps/harmony/entry/src/main/ets/pages/Index.ets
@@ -123,6 +147,8 @@ grep -q 'distributionSha256Sum=553c78f50dafcd54d65b9a444649057857469edf836431389
   apps/android/gradle/wrapper/gradle-wrapper.properties
 echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/android/gradle/wrapper/gradle-wrapper.jar' \
   | sha256sum --check --strict
+
+bash ./scripts/verify-play-store.sh
 
 test ! -f .github/workflows/finalize-content-addressing.yml
 test ! -f .github/workflows/final-runtime-polish.yml
