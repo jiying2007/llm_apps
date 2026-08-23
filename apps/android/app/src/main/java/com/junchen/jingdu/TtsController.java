@@ -9,12 +9,21 @@ import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.speech.tts.Voice;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class TtsController implements AutoCloseable {
     interface Listener { void onPosition(long offset); void onStopped(String reason); }
+    record VoiceOption(String name, String label) {}
+
+    private static final String HANS_MARKERS = "这为后发国书读时会里还进对从个们来说现学与体门见风东语网无龙边开长";
+    private static final String HANT_MARKERS = "這為後發國書讀時會裡還進對從個們來說現學與體門見風東語網無龍邊開長";
+    private static final String HK_MARKERS = "係嘅唔嗰佢哋冇喺咁啲嚟咗";
 
     private final AudioManager audio;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -22,6 +31,8 @@ final class TtsController implements AutoCloseable {
     private final AudioFocusRequest focus;
     private final AtomicLong generation = new AtomicLong();
     private boolean ready;
+    private String desiredVoiceName = "";
+    private Locale preferredLocale = Locale.getDefault();
     private ReaderController reader;
     private Listener listener;
     private long offset;
@@ -42,8 +53,10 @@ final class TtsController implements AutoCloseable {
                     }
                 })
                 .build();
-        tts = new TextToSpeech(context.getApplicationContext(),
-                status -> ready = status == TextToSpeech.SUCCESS);
+        tts = new TextToSpeech(context.getApplicationContext(), status -> {
+            ready = status == TextToSpeech.SUCCESS;
+            if (ready) applyDesiredVoice();
+        });
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String utteranceId) { }
 
@@ -56,9 +69,6 @@ final class TtsController implements AutoCloseable {
                 main.post(() -> stop("tts error: " + errorCode));
             }
 
-            // Android still declares this API-15 method abstract even though API 21
-            // deprecated it in favor of onError(String, int), so a minimal override
-            // is required to keep the listener concrete for every supported API.
             @SuppressWarnings("deprecation")
             @Override public void onError(String utteranceId) {
                 main.post(() -> stop("tts error"));
@@ -71,6 +81,16 @@ final class TtsController implements AutoCloseable {
         if (!ready) {
             if (listener != null) listener.onStopped("TTS engine not ready");
             return;
+        }
+        if (desiredVoiceName.isEmpty()) {
+            try {
+                preferredLocale = detectDocumentLocale(reader.page());
+                tts.setLanguage(preferredLocale);
+            } catch (Exception ignored) {
+                preferredLocale = Locale.getDefault();
+            }
+        } else {
+            applyDesiredVoice();
         }
         if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
             if (listener != null) listener.onStopped("audio focus denied");
@@ -96,7 +116,39 @@ final class TtsController implements AutoCloseable {
     boolean isSpeaking() { return reader != null; }
     void setRate(float rate) { tts.setSpeechRate(Math.max(0.5f, Math.min(2f, rate))); }
     void setPitch(float pitch) { tts.setPitch(Math.max(0.5f, Math.min(2f, pitch))); }
-    void setLanguage(Locale locale) { tts.setLanguage(locale); }
+    void setLanguage(Locale locale) { preferredLocale = locale == null ? Locale.getDefault() : locale; tts.setLanguage(preferredLocale); }
+
+    void setVoiceName(String voiceName) {
+        desiredVoiceName = voiceName == null ? "" : voiceName;
+        if (ready) applyDesiredVoice();
+    }
+
+    List<VoiceOption> offlineVoices() {
+        ArrayList<VoiceOption> output = new ArrayList<>();
+        if (!ready || tts.getVoices() == null) return output;
+        for (Voice voice : tts.getVoices()) {
+            if (voice == null || voice.isNetworkConnectionRequired()) continue;
+            Locale locale = voice.getLocale();
+            String language = locale == null ? "" : locale.toLanguageTag();
+            output.add(new VoiceOption(voice.getName(), language.isEmpty() ? voice.getName() : language + " · " + voice.getName()));
+        }
+        String preferredLanguage = preferredLocale == null ? "" : preferredLocale.getLanguage();
+        output.sort(Comparator
+                .comparingInt((VoiceOption option) -> option.label().toLowerCase(Locale.ROOT).startsWith(preferredLanguage.toLowerCase(Locale.ROOT)) ? 0 : 1)
+                .thenComparing(VoiceOption::label, String.CASE_INSENSITIVE_ORDER));
+        return output;
+    }
+
+    private void applyDesiredVoice() {
+        if (!ready || desiredVoiceName.isEmpty() || tts.getVoices() == null) return;
+        for (Voice voice : tts.getVoices()) {
+            if (voice != null && !voice.isNetworkConnectionRequired() && desiredVoiceName.equals(voice.getName())) {
+                preferredLocale = voice.getLocale() == null ? Locale.getDefault() : voice.getLocale();
+                tts.setVoice(voice);
+                return;
+            }
+        }
+    }
 
     private void speakNext(long token) {
         if (reader == null || token != generation.get()) return;
@@ -112,6 +164,28 @@ final class TtsController implements AutoCloseable {
         } catch (Exception error) {
             stop(error.getMessage() == null ? "tts failure" : error.getMessage());
         }
+    }
+
+    private static Locale detectDocumentLocale(String text) {
+        int hans = 0;
+        int hant = 0;
+        int hk = 0;
+        int latin = 0;
+        int cjk = 0;
+        for (int offset = 0; offset < text.length();) {
+            int cp = text.codePointAt(offset);
+            offset += Character.charCount(cp);
+            if (cp >= 0x4E00 && cp <= 0x9FFF) cjk++;
+            if ((cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z')) latin++;
+            if (HANS_MARKERS.indexOf(cp) >= 0) hans++;
+            if (HANT_MARKERS.indexOf(cp) >= 0) hant++;
+            if (HK_MARKERS.indexOf(cp) >= 0) hk++;
+        }
+        if (hk >= 2 && hk >= hant / 3) return Locale.forLanguageTag("zh-HK");
+        if (hant > hans) return Locale.forLanguageTag("zh-TW");
+        if (hans > 0 || cjk >= latin) return Locale.forLanguageTag("zh-CN");
+        if (latin > cjk * 2) return Locale.ENGLISH;
+        return Locale.getDefault();
     }
 
     private static long parseToken(String id) {

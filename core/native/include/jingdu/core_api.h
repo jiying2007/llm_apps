@@ -63,6 +63,14 @@ jd_status jd_read(jd_handle handle, uint64_t char_offset, uint64_t max_chars,
 jd_status jd_search(jd_handle handle, const char* utf8_query, uint32_t limit,
                     jd_buffer* out);
 jd_status jd_chapters(jd_handle handle, uint32_t limit, jd_buffer* out);
+
+/*
+ * Local smart-clean analysis. Output is UTF-8 TSV, one candidate per line:
+ *   score<TAB>count<TAB>reason<TAB>text<LF>
+ * score is 0..100. Analysis is streaming/bounded and never modifies the source.
+ */
+jd_status jd_noise_candidates(jd_handle handle, uint32_t limit, jd_buffer* out);
+
 jd_status jd_speech_chunk(jd_handle handle, uint64_t char_offset,
                           uint64_t max_chars, jd_buffer* out);
 jd_status jd_export_rules(jd_handle handle, const char* packed_rules,

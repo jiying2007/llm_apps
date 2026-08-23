@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 final class ReaderController implements Closeable {
@@ -13,6 +14,7 @@ final class ReaderController implements Closeable {
 
     record Hit(long offset, String context) {}
     record Chapter(long offset, String title) {}
+    record NoiseCandidate(int score, int count, String reason, String text) {}
     record Speech(long nextOffset, String text) {}
 
     private long handle;
@@ -52,16 +54,23 @@ final class ReaderController implements Closeable {
 
     List<Hit> search(String query) throws IOException {
         ensureOpen();
-        ArrayList<Hit> hits = new ArrayList<>();
-        for (String line : NativeCore.search(handle, query, 500).split("\n")) {
-            int tab = line.indexOf('\t');
-            if (tab <= 0) continue;
-            try {
-                hits.add(new Hit(Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
-            } catch (NumberFormatException ignored) {
+        LinkedHashMap<Long, Hit> merged = new LinkedHashMap<>();
+        for (String variant : ChineseScript.searchVariants(query)) {
+            for (String line : NativeCore.search(handle, variant, 500).split("\n")) {
+                int tab = line.indexOf('\t');
+                if (tab <= 0) continue;
+                try {
+                    long offset = Long.parseLong(line.substring(0, tab));
+                    merged.putIfAbsent(offset, new Hit(offset, line.substring(tab + 1)));
+                } catch (NumberFormatException ignored) {
+                }
             }
+            if (merged.size() >= 500) break;
         }
-        return hits;
+        ArrayList<Hit> results = new ArrayList<>(merged.values());
+        results.sort((left, right) -> Long.compare(left.offset(), right.offset()));
+        if (results.size() > 500) return new ArrayList<>(results.subList(0, 500));
+        return results;
     }
 
     List<Chapter> chapters() throws IOException {
@@ -71,12 +80,26 @@ final class ReaderController implements Closeable {
             int tab = line.indexOf('\t');
             if (tab <= 0) continue;
             try {
-                chapters.add(new Chapter(
-                        Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
+                chapters.add(new Chapter(Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
             } catch (NumberFormatException ignored) {
             }
         }
         return chapters;
+    }
+
+    List<NoiseCandidate> noiseCandidates() throws IOException {
+        ensureOpen();
+        ArrayList<NoiseCandidate> candidates = new ArrayList<>();
+        for (String line : NativeCore.noiseCandidates(handle, 80).split("\n")) {
+            if (line.isEmpty()) continue;
+            String[] fields = line.split("\t", 4);
+            if (fields.length != 4) continue;
+            try {
+                candidates.add(new NoiseCandidate(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), fields[2], fields[3]));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return candidates;
     }
 
     Speech speech(long from) throws IOException {

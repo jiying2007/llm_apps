@@ -1,0 +1,55 @@
+Downloaded TXT opens as mojibake, contains repeated site ads, or is simply too large for a comfortable reader? Jingdu focuses on the hard parts of local long-form TXT reading.
+
+Jingdu is an offline, privacy-first TXT novel reader. Instead of chasing every document format, it goes deeper on encoding recovery, local cleanup and long-session reading.
+
+OPEN MESSY TXT CORRECTLY
+• Auto-detect common UTF-8, UTF-16, GB18030, GBK, GB2312 and Big5 text
+• Re-decode an imported book from the app-private source copy when AUTO is wrong
+• No need to find the external source file again
+
+SMART CLEAN, LOCALLY
+• Scan repeated lines, URLs, site promotion and common watermark/noise patterns entirely on-device
+• See the exact text, occurrence count and confidence before changing anything
+• Manual exact replace/delete rules remain available without Pro
+• Jingdu Pro can apply smart suggestions, use safe whole-line wildcard rules and maintain a reusable global rule library
+• Clean preview never overwrites original reading progress or bookmark offsets
+• The external TXT is never modified; export a separate cleaned TXT whenever you want
+
+BUILT FOR LONG AND LARGE BOOKS
+• Import, decoding, native open/index, full-text search, chapters and Clean generation run away from the UI thread
+• The shared native Core maintains a recoverable sparse index cache for faster reopen of imported long texts
+• The reader loads bounded windows instead of materializing the whole book in managed memory
+
+READ COMFORTABLY
+• Paper, Light and Night page tones
+• System and serif type choices
+• Font size, line height and margins
+• Appropriate line length on phones, landscape, tablets and foldables
+• Reading progress, full-text search, generated chapters and revision-safe bookmarks
+
+LONG-SESSION TOOLS
+• System offline TTS
+• Speech rate and pitch
+• Auto paging
+• Sleep timer
+• Volume-key paging
+
+PRIVACY FIRST
+• No account required
+• No advertising SDK
+• No analytics/tracking SDK
+• No INTERNET permission
+• Your TXT content is not uploaded
+• External source files are never modified or deleted
+
+JINGDU PRO
+Core reading is not chopped into a paywall. Import, encoding recovery, large-file reading, search, chapters, bookmarks, typography, basic TTS and exact per-book Clean rules remain usable.
+
+Pro is a one-time purchase for local automation and reusable assets:
+• Apply Smart Clean suggestions
+• Safe whole-line wildcard rules
+• Global Clean rule library
+• Recommended Chinese web-novel patterns
+• Rule import and export
+
+Your books, rules and progress stay on your device.

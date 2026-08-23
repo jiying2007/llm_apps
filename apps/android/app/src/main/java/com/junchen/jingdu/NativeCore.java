@@ -24,6 +24,7 @@ final class NativeCore {
     static native byte[] nativeRead(long handle, long offset, long count) throws IOException;
     static native byte[] nativeSearch(long handle, byte[] query, int limit) throws IOException;
     static native byte[] nativeChapters(long handle, int limit) throws IOException;
+    static native byte[] nativeNoiseCandidates(long handle, int limit) throws IOException;
     static native byte[] nativeSpeechChunk(long handle, long offset, long count) throws IOException;
     static native void nativeExportRules(long handle, byte[] packedRules, byte[] outputPath) throws IOException;
 
@@ -55,6 +56,10 @@ final class NativeCore {
 
     static String chapters(long handle, int limit) throws IOException {
         return new String(nativeChapters(handle, limit), StandardCharsets.UTF_8);
+    }
+
+    static String noiseCandidates(long handle, int limit) throws IOException {
+        return new String(nativeNoiseCandidates(handle, limit), StandardCharsets.UTF_8);
     }
 
     static String speechChunk(long handle, long offset, long count) throws IOException {
