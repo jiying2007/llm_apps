@@ -2,138 +2,148 @@
 
 ## Business position
 
-Jingdu does not compete by becoming a broad-format reader. It competes on the difficult local-TXT workflow:
-
+Jingdu does not win by becoming another broad-format reader. It owns the difficult local-TXT workflow:
 1. rescue mojibake/legacy encodings;
-2. find repeated ads, watermarks, URLs and site tails locally;
-3. clean them safely without modifying the source;
-4. keep very long TXT files comfortable to reopen and read.
+2. detect repeated ads/watermarks/URLs locally;
+3. clean safely without modifying source;
+4. reopen/read very long TXT comfortably;
+5. accumulate reusable local rules/settings without an account.
 
-The growth promise and the product must say the same thing. ASO copy is a product contract, not a separate marketing fiction.
+Store copy and product behavior must describe the same value.
 
 ## Free / Pro boundary
 
-### Free — a complete reader
-
-Free users keep:
-- TXT import and app-private source copy;
+### Free — complete daily reader
+Free includes:
+- single/multi TXT import;
 - AUTO/manual encoding and re-decode;
-- large-file reading and native index cache;
-- search, chapters, bookmarks and progress;
-- Paper/Light/Night typography settings;
-- system TTS, auto paging and sleep timer;
-- manual exact per-book Clean replace/delete rules;
-- Smart Clean scan and candidate preview.
+- large-file reading/index cache;
+- search, chapters, bookmarks, progress;
+- Paper/Light/Night + typography;
+- system-default TTS rate/pitch, auto page, sleep timer;
+- exact per-book Clean rules;
+- Smart Clean scan + full candidate preview.
 
-### Pro Lifetime — automation and reusable assets
-
-One-time product ID: `jingdu_pro_lifetime`.
+### Pro Lifetime — automation and reusable local assets
+Product id: `jingdu_pro_lifetime`.
 
 Pro unlocks:
-- applying Smart Clean suggestions in one action;
-- safe whole-line wildcard rules using `*`;
-- reusable global Clean rule library;
+- one-action apply of selected Smart Clean suggestions;
+- safe whole-line `*` wildcard rules;
+- reusable global rule library;
 - recommended Chinese web-novel rule pack;
 - global rule JSON import/export;
-- future local advanced capabilities may join Pro only if the basic reader remains complete.
+- offline TTS voice selection when installed system engine exposes offline voices;
+- local settings/global-rule backup/restore.
 
-Do not move search, chapters, bookmarks, basic themes or basic TTS behind Pro merely to increase feature count in the paywall.
+Do not move basic reading, search, chapters, bookmarks, themes or base TTS behind Pro.
 
-## Pricing strategy
+## Pricing
 
-Start with a one-time purchase, not a subscription. The product currently has no recurring server/cloud cost and the value is local automation.
+Current product has no recurring server cost, so v2.2 uses a one-time purchase, not subscription.
 
-Initial price test candidates:
+Initial price-test candidates:
 - US$4.99
 - US$6.99
 - US$8.99
 
-Use localized Play pricing and an actual one-time product price experiment where available. Do not hard-code a USD price in the app; display Google Play `formattedPrice`.
+Always display Google Play `formattedPrice`; never hard-code currency in UI. Use localized pricing and a Play one-time product price experiment when available. A future subscription requires a real recurring service such as encrypted sync/storage; local advanced features remain lifetime territory.
 
-A subscription becomes reasonable only when Jingdu offers a real recurring service such as encrypted multi-device sync/storage with ongoing infrastructure cost. Local advanced features remain lifetime-purchase territory.
+## Conversion path
 
-## Paywall timing
-
-Never show the Pro paywall on first launch.
-
-Primary conversion path:
+Never show Pro at first launch.
 
 ```text
 install
-  -> import TXT
-  -> read normally
-  -> open Clean
-  -> free Smart Clean scan
-  -> see exact candidates/counts/confidence
-  -> select valuable suggestions
-  -> Pro CTA to apply
+ -> import/read
+ -> open Clean
+ -> free Smart Clean scan
+ -> see exact candidates/counts/confidence
+ -> select useful candidates
+ -> tap Apply
+ -> lifetime Pro CTA
 ```
 
-Users should understand the saved work before they are asked to buy.
+The user sees saved work before purchase. Whole-line wildcard/global rules/offline voice/backup may also surface contextual Pro CTAs, but none may block Free reading.
 
-## Entitlement contract
+## Entitlement
 
-- Grant Pro only for Google Play purchases in `PURCHASED` state.
-- Acknowledge completed non-consumable purchases.
-- Query owned purchases at connection/start/resume so reinstall/restore works.
-- Cache the last Play-verified entitlement to support offline use.
-- A successful authoritative Play query with no ownership may revoke the cached entitlement.
-- Pending purchases never grant Pro.
-- If Billing is unavailable or the Play product is not configured, the Free reader continues to work normally.
+- Unlock only Google Play `PURCHASED` purchases.
+- Acknowledge completed non-consumables.
+- Query owned INAPP purchases on connection/resume for restore/reinstall.
+- Cache last Play-verified ownership for offline use.
+- A successful authoritative query with no ownership may revoke cache.
+- Pending purchase never unlocks.
+- Billing outage/product-not-configured never disables Free features.
+- No app account/backend exists in v2.2; book text never enters commerce APIs.
 
-The current product intentionally has no account/backend. This means the Play client is the source of purchase entitlement. If future fraud/security requirements justify a backend, add it without sending private book text.
+## User-owned retention assets
 
-## Retention without analytics SDKs
+Retention comes from useful local state rather than notification spam:
+- per-book rules;
+- Pro global rules;
+- recommended/user-created wildcard patterns;
+- bookmarks/progress;
+- reading preferences;
+- selected offline TTS voice;
+- local JSON backup/restore.
 
-Jingdu does not add a runtime analytics/advertising SDK for growth. Use:
-- Play acquisition/search-term reports;
-- custom-store-listing conversion;
-- store listing experiments;
-- ratings/reviews;
-- billing/revenue reports;
-- Play Vitals/crash/ANR data;
-- local-only counters for review timing.
+Backup intentionally excludes all book正文/source/normalized/clean files.
 
-Local review milestones:
-- after multiple successful book opens;
-- after multiple Smart Clean applications;
-- after an encoding rescue following meaningful use.
+## Review timing
 
-No pre-rating gate such as “Do you like the app?” is used.
+Use Play In-App Review only after meaningful local milestones such as repeated successful book opens, Smart Clean application or encoding rescue. No first-launch prompt, no sentiment pre-screen and a local cooldown between attempts.
 
-## ASO strategy
+## ASO
 
-Default Simplified Chinese store name:
-
+Default Simplified Chinese title:
 `净读 - TXT 小说阅读器`
 
-Search-intent clusters:
+Intent clusters:
 - TXT reader: TXT阅读器 / TXT小说阅读器 / 中文TXT
 - encoding rescue: TXT乱码 / GBK / GB18030 / Big5
-- clean/noise: TXT清理 / 小说净化 / 广告水印 / 去干扰
+- Smart Clean: TXT清理 / 小说净化 / 广告水印 / 去干扰
 - local/private: 本地小说阅读器 / 离线阅读器 / 本地阅读器
 
-Do not keyword-stuff one listing. Use Play Search-keyword Custom Store Listings when those keyword bundles are available in the app’s Play Console traffic data.
+Do not keyword-stuff the default listing. Use Search-keyword Custom Store Listings when Play Console exposes meaningful query traffic.
 
-## Store experiment order
+## Custom listing strategy
 
-Change one main variable per experiment:
+Repository specs define four listing families:
+- `txt-reader`
+- `txt-encoding`
+- `smart-clean`
+- `local-novel`
+
+Each listing has a different first screenshot/problem statement. Product functionality remains identical; listings only change discovery framing.
+
+## Store experiments
+
+Test one primary variable per experiment:
 1. icon;
-2. hero/first screenshot;
+2. first screenshot/hero;
 3. short description;
 4. screenshot order;
-5. secondary wording.
+5. secondary wording;
+6. lifetime price points where Play supports one-time price experiments.
 
-Do not optimize raw installs alone. Compare downstream quality: ratings, retention proxies available from Play, Smart Clean engagement and Pro conversion.
+Do not optimize installs alone. Watch Play acquisition conversion, ratings, crashes/ANRs, refund/revenue signals and purchase conversion. No runtime analytics/advertising SDK is required.
 
-## Product moat roadmap
+## Release growth loop
 
-The moat is accumulated local user value:
-- personal per-book rules;
-- global rules;
-- safe reusable patterns;
-- reading progress/bookmarks;
-- reading preferences;
-- local backup/export.
+For each release:
+1. inspect Play search/acquisition terms;
+2. map terms into the four intent clusters;
+3. update metadata/screenshots only when the product actually supports the claim;
+4. run controlled listing experiments;
+5. keep winning creative, archive result notes;
+6. use support/reviews to feed Smart Clean pattern/product quality, not to broaden format scope indiscriminately.
 
-Avoid unrelated feature breadth that weakens the positioning or creates ongoing complexity without improving the core TXT jobs.
+## Guardrails
+
+- no deceptive “free/#1/best/fastest” title claims;
+- no fake scarcity/subscription framing for lifetime Pro;
+- no blocking first-run paywall;
+- no private text in logs, billing, review or marketing systems;
+- no arbitrary whole-book regex engine in the name of Pro feature count;
+- no cloud feature until its privacy/cost/product value justifies it.
