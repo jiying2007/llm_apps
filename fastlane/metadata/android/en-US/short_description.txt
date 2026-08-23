@@ -1,0 +1,1 @@
+TXT reader for encoding rescue, local smart cleanup, huge novels, search, chapters and offline TTS
