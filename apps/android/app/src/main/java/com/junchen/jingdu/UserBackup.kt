@@ -24,20 +24,22 @@ internal class UserBackup(
         if (root.optInt("schema") != 1 || root.optString("type") != "jingdu-local-user-backup") {
             throw IllegalArgumentException("不是受支持的净读备份文件")
         }
-        val settingsJson = root.optJSONObject("settings") ?: JSONObject()
-        val map = mutableMapOf<String, Any?>()
-        settingsJson.keys().forEach { key -> map[key] = settingsJson.opt(key) }
-        val settings = readerPreferences.importMap(map)
 
+        val settingsJson = root.optJSONObject("settings") ?: JSONObject()
+        val settingsMap = mutableMapOf<String, Any?>()
+        settingsJson.keys().forEach { key -> settingsMap[key] = settingsJson.opt(key) }
+
+        // Validate the complete rule payload before mutating either preference store.
+        // Backup restore has replacement semantics: an empty backup rule set clears
+        // any rules currently present on the device.
         val ruleRoot = JSONObject()
             .put("schema", 1)
             .put("type", "jingdu-global-clean-rules")
             .put("rules", root.optJSONArray("globalRules") ?: JSONArray())
-        val rules = if (ruleRoot.getJSONArray("rules").length() == 0) {
-            ruleLibrary.load()
-        } else {
-            ruleLibrary.importJson(ruleRoot.toString())
-        }
+        val rules = ruleLibrary.parseExportJson(ruleRoot.toString(), allowEmpty = true)
+
+        val settings = readerPreferences.importMap(settingsMap)
+        ruleLibrary.save(rules)
         return Result(settings, rules)
     }
 
