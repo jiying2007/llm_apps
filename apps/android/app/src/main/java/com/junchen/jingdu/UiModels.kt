@@ -3,6 +3,9 @@ package com.junchen.jingdu
 enum class AppScreen { LIBRARY, READER }
 enum class ReaderPanel { SEARCH, CHAPTERS, BOOKMARKS, CLEAN, SETTINGS, ENCODING }
 enum class RepairRuleMode { LITERAL, LINE_GLOB }
+enum class LibraryBookStatus { UNREAD, READING, FINISHED }
+enum class LibrarySort { RECENT, NAME, PROGRESS }
+enum class NoiseRisk { LOW, MEDIUM, HIGH }
 
 data class BookCardModel(
     val id: String,
@@ -13,9 +16,18 @@ data class BookCardModel(
     val charCount: Long,
     val touchedAt: Long,
     val normalizedSha256: String,
+    val favorite: Boolean = false,
+    val tags: List<String> = emptyList(),
 ) {
     val progressFraction: Float
         get() = if (charCount <= 0) 0f else (progress.toDouble() / charCount.toDouble()).toFloat().coerceIn(0f, 1f)
+
+    val status: LibraryBookStatus
+        get() = when {
+            progress <= 0L -> LibraryBookStatus.UNREAD
+            charCount > 0L && progressFraction >= 0.985f -> LibraryBookStatus.FINISHED
+            else -> LibraryBookStatus.READING
+        }
 }
 
 data class SearchResultModel(val offset: Long, val context: String)
@@ -31,8 +43,21 @@ data class NoiseCandidateModel(
     val count: Int,
     val reason: String,
     val text: String,
-    val selected: Boolean = true,
-)
+    val selected: Boolean = false,
+) {
+    val risk: NoiseRisk
+        get() = when {
+            reason == "promo_repeated" || score >= 82 -> NoiseRisk.HIGH
+            reason == "promo" || reason == "url" || (score >= 68 && count >= 10) -> NoiseRisk.MEDIUM
+            else -> NoiseRisk.LOW
+        }
+
+    val impactChars: Long
+        get() = text.codePointCount(0, text.length).toLong() * count.coerceAtLeast(0).toLong()
+
+    val defaultSafeSelection: Boolean
+        get() = risk == NoiseRisk.HIGH || (risk == NoiseRisk.MEDIUM && count >= 20)
+}
 data class TtsVoiceModel(val name: String, val label: String)
 
 data class AppUiState(
@@ -55,6 +80,7 @@ data class AppUiState(
     val globalRules: List<RepairRule> = emptyList(),
     val noiseCandidates: List<NoiseCandidateModel> = emptyList(),
     val smartCleanAnalyzed: Boolean = false,
+    val smartCleanUndoAvailable: Boolean = false,
     val proUnlocked: Boolean = false,
     val proAvailable: Boolean = false,
     val proConnected: Boolean = false,
