@@ -2,6 +2,9 @@
 #include "index_cache.h"
 
 #define jd_open_utf8 jd_open_utf8_uncached_internal
+// Intentional translation-unit composition: this wrapper replaces only the public open entry point
+// while keeping the ABI v2 implementation private to one compiled translation unit.
+// NOLINTNEXTLINE(bugprone-suspicious-include)
 #include "core_api.cpp"
 #undef jd_open_utf8
 
