@@ -1,6 +1,7 @@
 #include "jingdu/core_api.h"
 #include "index_cache.h"
 
+#define jd_core_version jd_core_version_legacy_internal
 #define jd_open_utf8 jd_open_utf8_uncached_internal
 #define jd_export_rules jd_export_rules_legacy_internal
 // Intentional translation-unit composition: this wrapper replaces selected public entry points
@@ -9,6 +10,7 @@
 #include "core_api.cpp"
 #undef jd_export_rules
 #undef jd_open_utf8
+#undef jd_core_version
 
 namespace {
 constexpr size_t kNoiseSketchWidth = 32768;
@@ -208,6 +210,10 @@ bool lineGlobMatches(const std::string& text, const std::string& pattern) {
   return patternIndex == pattern.size();
 }
 }  // namespace
+
+extern "C" const char* jd_core_version(void) {
+  return "2.2.0";
+}
 
 extern "C" jd_status jd_open_utf8(const char* path, jd_handle* out_handle) {
   if (path == nullptr || *path == '\0' || out_handle == nullptr) return JD_EINVAL;
