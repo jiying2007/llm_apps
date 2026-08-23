@@ -57,9 +57,41 @@ import kotlin.math.roundToInt
             Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(stringResource(R.string.smart_clean), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.smart_clean_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; if (state.proUnlocked) AssistChip(onClick = {}, label = { Text("Pro") }, leadingIcon = { Icon(Icons.Outlined.WorkspacePremium, null) }) }
             OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free)) }
             if (state.smartCleanAnalyzed && state.noiseCandidates.isEmpty()) Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (state.noiseCandidates.isNotEmpty()) { val selectedCount = state.noiseCandidates.count { it.selected }; val total = state.noiseCandidates.filter { it.selected }.sumOf { it.count }; Text(stringResource(R.string.noise_summary, state.noiseCandidates.size, selectedCount, total), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { state.noiseCandidates.take(20).forEachIndexed { index, c -> ElevatedCard(Modifier.fillMaxWidth()) { Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Checkbox(c.selected, { actions.onToggleNoiseCandidate(index) }); Column(Modifier.weight(1f)) { Text(stringResource(R.string.noise_candidate_meta, localizeNoiseReason(c.reason), c.count, c.score), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary); Text(c.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis) } } } } }
-                val suffix = state.proPrice?.let { stringResource(R.string.price_suffix, it) } ?: ""; Button(onClick = if (state.proUnlocked) actions.onApplySmartClean else actions.onUpgradePro, modifier = Modifier.fillMaxWidth(), enabled = selectedCount > 0) { if (!state.proUnlocked) { Icon(Icons.Outlined.Lock, null); Spacer(Modifier.width(8.dp)) }; Text(if (state.proUnlocked) stringResource(R.string.apply_selected_preview) else stringResource(R.string.unlock_pro_apply, suffix)) }; if (!state.proUnlocked) TextButton(onClick = actions.onRestorePro, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restore_pro_question)) }
+            if (state.noiseCandidates.isNotEmpty()) {
+                val selectedCount = state.noiseCandidates.count { it.selected }
+                val total = state.noiseCandidates.filter { it.selected }.sumOf { it.count }
+                Text(stringResource(R.string.noise_summary, state.noiseCandidates.size, selectedCount, total), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(R.string.smart_clean_apply_warning), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.noiseCandidates.take(20).forEachIndexed { index, c ->
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.Top) {
+                                Checkbox(c.selected, { actions.onToggleNoiseCandidate(index) })
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        "${riskLabel(c.risk)} · ${localizeNoiseReason(c.reason)} · ${c.score}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Text(stringResource(R.string.smart_clean_impact, c.count, c.impactChars), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(riskExplanation(c.risk), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(c.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+                val suffix = state.proPrice?.let { stringResource(R.string.price_suffix, it) } ?: ""
+                Button(onClick = if (state.proUnlocked) actions.onApplySmartClean else actions.onUpgradePro, modifier = Modifier.fillMaxWidth(), enabled = selectedCount > 0) {
+                    if (!state.proUnlocked) { Icon(Icons.Outlined.Lock, null); Spacer(Modifier.width(8.dp)) }
+                    Text(if (state.proUnlocked) stringResource(R.string.apply_selected_preview) else stringResource(R.string.unlock_pro_apply, suffix))
+                }
+                if (state.smartCleanUndoAvailable) {
+                    OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) }
+                }
+                if (!state.proUnlocked) TextButton(onClick = actions.onRestorePro, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restore_pro_question)) }
+            } else if (state.smartCleanUndoAvailable) {
+                OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) }
             }
         } } }
         item { HorizontalDivider() }; item { Text(stringResource(R.string.book_manual_rules), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
@@ -82,3 +114,5 @@ import kotlin.math.roundToInt
 
 @Composable private fun SheetTitle(title: String, subtitle: String) { Column(Modifier.fillMaxWidth().padding(bottom = 14.dp)) { Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(4.dp)); Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 @Composable private fun localizeNoiseReason(code: String): String = when (code) { "url" -> stringResource(R.string.noise_reason_url); "promo" -> stringResource(R.string.noise_reason_promo); "repeated" -> stringResource(R.string.noise_reason_repeated); "promo_repeated" -> stringResource(R.string.noise_reason_promo_repeated); else -> code }
+@Composable private fun riskLabel(risk: NoiseRisk): String = when (risk) { NoiseRisk.HIGH -> stringResource(R.string.smart_clean_risk_high); NoiseRisk.MEDIUM -> stringResource(R.string.smart_clean_risk_medium); NoiseRisk.LOW -> stringResource(R.string.smart_clean_risk_low) }
+@Composable private fun riskExplanation(risk: NoiseRisk): String = when (risk) { NoiseRisk.HIGH -> stringResource(R.string.smart_clean_explain_high); NoiseRisk.MEDIUM -> stringResource(R.string.smart_clean_explain_medium); NoiseRisk.LOW -> stringResource(R.string.smart_clean_explain_low) }
