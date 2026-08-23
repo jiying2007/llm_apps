@@ -182,7 +182,7 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
             store.add(book.id, state.position, title)
             report = base?.let { store.apply(it, store.load(book.id)) }
             title = ""; addDialog = false
-        }, enabled = title.isNotBlank()) { Text(stringResource(R.string.add)) } },
+        }, enabled = title.isNotBlank()) { Text(stringResource(R.string.toc_add_action)) } },
         dismissButton = { TextButton(onClick = { addDialog = false }) { Text(stringResource(R.string.cancel)) } },
     )
 }
