@@ -60,7 +60,7 @@ final class ReaderController implements Closeable {
         LinkedHashSet<String> variants = new LinkedHashSet<>(ChineseDisplayConverter.searchVariants(query));
         variants.addAll(ChineseScript.searchVariants(query));
         for (String variant : variants) {
-            if (variant == null || variant.isBlank()) continue;
+            if (variant == null || variant.trim().isEmpty()) continue;
             for (String line : NativeCore.search(handle, variant, 500).split("\n")) {
                 int tab = line.indexOf('\t');
                 if (tab <= 0) continue;
