@@ -119,7 +119,7 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
             ReaderPanel.CHAPTERS -> ChaptersSheet(state, actions)
             ReaderPanel.BOOKMARKS -> BookmarksSheet(state, actions)
             ReaderPanel.CLEAN -> CleanSheet(state, actions)
-            ReaderPanel.SETTINGS -> SettingsSheet(state, actions)
+            ReaderPanel.SETTINGS -> ProductSettingsSheet(state, actions)
             ReaderPanel.ENCODING -> EncodingSheet(state, actions)
             null -> Unit
         }
