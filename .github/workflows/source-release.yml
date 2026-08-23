@@ -1,10 +1,9 @@
 name: Source Release
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
+  push:
+    branches:
+      - 'release/source-v*'
 
 permissions:
   contents: write
@@ -15,22 +14,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+  resolve:
     runs-on: ubuntu-latest
+    outputs:
+      release_ref: ${{ steps.request.outputs.release_ref }}
+      version: ${{ steps.request.outputs.version }}
+      tag: ${{ steps.request.outputs.tag }}
+      sha: ${{ steps.request.outputs.sha }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: main
           fetch-depth: 0
-
       - name: Resolve exact-main source release request
         id: request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
           GH_API_URL: ${{ github.api_url }}
-          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -38,15 +40,23 @@ jobs:
           import os
           import re
           import urllib.error
+          import urllib.parse
           import urllib.request
+          from pathlib import Path
 
           api = os.environ["GH_API_URL"]
           repo = os.environ["GH_REPOSITORY"]
           token = os.environ["GH_TOKEN"]
-          ci_sha = os.environ["CI_HEAD_SHA"]
+          release_ref = os.environ["RELEASE_REF"]
           output = os.environ["GITHUB_OUTPUT"]
 
-          def request(path: str):
+          match = re.fullmatch(r"release/source-v(\d+\.\d+\.\d+)", release_ref)
+          if not match:
+              raise SystemExit(f"invalid source release request ref: {release_ref}")
+          version = match.group(1)
+          tag = f"v{version}"
+
+          def request(path: str, allow_404: bool = False):
               req = urllib.request.Request(
                   f"{api}/repos/{repo}{path}",
                   headers={
@@ -58,59 +68,20 @@ jobs:
               try:
                   with urllib.request.urlopen(req) as response:
                       body = response.read()
-                      return json.loads(body) if body else None
+                      return response.status, json.loads(body) if body else None
               except urllib.error.HTTPError as error:
+                  if allow_404 and error.code == 404:
+                      return 404, None
                   detail = error.read().decode("utf-8", errors="replace")
                   raise SystemExit(f"GitHub API GET {path} failed: {error.code} {detail}")
 
-          main_ref = request("/git/ref/heads/main")
+          _, main_ref = request("/git/ref/heads/main")
+          _, trigger_ref = request(f"/git/ref/heads/{urllib.parse.quote(release_ref, safe='/')}")
           main_sha = main_ref["object"]["sha"]
-          if ci_sha != main_sha:
-              print(f"ignore completed CI for non-current main: ci={ci_sha} current={main_sha}")
-              with open(output, "a", encoding="utf-8") as stream:
-                  stream.write("requested=false\n")
-              raise SystemExit(0)
+          trigger_sha = trigger_ref["object"]["sha"]
+          if trigger_sha != main_sha:
+              raise SystemExit(f"source release request must point at main HEAD: request={trigger_sha} main={main_sha}")
 
-          refs = request("/git/matching-refs/heads/release/source-v") or []
-          matches = []
-          for item in refs:
-              ref = item.get("ref", "")
-              sha = (item.get("object") or {}).get("sha")
-              name = ref.removeprefix("refs/heads/")
-              parsed = re.fullmatch(r"release/source-v(\d+\.\d+\.\d+)", name)
-              if parsed and sha == main_sha:
-                  matches.append((name, parsed.group(1)))
-
-          if not matches:
-              print(f"no source release request points at current main {main_sha}")
-              with open(output, "a", encoding="utf-8") as stream:
-                  stream.write("requested=false\n")
-              raise SystemExit(0)
-          if len(matches) != 1:
-              raise SystemExit(f"ambiguous source release requests for {main_sha}: {matches}")
-
-          release_ref, version = matches[0]
-          with open(output, "a", encoding="utf-8") as stream:
-              stream.write("requested=true\n")
-              stream.write(f"release_ref={release_ref}\n")
-              stream.write(f"version={version}\n")
-              stream.write(f"tag=v{version}\n")
-              stream.write(f"sha={main_sha}\n")
-          print(f"resolved source release request: {release_ref} -> {main_sha}")
-          PY
-
-      - name: Verify source release version
-        if: steps.request.outputs.requested == 'true'
-        env:
-          RELEASE_VERSION: ${{ steps.request.outputs.version }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          version = os.environ["RELEASE_VERSION"]
           app_gradle = Path("apps/android/app/build.gradle").read_text(encoding="utf-8")
           root_gradle = Path("apps/android/build.gradle").read_text(encoding="utf-8")
           app_match = re.search(r'versionNameProperty\.getOrElse\("([^\"]+)"\)', app_gradle)
@@ -121,26 +92,75 @@ jobs:
               raise SystemExit(
                   f"release version drift: requested={version} app={app_match.group(1)} staging={root_match.group(1)}"
               )
-          print(f"source release version verified: {version}")
+
+          tag_status, tag_ref = request(
+              f"/git/ref/tags/{urllib.parse.quote(tag, safe='')}", allow_404=True
+          )
+          if tag_status != 404 and tag_ref["object"]["sha"] != main_sha:
+              raise SystemExit(f"existing tag {tag} does not point at release SHA {main_sha}")
+
+          with open(output, "a", encoding="utf-8") as stream:
+              stream.write(f"release_ref={release_ref}\n")
+              stream.write(f"version={version}\n")
+              stream.write(f"tag={tag}\n")
+              stream.write(f"sha={main_sha}\n")
+          print(f"source release request resolved: {release_ref} -> {main_sha}")
           PY
 
-      - name: Verify terminal source and store contracts
-        if: steps.request.outputs.requested == 'true'
+  native-core:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Build, test and analyze shared core
+        run: ./scripts/check-native.sh
+
+  android:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Android release-candidate verification
+        working-directory: apps/android
+        run: ./gradlew --no-daemon --warning-mode all androidCheck
+      - name: Android localization contract
+        run: python3 ./scripts/verify-android-i18n.py
+
+  source-contracts:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Verify terminal and Play source contracts
         run: |
           set -euo pipefail
           ./scripts/verify-terminal.sh
           ./scripts/verify-play-store.sh
 
+  publish:
+    needs: [resolve, native-core, android, source-contracts]
+    runs-on: ubuntu-latest
+    steps:
       - name: Create idempotent source release and prune merged branches
-        if: steps.request.outputs.requested == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
           GH_API_URL: ${{ github.api_url }}
-          RELEASE_REF: ${{ steps.request.outputs.release_ref }}
-          SOURCE_RELEASE_VERSION: ${{ steps.request.outputs.version }}
-          SOURCE_RELEASE_TAG: ${{ steps.request.outputs.tag }}
-          SOURCE_RELEASE_SHA: ${{ steps.request.outputs.sha }}
+          RELEASE_REF: ${{ needs.resolve.outputs.release_ref }}
+          SOURCE_RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+          SOURCE_RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -201,13 +221,10 @@ jobs:
           if release_status == 404:
               body = (
                   f"Jingdu {tag} source release.\n\n"
-                  "This release records immutable source provenance for the Android v2.2 line. "
-                  "No signed APK/AAB is attached here; Google Play production rollout still requires "
-                  "the retained upload key, Play Console product/listing setup, license-test evidence, "
-                  "and staged rollout defined in `docs/RELEASE.md`.\n\n"
-                  "Highlights: Simplified/Traditional/English UI, four-region Play metadata, "
-                  "Simplified/Traditional Smart Clean, cross-script search, document-language-aware TTS, "
-                  "lifetime Pro, and localization/release quality gates."
+                  "This release records immutable source provenance. No signed APK/AAB is attached here; "
+                  "Google Play production rollout still requires the retained upload key, Play Console "
+                  "product/listing setup, license-test evidence, and staged rollout defined in `docs/RELEASE.md`.\n\n"
+                  "Product and store changes for this version are documented in the repository at this tag."
               )
               _, release = request(
                   "/releases",
@@ -261,6 +278,6 @@ jobs:
           trigger_path = f"/git/refs/heads/{urllib.parse.quote(release_ref, safe='/')}"
           status, _ = request(trigger_path, method="DELETE", allow_404=True, allow_422=True)
           if status not in (204, 404, 422):
-              raise SystemExit(f"unable to remove release trigger branch: {release_ref}")
-          print(f"removed release trigger branch: {release_ref}")
+              raise SystemExit(f"unable to remove release request branch: {release_ref}")
+          print(f"removed release request branch: {release_ref}")
           PY
