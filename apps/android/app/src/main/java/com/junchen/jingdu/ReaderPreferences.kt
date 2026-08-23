@@ -13,6 +13,7 @@ data class ReaderSettings(
     val horizontalPaddingDp: Float = 24f,
     val ttsRate: Float = 1.0f,
     val ttsPitch: Float = 1.0f,
+    val ttsVoiceName: String = "",
     val autoPageDelayMs: Long = 6500L,
 )
 
@@ -27,6 +28,7 @@ class ReaderPreferences(context: Context) {
         horizontalPaddingDp = prefs.getFloat("horizontalPadding", 24f).coerceIn(12f, 48f),
         ttsRate = prefs.getFloat("ttsRate", 1.0f).coerceIn(0.6f, 1.8f),
         ttsPitch = prefs.getFloat("ttsPitch", 1.0f).coerceIn(0.7f, 1.4f),
+        ttsVoiceName = prefs.getString("ttsVoiceName", "") ?: "",
         autoPageDelayMs = prefs.getLong("autoPageDelayMs", 6500L).coerceIn(2500L, 15000L),
     )
 
@@ -39,8 +41,41 @@ class ReaderPreferences(context: Context) {
             .putFloat("horizontalPadding", value.horizontalPaddingDp)
             .putFloat("ttsRate", value.ttsRate)
             .putFloat("ttsPitch", value.ttsPitch)
+            .putString("ttsVoiceName", value.ttsVoiceName)
             .putLong("autoPageDelayMs", value.autoPageDelayMs)
             .apply()
+    }
+
+    fun exportMap(): Map<String, Any> {
+        val value = load()
+        return mapOf(
+            "palette" to value.palette.name,
+            "typeface" to value.typeface.name,
+            "fontSizeSp" to value.fontSizeSp,
+            "lineHeightMultiplier" to value.lineHeightMultiplier,
+            "horizontalPaddingDp" to value.horizontalPaddingDp,
+            "ttsRate" to value.ttsRate,
+            "ttsPitch" to value.ttsPitch,
+            "ttsVoiceName" to value.ttsVoiceName,
+            "autoPageDelayMs" to value.autoPageDelayMs,
+        )
+    }
+
+    fun importMap(values: Map<String, Any?>): ReaderSettings {
+        val fallback = load()
+        val imported = ReaderSettings(
+            palette = runCatching { ReaderPalette.valueOf(values["palette"] as? String ?: fallback.palette.name) }.getOrDefault(fallback.palette),
+            typeface = runCatching { ReaderTypeface.valueOf(values["typeface"] as? String ?: fallback.typeface.name) }.getOrDefault(fallback.typeface),
+            fontSizeSp = (values["fontSizeSp"] as? Number)?.toFloat()?.coerceIn(16f, 34f) ?: fallback.fontSizeSp,
+            lineHeightMultiplier = (values["lineHeightMultiplier"] as? Number)?.toFloat()?.coerceIn(1.2f, 2.0f) ?: fallback.lineHeightMultiplier,
+            horizontalPaddingDp = (values["horizontalPaddingDp"] as? Number)?.toFloat()?.coerceIn(12f, 48f) ?: fallback.horizontalPaddingDp,
+            ttsRate = (values["ttsRate"] as? Number)?.toFloat()?.coerceIn(0.6f, 1.8f) ?: fallback.ttsRate,
+            ttsPitch = (values["ttsPitch"] as? Number)?.toFloat()?.coerceIn(0.7f, 1.4f) ?: fallback.ttsPitch,
+            ttsVoiceName = (values["ttsVoiceName"] as? String)?.take(256) ?: fallback.ttsVoiceName,
+            autoPageDelayMs = (values["autoPageDelayMs"] as? Number)?.toLong()?.coerceIn(2500L, 15000L) ?: fallback.autoPageDelayMs,
+        )
+        save(imported)
+        return imported
     }
 
     private inline fun <reified T : Enum<T>> enumOrDefault(raw: String?, fallback: T): T {
