@@ -55,7 +55,7 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) { if (state.panel != null) actions.onClosePanel() else actions.onBackToLibrary() }
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
-                AppScreen.LIBRARY, AppScreen.IMPORT_PREVIEW -> LibraryScreen(state, actions, snackbar)
+                AppScreen.LIBRARY -> LibraryScreen(state, actions, snackbar)
                 AppScreen.READER -> ReaderScreen(state, actions, snackbar)
             }
             state.busyLabel?.let { BusyOverlay(it) }
