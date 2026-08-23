@@ -34,7 +34,7 @@ jobs:
           cache: gradle
       - name: Android product verification
         run: ./gradlew --no-daemon --warning-mode all androidCheck
-      - name: Android product contract
+      - name: Android product and monetization contract
         working-directory: .
         shell: bash
         run: |
@@ -50,6 +50,11 @@ jobs:
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/NativeIndexCache.java \
+            apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReviewPrompter.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/RuleCodec.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/RuleLibrary.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt \
             apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt; do
             test -f "$path"
           done
@@ -57,22 +62,29 @@ jobs:
           test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
           grep -q 'enableEdgeToEdge' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'OpenMultipleDocuments' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'onSaveInstanceState' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'restoreSession' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'STATE_NORMALIZED_SHA' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'bookmarkKey(book)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'noiseCandidates' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'jingdu_pro_lifetime' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
           grep -q 'NativeIndexCache.pruneOrphans' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
           grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
           grep -q 'onValueChangeFinished' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
           grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+          grep -q '智能净读' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
           grep -q 'onTextLayout' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
           grep -q 'ATOMIC_MOVE' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
           grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
           grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
           grep -q 'NativeCore.search(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
           grep -q 'NativeCore.chapters(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+          grep -q 'nativeNoiseCandidates' apps/android/app/src/main/java/com/junchen/jingdu/NativeCore.java
+          grep -q 'billing:9.1.0' apps/android/app/build.gradle
+          grep -q 'review:2.0.2' apps/android/app/build.gradle
           grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
           grep -q 'compileSdk = 37' apps/android/app/build.gradle
 
@@ -108,6 +120,13 @@ jobs:
           grep -q 'existing.normalizedSha256 === result.normalizedSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
           grep -q '@kit.CoreSpeechKit' apps/harmony/entry/src/main/ets/model/TtsController.ets
           grep -q 'DocumentViewPicker' apps/harmony/entry/src/main/ets/pages/Index.ets
+
+  play-store-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Validate Play metadata and lifetime Pro contract
+        run: bash ./scripts/verify-play-store.sh
 
   terminal-contract:
     runs-on: ubuntu-latest
