@@ -9,6 +9,10 @@ required=(
   apps/android/app/src/main/res/values/strings_terminal_quality.xml
   apps/android/app/src/main/res/values-b+zh+Hans/strings_terminal_quality.xml
   apps/android/app/src/main/res/values-b+zh+Hant/strings_terminal_quality.xml
+  apps/android/macrobenchmark/build.gradle
+  apps/android/macrobenchmark/src/main/AndroidManifest.xml
+  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/StartupBenchmark.kt
+  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
 )
 for path in "${required[@]}"; do
   test -f "$path" || { echo "terminal-quality asset missing: $path" >&2; exit 1; }
@@ -33,6 +37,10 @@ grep -q 'undoSmartClean' apps/android/app/src/main/java/com/junchen/jingdu/MainA
 grep -q 'bookmarks.${book.id}' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'restoredOverride = preservedProgress' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 
+grep -q 'existing != null ? existing.progress : 0' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+grep -q 'book.progress,' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+grep -q 'book.progress >= charCount' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
+
 grep -q 'library_filter_favorites' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
 grep -q 'LibrarySort.PROGRESS' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
 grep -q 'onToggleFavorite' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
@@ -45,6 +53,15 @@ grep -q 'resumeAfterFocus' apps/android/app/src/main/java/com/junchen/jingdu/Tts
 grep -q 'smart_clean_explain_low' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
 grep -q 'smart_clean_impact' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
 grep -q 'onUndoSmartClean' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+
+grep -q 'id "com.android.test" version "9.3.1" apply false' apps/android/build.gradle
+grep -q 'include(":app", ":macrobenchmark")' apps/android/settings.gradle
+grep -q 'benchmark-macro-junit4:1.4.1' apps/android/macrobenchmark/build.gradle
+grep -q 'uiautomator:2.4.0' apps/android/macrobenchmark/build.gradle
+grep -q 'StartupTimingMetric' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/StartupBenchmark.kt
+grep -q 'BaselineProfileRule' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
+grep -q '<profileable android:shell="true"' apps/android/app/src/main/AndroidManifest.xml
+grep -q 'profileinstaller:1.4.1' apps/android/app/build.gradle
 
 python3 ./scripts/verify-android-i18n.py
 
