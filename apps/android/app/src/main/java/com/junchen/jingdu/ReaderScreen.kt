@@ -86,6 +86,7 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
 
     fun startBackgroundTts() {
         if (state.cleanMode) { actions.onToggleTts(); return }
+        if (state.autoPaging) actions.onToggleAutoPaging()
         val repository = BookRepository(context)
         val source = repository.list().firstOrNull { it.id == book.id }
         if (source == null) { actions.onToggleTts(); return }
