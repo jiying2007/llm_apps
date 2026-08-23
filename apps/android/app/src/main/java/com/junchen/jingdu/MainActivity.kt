@@ -9,12 +9,12 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.activity.compose.setContent
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
     private var reader = ReaderController()
     private var currentBook: BookRepository.Book? = null
     private var cleanMode = false
-    private var visiblePageChars = 800L
+    private var visiblePageChars = ReaderController.DEFAULT_PAGE_CHARS
     private var pendingExport: File? = null
     private var uiState by mutableStateOf(AppUiState())
 
@@ -119,7 +119,12 @@ class MainActivity : ComponentActivity() {
         refreshLibrary()
 
         setContent { JingduApp(uiState, actions) }
-        handleIncomingIntent(intent)
+
+        if (savedInstanceState == null) {
+            handleIncomingIntent(intent)
+        } else {
+            restoreSession(savedInstanceState)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -128,18 +133,46 @@ class MainActivity : ComponentActivity() {
         handleIncomingIntent(intent)
     }
 
-    private fun handleIncomingIntent(intent: Intent?) {
-        val uri = when (intent?.action) {
-            Intent.ACTION_VIEW -> intent.data
-            Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) {
-                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(Intent.EXTRA_STREAM)
-            }
-            else -> null
+    override fun onSaveInstanceState(outState: Bundle) {
+        val book = currentBook
+        if (uiState.screen == AppScreen.READER && book != null) {
+            outState.putString(STATE_BOOK_ID, book.id)
+            outState.putString(STATE_NORMALIZED_SHA, book.normalizedSha256)
+            outState.putLong(STATE_POSITION, reader.position())
+            outState.putBoolean(STATE_CLEAN_MODE, cleanMode)
         }
-        uri?.let { importUri(it) }
+        pendingExport?.absolutePath?.let { outState.putString(STATE_PENDING_EXPORT, it) }
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun restoreSession(state: Bundle) {
+        state.getString(STATE_PENDING_EXPORT)?.let { path ->
+            File(path).takeIf(File::isFile)?.let { pendingExport = it }
+        }
+        val id = state.getString(STATE_BOOK_ID) ?: return
+        val book = findBook(id) ?: return
+        val sameRevision = state.getString(STATE_NORMALIZED_SHA) == book.normalizedSha256
+        val restoredPosition = if (sameRevision) state.getLong(STATE_POSITION, book.progress) else book.progress
+        openBook(
+            book = book,
+            clean = state.getBoolean(STATE_CLEAN_MODE, false),
+            restoredOverride = restoredPosition,
+        )
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        incomingUri(intent)?.let { importUri(it) }
+    }
+
+    private fun incomingUri(intent: Intent?): Uri? = when (intent?.action) {
+        Intent.ACTION_VIEW -> intent.data
+        Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) {
+            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        }
+        else -> null
     }
 
     private fun refreshLibrary() {
@@ -173,7 +206,11 @@ class MainActivity : ComponentActivity() {
         openBook(book, clean = false)
     }
 
-    private fun openBook(book: BookRepository.Book, clean: Boolean) {
+    private fun openBook(
+        book: BookRepository.Book,
+        clean: Boolean,
+        restoredOverride: Long? = null,
+    ) {
         if (uiState.busyLabel != null) return
         stopAutoPaging()
         stopTts()
@@ -182,7 +219,7 @@ class MainActivity : ComponentActivity() {
         val previousReader = reader
         val previousClean = cleanMode
         val previousPosition = previousBook?.let { previousReader.position() } ?: 0L
-        val restored = if (clean) {
+        val restored = restoredOverride ?: if (clean) {
             0L
         } else if (
             previousBook != null &&
@@ -199,8 +236,14 @@ class MainActivity : ComponentActivity() {
         val token = workGeneration.incrementAndGet()
         uiState = uiState.copy(
             screen = AppScreen.READER,
-            busyLabel = if (clean) "正在生成净读预览…" else "正在打开并建立索引…",
+            busyLabel = if (clean) "正在生成净读预览…" else "正在打开…",
             panel = null,
+            searchQuery = "",
+            searchResults = emptyList(),
+            chapters = emptyList(),
+            chaptersLoaded = false,
+            bookmarks = emptyList(),
+            repairRules = emptyList(),
         )
 
         workers.execute {
@@ -224,6 +267,7 @@ class MainActivity : ComponentActivity() {
                     repository.updateCharCount(book, candidate.length())
                     repository.pruneDocumentRevisions(book)
                     repository.pruneCleanRevisions(book, if (clean) file else null)
+                    NativeIndexCache.pruneOrphans(repository.normalizedFile(book).parentFile)
                     previousReader.close()
                     uiState = uiState.copy(busyLabel = null, currentBook = toCard(book), cleanMode = clean)
                     render()
@@ -313,15 +357,34 @@ class MainActivity : ComponentActivity() {
         if (book != null && !cleanMode) repository.saveProgress(book, reader.position())
         stopAutoPaging()
         stopTts()
+        reader.close()
+        currentBook = null
+        cleanMode = false
+        pageHistory.clear()
         refreshLibrary()
-        uiState = uiState.copy(screen = AppScreen.LIBRARY, panel = null, busyLabel = null)
+        uiState = uiState.copy(
+            screen = AppScreen.LIBRARY,
+            currentBook = null,
+            pageText = "",
+            position = 0,
+            length = 0,
+            cleanMode = false,
+            panel = null,
+            busyLabel = null,
+            searchQuery = "",
+            searchResults = emptyList(),
+            chapters = emptyList(),
+            chaptersLoaded = false,
+            bookmarks = emptyList(),
+            repairRules = emptyList(),
+        )
     }
 
     private fun openPanel(panel: ReaderPanel) {
         if (uiState.busyLabel != null || currentBook == null) return
         uiState = uiState.copy(panel = panel)
         when (panel) {
-            ReaderPanel.CHAPTERS -> loadChapters()
+            ReaderPanel.CHAPTERS -> if (!uiState.chaptersLoaded) loadChapters()
             ReaderPanel.BOOKMARKS -> refreshBookmarks()
             ReaderPanel.CLEAN -> refreshRules()
             else -> Unit
@@ -353,6 +416,7 @@ class MainActivity : ComponentActivity() {
                 uiState = uiState.copy(
                     panel = ReaderPanel.CHAPTERS,
                     chapters = chapters.map { ChapterModel(it.offset(), it.title()) },
+                    chaptersLoaded = true,
                     message = if (chapters.isEmpty()) "未识别到章节标题" else null,
                 )
             },
@@ -396,6 +460,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun rulesKey(book: BookRepository.Book) = "rules.${book.id}"
+
     private fun rulesFor(book: BookRepository.Book): String =
         getPreferences(MODE_PRIVATE).getString(rulesKey(book), "") ?: ""
 
@@ -600,6 +665,7 @@ class MainActivity : ComponentActivity() {
             length = 0,
             cleanMode = false,
             panel = null,
+            chaptersLoaded = false,
             message = "已从净读书架移除",
         )
     }
@@ -700,8 +766,10 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val SLEEP_TOKEN = "jingdu-sleep"
-
-        private fun stripTxt(name: String): String =
-            if (name.lowercase().endsWith(".txt")) name.dropLast(4) else name
+        private const val STATE_BOOK_ID = "jingdu.activeBookId"
+        private const val STATE_NORMALIZED_SHA = "jingdu.normalizedSha"
+        private const val STATE_POSITION = "jingdu.position"
+        private const val STATE_CLEAN_MODE = "jingdu.cleanMode"
+        private const val STATE_PENDING_EXPORT = "jingdu.pendingExport"
     }
 }
