@@ -152,3 +152,146 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - run: ./scripts/verify-terminal.sh
+
+  publish-source-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [native-core, android, harmony-contract, play-store-contract, terminal-contract]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: Publish pending source manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_API_URL: ${{ github.api_url }}
+          MAIN_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          api = os.environ['GH_API_URL']
+          repo = os.environ['GH_REPOSITORY']
+          token = os.environ['GH_TOKEN']
+          main_sha = os.environ['MAIN_SHA']
+          temporary_prefixes = ('feat/', 'fix/', 'chore/', 'ci/', 'refactor/', 'docs/', 'test/', 'perf/')
+
+          def request(path, method='GET', payload=None, allow_404=False, allow_422=False):
+              data = None if payload is None else json.dumps(payload).encode('utf-8')
+              req = urllib.request.Request(
+                  f'{api}/repos/{repo}{path}', data=data, method=method,
+                  headers={
+                      'Authorization': f'Bearer {token}',
+                      'Accept': 'application/vnd.github+json',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                      'Content-Type': 'application/json',
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req) as response:
+                      body = response.read()
+                      return response.status, json.loads(body) if body else None
+              except urllib.error.HTTPError as error:
+                  if allow_404 and error.code == 404:
+                      return 404, None
+                  if allow_422 and error.code == 422:
+                      return 422, None
+                  detail = error.read().decode('utf-8', errors='replace')
+                  raise SystemExit(f'GitHub API {method} {path} failed: {error.code} {detail}')
+
+          app_gradle = Path('apps/android/app/build.gradle').read_text(encoding='utf-8')
+          root_gradle = Path('apps/android/build.gradle').read_text(encoding='utf-8')
+          app_match = re.search(r'versionNameProperty\.getOrElse\("([^\"]+)"\)', app_gradle)
+          root_match = re.search(r'jingduVersionName"\)\.getOrElse\("([^\"]+)"\)', root_gradle)
+          if not app_match or not root_match or app_match.group(1) != root_match.group(1):
+              raise SystemExit('Android source release version defaults are missing or inconsistent')
+          version = app_match.group(1)
+          tag = f'v{version}'
+          manifest = Path(f'releases/source/{tag}.md')
+          if not manifest.is_file():
+              print(f'no pending source manifest for {tag}; publication skipped')
+              raise SystemExit(0)
+          text = manifest.read_text(encoding='utf-8')
+          required = (f'version: {tag}', 'kind: source-release', 'google_play_production: false')
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'source release manifest contract missing: {missing}')
+
+          tag_path = f'/git/ref/tags/{urllib.parse.quote(tag, safe="")}'
+          tag_status, tag_ref = request(tag_path, allow_404=True)
+          release_status, release = request(f'/releases/tags/{urllib.parse.quote(tag, safe="")}', allow_404=True)
+          if tag_status != 404:
+              if release_status == 404:
+                  _, release = request('/releases', method='POST', payload={
+                      'tag_name': tag,
+                      'target_commitish': tag_ref['object']['sha'],
+                      'name': f'Jingdu {tag}',
+                      'body': f'Jingdu {tag} source release.\n\nImmutable source manifest: `releases/source/{tag}.md`.\n\nSource provenance only; this is not signed APK/AAB or Google Play production evidence.',
+                      'draft': False,
+                      'prerelease': False,
+                      'make_latest': 'true',
+                  })
+                  print(f'completed existing source tag release: {release.get("html_url")}')
+              else:
+                  print(f'source release already published: {release.get("html_url")}')
+          else:
+              body = (
+                  f'Jingdu {tag} source release.\n\n'
+                  f'Immutable source manifest: `releases/source/{tag}.md`.\n\n'
+                  'This release records source provenance only. No signed APK/AAB is attached here; '
+                  'Google Play production rollout still requires the retained upload key, Play Console '
+                  'product/listing setup, license-test evidence, and staged rollout defined in `docs/RELEASE.md`.\n\n'
+                  'Highlights: Simplified/Traditional/English UI, four-region Play metadata, '
+                  'Simplified/Traditional Smart Clean, cross-script search, document-language-aware TTS, '
+                  'lifetime Pro, and localization/release quality gates.'
+              )
+              _, release = request('/releases', method='POST', payload={
+                  'tag_name': tag,
+                  'target_commitish': main_sha,
+                  'name': f'Jingdu {tag}',
+                  'body': body,
+                  'draft': False,
+                  'prerelease': False,
+                  'make_latest': 'true',
+                  'generate_release_notes': True,
+              })
+              _, final_tag = request(tag_path)
+              if final_tag['object']['sha'] != main_sha:
+                  raise SystemExit(f'release tag {tag} does not resolve to {main_sha}')
+              print(f'created source release: {release.get("html_url")}')
+
+          _, open_pulls = request('/pulls?state=open&per_page=100')
+          open_heads = {
+              pr['head']['ref'] for pr in open_pulls
+              if pr.get('head', {}).get('repo', {}).get('full_name') == repo
+          }
+          _, closed_pulls = request('/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100')
+          candidates = []
+          for pr in closed_pulls:
+              head = pr.get('head') or {}
+              head_repo = head.get('repo') or {}
+              ref = head.get('ref')
+              if not pr.get('merged_at') or head_repo.get('full_name') != repo or not ref:
+                  continue
+              if ref == 'main' or ref in open_heads:
+                  continue
+              if ref.startswith('release/source-v') or ref.startswith(temporary_prefixes):
+                  if ref not in candidates:
+                      candidates.append(ref)
+          for ref in candidates:
+              path = f'/git/refs/heads/{urllib.parse.quote(ref, safe="/")}'
+              status, _ = request(path, method='DELETE', allow_404=True, allow_422=True)
+              if status in (204, 404, 422):
+                  print(f'pruned merged branch: {ref}')
+          PY
