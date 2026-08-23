@@ -9,12 +9,17 @@ import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.speech.tts.Voice;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class TtsController implements AutoCloseable {
     interface Listener { void onPosition(long offset); void onStopped(String reason); }
+    record VoiceOption(String name, String label) {}
 
     private final AudioManager audio;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -22,6 +27,7 @@ final class TtsController implements AutoCloseable {
     private final AudioFocusRequest focus;
     private final AtomicLong generation = new AtomicLong();
     private boolean ready;
+    private String desiredVoiceName = "";
     private ReaderController reader;
     private Listener listener;
     private long offset;
@@ -42,8 +48,10 @@ final class TtsController implements AutoCloseable {
                     }
                 })
                 .build();
-        tts = new TextToSpeech(context.getApplicationContext(),
-                status -> ready = status == TextToSpeech.SUCCESS);
+        tts = new TextToSpeech(context.getApplicationContext(), status -> {
+            ready = status == TextToSpeech.SUCCESS;
+            if (ready) applyDesiredVoice();
+        });
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String utteranceId) { }
 
@@ -56,9 +64,6 @@ final class TtsController implements AutoCloseable {
                 main.post(() -> stop("tts error: " + errorCode));
             }
 
-            // Android still declares this API-15 method abstract even though API 21
-            // deprecated it in favor of onError(String, int), so a minimal override
-            // is required to keep the listener concrete for every supported API.
             @SuppressWarnings("deprecation")
             @Override public void onError(String utteranceId) {
                 main.post(() -> stop("tts error"));
@@ -97,6 +102,34 @@ final class TtsController implements AutoCloseable {
     void setRate(float rate) { tts.setSpeechRate(Math.max(0.5f, Math.min(2f, rate))); }
     void setPitch(float pitch) { tts.setPitch(Math.max(0.5f, Math.min(2f, pitch))); }
     void setLanguage(Locale locale) { tts.setLanguage(locale); }
+
+    void setVoiceName(String voiceName) {
+        desiredVoiceName = voiceName == null ? "" : voiceName;
+        if (ready) applyDesiredVoice();
+    }
+
+    List<VoiceOption> offlineVoices() {
+        ArrayList<VoiceOption> output = new ArrayList<>();
+        if (!ready || tts.getVoices() == null) return output;
+        for (Voice voice : tts.getVoices()) {
+            if (voice == null || voice.isNetworkConnectionRequired()) continue;
+            Locale locale = voice.getLocale();
+            String language = locale == null ? "" : locale.toLanguageTag();
+            output.add(new VoiceOption(voice.getName(), language.isEmpty() ? voice.getName() : language + " · " + voice.getName()));
+        }
+        output.sort(Comparator.comparing(VoiceOption::label, String.CASE_INSENSITIVE_ORDER));
+        return output;
+    }
+
+    private void applyDesiredVoice() {
+        if (!ready || desiredVoiceName.isEmpty() || tts.getVoices() == null) return;
+        for (Voice voice : tts.getVoices()) {
+            if (voice != null && !voice.isNetworkConnectionRequired() && desiredVoiceName.equals(voice.getName())) {
+                tts.setVoice(voice);
+                return;
+            }
+        }
+    }
 
     private void speakNext(long token) {
         if (reader == null || token != generation.get()) return;
