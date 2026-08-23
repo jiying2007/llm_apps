@@ -4,11 +4,12 @@ A change is mergeable only when every applicable gate below passes. `main` branc
 
 ## Source gates
 
-1. **Native core** — Release CMake build, `-Wall -Wextra -Wpedantic -Werror`, CTest including encoding/SHA/revision/large-file/concurrency/malformed-input coverage, plus clang-tidy analyzer/bugprone/performance/portability checks.
-2. **Android product** — Kotlin/Compose Material 3 product shell compiles for Debug/Release; Debug/Release lint, Debug APK, Release AAB, AndroidTest assembly and JNI supported-ABI compilation succeed. Architecture contract enforces edge-to-edge ComponentActivity, serialized long work, immutable `document-<sha>` / `clean-<revision>` artifacts, revision-safe bookmarks/re-decode, adaptive Library and bounded Reader width.
-3. **Android UX** — Library/Reader are the two top-level states; advanced tools use progressive-disclosure sheets; reader offers search/chapters/progress/TTS directly; reading preferences persist; icon-only actions expose semantics; the old programmatic Views Activity is absent.
-4. **Harmony source contract** — Stage/HAP files, Node-API bridge, TaskPool long-work/open path, immutable `document-<sha>` / `clean-<revision>` artifacts, candidate-session-before-prune, revision-safe persistence, DocumentViewPicker and Core Speech Kit wiring are present and reference the single shared core.
-5. **Repository contract** — product/UX/architecture documents are present; no legacy roots, Java shared core, compatibility/transition markers, mutable fixed clean/document persistence API, floating GitHub Actions tags, committed APK/AAB/HAP/keystore or extracted third-party executable assets.
+1. **Native core** — Release CMake build, `-Wall -Wextra -Wpedantic -Werror`, CTest including encoding/SHA/revision/large-file/concurrency/malformed-input and sparse-index cache recovery coverage, plus clang-tidy analyzer/bugprone/performance/portability checks.
+2. **Android product** — Kotlin/Compose Material 3 product shell compiles for Debug/Release; Debug/Release lint, Debug APK, Release AAB, AndroidTest assembly and JNI supported-ABI compilation succeed. Architecture contract enforces edge-to-edge ComponentActivity, serialized long work, immutable `document-<sha>` / `clean-<revision>` artifacts, revision-safe bookmarks/re-decode, adaptive Library, bounded Reader width, lifecycle restoration and active-session reuse for Search/Chapters.
+3. **Android UX** — Library/Reader are the two top-level states; advanced tools use progressive-disclosure sheets; reader offers search/chapters/progress/TTS directly; reading preferences persist; icon-only actions expose semantics; progress seeking commits on gesture completion; the old programmatic Views Activity and monolithic Compose UI file are absent.
+4. **Large-file path** — first open may scan an immutable document and publish a disposable `.jdx` sparse-index cache; repeat open uses a validated cache; corrupt/stale cache falls back safely; orphan cache files are pruned with obsolete document revisions. Cache files are never product identity.
+5. **Harmony source contract** — Stage/HAP files, Node-API bridge, TaskPool long-work/open path, immutable `document-<sha>` / `clean-<revision>` artifacts, candidate-session-before-prune, revision-safe persistence, `.jdx` orphan pruning, DocumentViewPicker and Core Speech Kit wiring are present and reference the single shared core.
+6. **Repository contract** — product/requirements/UX/architecture documents are present; no legacy roots, Java shared core, compatibility/transition markers, mutable fixed clean/document persistence API, floating GitHub Actions tags, committed APK/AAB/HAP/keystore or extracted third-party executable assets.
 
 ## Android product acceptance
 
@@ -17,6 +18,9 @@ Before merging a major Android experience change:
 - product scope matches `PRODUCT.md` / `PRODUCT_REQUIREMENTS.md` rather than adding unrelated format breadth;
 - `UX.md` information hierarchy and accessibility rules are represented in implementation;
 - Compose AndroidTest smoke sources compile;
+- configuration recreation restores an active Reader through stable id/revision/offset rather than native handle persistence;
+- returning to Library closes the active reader session instead of holding hidden native resources;
+- Search/Chapters do not reopen/reindex the active immutable document;
 - 200% font scale, TalkBack, phone landscape and an expanded/tablet-sized window are included in device review;
 - no new network permission, advertising or analytics runtime dependency is added;
 - whole-file operations remain outside the main thread.
@@ -42,7 +46,7 @@ A workflow that remains queued because no matching runner is online is an unmet 
 
 ## Device gates
 
-Android device/store publication follows the Android portion of `DEVICE_MATRIX.md`, including 10/100/300 MiB performance, lifecycle, accessibility and adaptive-window checks. Harmony device evidence is deferred until Harmony release qualification. Cross-platform golden parity becomes a blocker before declaring the two-platform product jointly production-ready.
+Android device/store publication follows the Android portion of `DEVICE_MATRIX.md`, including 10/100/300 MiB first-open/reopen performance, lifecycle, accessibility and adaptive-window checks. Harmony device evidence is deferred until Harmony release qualification. Cross-platform golden parity becomes a blocker before declaring the two-platform product jointly production-ready.
 
 ## Store gate
 
