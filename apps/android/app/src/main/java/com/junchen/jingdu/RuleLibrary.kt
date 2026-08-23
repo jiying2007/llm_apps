@@ -53,12 +53,12 @@ internal class RuleLibrary(context: Context) {
     fun parseExportJson(text: String, allowEmpty: Boolean): List<RepairRule> {
         val root = JSONObject(text)
         if (root.optInt("schema") != 1 || root.optString("type") != "jingdu-global-clean-rules") {
-            throw IllegalArgumentException("不是受支持的净读规则文件")
+            throw IllegalArgumentException("unsupported_rule_file")
         }
         val rulesArray = root.optJSONArray("rules") ?: JSONArray()
-        if (rulesArray.length() > MAX_RULES) throw IllegalArgumentException("规则数量超过上限")
+        if (rulesArray.length() > MAX_RULES) throw IllegalArgumentException("rule_limit_exceeded")
         val imported = decode(rulesArray.toString())
-        if (!allowEmpty && imported.isEmpty()) throw IllegalArgumentException("规则文件中没有有效规则")
+        if (!allowEmpty && imported.isEmpty()) throw IllegalArgumentException("no_valid_rules")
         return imported
     }
 
@@ -66,12 +66,7 @@ internal class RuleLibrary(context: Context) {
         val array = JSONArray()
         rules.forEach { rule ->
             if (!validField(rule.find) || !validField(rule.replacement)) return@forEach
-            array.put(
-                JSONObject()
-                    .put("mode", rule.mode.name)
-                    .put("find", rule.find)
-                    .put("replacement", rule.replacement),
-            )
+            array.put(JSONObject().put("mode", rule.mode.name).put("find", rule.find).put("replacement", rule.replacement))
         }
         return array.toString()
     }
@@ -84,15 +79,13 @@ internal class RuleLibrary(context: Context) {
             val find = item.optString("find")
             val replacement = item.optString("replacement")
             if (find.isBlank() || !validField(find) || !validField(replacement)) continue
-            val mode = runCatching { RepairRuleMode.valueOf(item.optString("mode")) }
-                .getOrDefault(RepairRuleMode.LITERAL)
+            val mode = runCatching { RepairRuleMode.valueOf(item.optString("mode")) }.getOrDefault(RepairRuleMode.LITERAL)
             output += RepairRule(find, replacement, mode)
         }
         return output.distinctBy { Triple(it.mode, it.find, it.replacement) }
     }
 
-    private fun validField(value: String): Boolean =
-        value.length <= MAX_FIELD_CHARS && value.none { it == '\u001e' || it == '\u001f' }
+    private fun validField(value: String): Boolean = value.length <= MAX_FIELD_CHARS && value.none { it == '\u001e' || it == '\u001f' }
 
     companion object {
         private const val PREFS = "jingdu.rules.global.v1"
@@ -107,6 +100,13 @@ internal class RuleLibrary(context: Context) {
             RepairRule("*请记住本站*", "", RepairRuleMode.LINE_GLOB),
             RepairRule("*手机用户请访问*", "", RepairRuleMode.LINE_GLOB),
             RepairRule("*关注公众号*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*最新網址*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*備用網址*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*請收藏本站*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*請記住本站*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*手機用戶請訪問*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*關注公眾號*", "", RepairRuleMode.LINE_GLOB),
+            RepairRule("*請牢記網域*", "", RepairRuleMode.LINE_GLOB),
         )
     }
 }
