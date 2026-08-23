@@ -28,16 +28,7 @@ class JingduUiTest {
 
     @Test
     fun readerKeepsPrimaryNavigationDiscoverable() {
-        val book = BookCardModel(
-            id = "a".repeat(64),
-            name = "长篇小说.txt",
-            encoding = "UTF-8",
-            sizeBytes = 1024,
-            progress = 500,
-            charCount = 10_000,
-            touchedAt = 1,
-            normalizedSha256 = "b".repeat(64),
-        )
+        val book = sampleBook()
         composeRule.setContent {
             JingduApp(
                 state = AppUiState(
@@ -59,6 +50,43 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription("开始朗读").assertIsDisplayed()
     }
 
+    @Test
+    fun cleanSheetLetsFreeUsersSeeSmartCleanValueBeforePaywall() {
+        composeRule.setContent {
+            JingduApp(
+                state = AppUiState(
+                    screen = AppScreen.READER,
+                    currentBook = sampleBook(),
+                    pageText = "正文",
+                    length = 10_000,
+                    panel = ReaderPanel.CLEAN,
+                    smartCleanAnalyzed = true,
+                    noiseCandidates = listOf(
+                        NoiseCandidateModel(94, 326, "推广+高频", "请收藏本站 www.example.com"),
+                    ),
+                    proUnlocked = false,
+                    proPrice = "US$6.99",
+                ),
+                actions = noOpActions(),
+            )
+        }
+
+        composeRule.onNodeWithText("智能净读").assertIsDisplayed()
+        composeRule.onNodeWithText("请收藏本站 www.example.com").assertIsDisplayed()
+        composeRule.onNodeWithText("解锁 Pro 应用建议 · US$6.99").assertIsDisplayed()
+    }
+
+    private fun sampleBook() = BookCardModel(
+        id = "a".repeat(64),
+        name = "长篇小说.txt",
+        encoding = "UTF-8",
+        sizeBytes = 1024,
+        progress = 500,
+        charCount = 10_000,
+        touchedAt = 1,
+        normalizedSha256 = "b".repeat(64),
+    )
+
     private fun noOpActions() = JingduActions(
         onImport = {},
         onOpenBook = {},
@@ -75,9 +103,20 @@ class JingduUiTest {
         onJump = {},
         onAddBookmark = {},
         onDeleteBookmark = {},
-        onAddRule = { _, _ -> },
+        onAddRule = { _, _, _ -> },
         onDeleteRule = {},
         onClearRules = {},
+        onAnalyzeSmartClean = {},
+        onToggleNoiseCandidate = {},
+        onApplySmartClean = {},
+        onAddGlobalRule = { _, _, _ -> },
+        onDeleteGlobalRule = {},
+        onClearGlobalRules = {},
+        onInstallRecommendedRules = {},
+        onExportGlobalRules = {},
+        onImportGlobalRules = {},
+        onUpgradePro = {},
+        onRestorePro = {},
         onToggleCleanPreview = {},
         onExportClean = {},
         onEncodingSelected = {},
