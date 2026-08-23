@@ -57,6 +57,15 @@ internal class UserBackup(
         val fontSize = finiteFloat(value, "fontSizeSp", 16f, 34f)
         val lineHeight = finiteFloat(value, "lineHeightMultiplier", 1.2f, 2.0f)
         val padding = finiteFloat(value, "horizontalPaddingDp", 12f, 48f)
+        val chineseMode = if (value.has("chineseMode") && !value.isNull("chineseMode")) {
+            runCatching { ChineseDisplayMode.valueOf(value.getString("chineseMode")) }
+                .getOrElse { throw IllegalArgumentException("备份中文转换模式无效") }
+        } else ChineseDisplayMode.ORIGINAL
+        val chineseOverrides = if (value.has("chineseOverrides") && !value.isNull("chineseOverrides")) {
+            value.getString("chineseOverrides").also {
+                if (it.length > 16 * 1024) throw IllegalArgumentException("备份中文覆盖词典过大")
+            }
+        } else ""
         val rate = finiteFloat(value, "ttsRate", 0.6f, 1.8f)
         val pitch = finiteFloat(value, "ttsPitch", 0.7f, 1.4f)
         val voice = value.getString("ttsVoiceName")
@@ -70,6 +79,8 @@ internal class UserBackup(
             fontSizeSp = fontSize,
             lineHeightMultiplier = lineHeight,
             horizontalPaddingDp = padding,
+            chineseMode = chineseMode,
+            chineseOverrides = chineseOverrides,
             ttsRate = rate,
             ttsPitch = pitch,
             ttsVoiceName = voice,
