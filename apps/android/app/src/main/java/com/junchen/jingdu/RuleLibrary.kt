@@ -32,7 +32,8 @@ internal class RuleLibrary(context: Context) {
     }
 
     fun installRecommended(): List<RepairRule> {
-        val updated = (load() + RECOMMENDED).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(MAX_RULES)
+        val recommended = BuiltinCleanRules.rules.map(BuiltinCleanRule::rule)
+        val updated = (load() + recommended).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(MAX_RULES)
         save(updated)
         return updated
     }
@@ -40,6 +41,7 @@ internal class RuleLibrary(context: Context) {
     fun exportJson(): String = JSONObject()
         .put("schema", 1)
         .put("type", "jingdu-global-clean-rules")
+        .put("builtinPackVersion", BuiltinCleanRules.PACK_VERSION)
         .put("rules", JSONArray(encode(load())))
         .toString(2)
 
@@ -92,21 +94,5 @@ internal class RuleLibrary(context: Context) {
         private const val KEY_RULES = "rules"
         private const val MAX_RULES = 500
         private const val MAX_FIELD_CHARS = 1024
-
-        val RECOMMENDED = listOf(
-            RepairRule("*最新网址*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*备用网址*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*请收藏本站*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*请记住本站*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*手机用户请访问*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*关注公众号*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*最新網址*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*備用網址*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*請收藏本站*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*請記住本站*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*手機用戶請訪問*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*關注公眾號*", "", RepairRuleMode.LINE_GLOB),
-            RepairRule("*請牢記網域*", "", RepairRuleMode.LINE_GLOB),
-        )
     }
 }
