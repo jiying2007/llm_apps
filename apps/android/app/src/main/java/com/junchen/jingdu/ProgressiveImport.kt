@@ -9,7 +9,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
-internal data class ImportPreview(
+data class ImportPreview(
     val uri: Uri,
     val name: String,
     val encoding: String,
