@@ -56,9 +56,6 @@ public final class TtsPlaybackService extends Service {
     private boolean playing;
     private boolean playbackStarted;
     private String title = "Jingdu";
-    private float rate = 1f;
-    private float pitch = 1f;
-    private String voice = "";
     private int startRetries;
 
     @Override public void onCreate() {
@@ -137,12 +134,9 @@ public final class TtsPlaybackService extends Service {
             offset = reader.position();
             nextOffset = offset;
             title = valueOr(intent.getStringExtra(EXTRA_TITLE), getString(R.string.app_title));
-            rate = intent.getFloatExtra(EXTRA_RATE, 1f);
-            pitch = intent.getFloatExtra(EXTRA_PITCH, 1f);
-            voice = valueOr(intent.getStringExtra(EXTRA_VOICE), "");
-            engine.setRate(rate);
-            engine.setPitch(pitch);
-            engine.setVoiceName(voice);
+            engine.setRate(intent.getFloatExtra(EXTRA_RATE, 1f));
+            engine.setPitch(intent.getFloatExtra(EXTRA_PITCH, 1f));
+            engine.setVoiceName(valueOr(intent.getStringExtra(EXTRA_VOICE), ""));
             mediaSession.setMetadata(new MediaMetadata.Builder()
                     .putString(MediaMetadata.METADATA_KEY_TITLE, title)
                     .putString(MediaMetadata.METADATA_KEY_ARTIST, getString(R.string.tts_media_artist))
@@ -180,8 +174,7 @@ public final class TtsPlaybackService extends Service {
             }
             @Override public void onResumed() {
                 playing = true;
-                playbackStarted = true;
-                startForeground(NOTIFICATION_ID, notification());
+                ensureForeground();
                 updatePlaybackState();
                 broadcast(null);
             }
@@ -191,16 +184,7 @@ public final class TtsPlaybackService extends Service {
                     main.postDelayed(TtsPlaybackService.this::startSpeechWithRetry, 250L);
                     return;
                 }
-                if ("end".equals(reason)) {
-                    playing = false;
-                    updatePlaybackState();
-                    broadcast("end");
-                    stopForeground(false);
-                } else if (reason != null) {
-                    playing = false;
-                    updatePlaybackState();
-                    broadcast(reason);
-                }
+                finishPlayback(reason == null ? "stopped" : reason);
             }
         });
     }
@@ -208,9 +192,8 @@ public final class TtsPlaybackService extends Service {
     private void resumeSpeech() {
         if (playing || reader.length() <= 0) return;
         playing = true;
-        playbackStarted = true;
         startRetries = 0;
-        startForeground(NOTIFICATION_ID, notification());
+        ensureForeground();
         updatePlaybackState();
         startSpeechWithRetry();
     }
@@ -221,8 +204,8 @@ public final class TtsPlaybackService extends Service {
         playing = false;
         updatePlaybackState();
         broadcast("paused");
-        stopForeground(false);
-        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(NOTIFICATION_ID, notification());
+        if (playbackStarted) stopForeground(false);
+        if (playbackStarted) ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(NOTIFICATION_ID, notification());
     }
 
     private void skipNext() {
@@ -232,6 +215,7 @@ public final class TtsPlaybackService extends Service {
             offset = Math.max(offset + 1, chunk.nextOffset());
             reader.jump(offset);
             if (playing) { engine.stop(null); startSpeechWithRetry(); }
+            updatePlaybackState();
             broadcast(null);
         } catch (Exception ignored) { }
     }
@@ -241,6 +225,7 @@ public final class TtsPlaybackService extends Service {
         offset = Math.max(0, offset - 900);
         reader.jump(offset);
         if (playing) { engine.stop(null); startSpeechWithRetry(); }
+        updatePlaybackState();
         broadcast(null);
     }
 
@@ -251,13 +236,23 @@ public final class TtsPlaybackService extends Service {
                 android.os.SystemClock.uptimeMillis() + minutes * 60_000L);
     }
 
+    private void ensureForeground() {
+        if (!playbackStarted) playbackStarted = true;
+        startForeground(NOTIFICATION_ID, notification());
+    }
+
     private void stopPlayback(String reason) {
+        if (engine != null) engine.stop(null);
+        finishPlayback(reason);
+    }
+
+    private void finishPlayback(String reason) {
         main.removeCallbacksAndMessages(null);
         playing = false;
-        if (engine != null) engine.stop(null);
         updatePlaybackState();
         broadcast(reason);
         if (playbackStarted) stopForeground(true);
+        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).cancel(NOTIFICATION_ID);
         playbackStarted = false;
         stopSelf();
     }
@@ -267,7 +262,7 @@ public final class TtsPlaybackService extends Service {
         mediaSession.setPlaybackState(new PlaybackState.Builder()
                 .setActions(PLAYBACK_ACTIONS)
                 .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
-                        Math.max(0, offset), 1f)
+                        PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1f)
                 .build());
         if (playbackStarted) {
             NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -331,6 +326,7 @@ public final class TtsPlaybackService extends Service {
 
     @Override public void onDestroy() {
         main.removeCallbacksAndMessages(null);
+        playing = false;
         if (engine != null) engine.close();
         if (reader != null) reader.close();
         if (mediaSession != null) { mediaSession.setActive(false); mediaSession.release(); }
