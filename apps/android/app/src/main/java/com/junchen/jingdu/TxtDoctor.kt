@@ -2,9 +2,9 @@ package com.junchen.jingdu
 
 import kotlin.math.roundToInt
 
-internal enum class DoctorSeverity { GOOD, NOTICE, WARNING }
+enum class DoctorSeverity { GOOD, NOTICE, WARNING }
 
-internal data class TxtDoctorReport(
+data class TxtDoctorReport(
     val healthScore: Int,
     val encodingScore: Int,
     val tocScore: Int,
@@ -56,7 +56,7 @@ internal object TxtDoctor {
                 totalCodePoints++
                 when {
                     cp == 0xFFFD -> { replacements++; localBad++ }
-                    Character.getType(cp) == Character.CONTROL && cp != '\n'.code && cp != '\r'.code && cp != '\t'.code -> {
+                    Character.getType(cp) == Character.CONTROL.toInt() && cp != '\n'.code && cp != '\r'.code && cp != '\t'.code -> {
                         suspiciousControls++; localBad++
                     }
                 }
