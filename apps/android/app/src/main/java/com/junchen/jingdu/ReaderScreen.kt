@@ -63,7 +63,7 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
                 servicePlaying = playing
                 ttsOffset = offset
                 ttsNextOffset = intent.getLongExtra(TtsPlaybackService.EXTRA_NEXT_OFFSET, -1L)
-                if (playing && state.panel == null && offset >= 0 && offset != state.position) actions.onJump(offset)
+                if (playing && state.panel == null && offset >= 0 && offset != state.position) actions.onSyncTtsPosition(offset)
             }
         }
         val filter = IntentFilter(TtsPlaybackService.ACTION_STATE)
