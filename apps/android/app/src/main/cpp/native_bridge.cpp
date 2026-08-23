@@ -99,6 +99,14 @@ jbyteArray chapters(JNIEnv* env, jclass, jlong handle, jint limit) {
   return take(env, &out);
 }
 
+jbyteArray noiseCandidates(JNIEnv* env, jclass, jlong handle, jint limit) {
+  jd_buffer out{};
+  const int status = jd_noise_candidates(static_cast<jd_handle>(handle),
+                                         static_cast<uint32_t>(std::max(1, limit)), &out);
+  if (status != JD_OK) { fail(env, status, "noiseCandidates"); return nullptr; }
+  return take(env, &out);
+}
+
 jbyteArray speech(JNIEnv* env, jclass, jlong handle, jlong offset, jlong count) {
   jd_buffer out{};
   const int status = jd_speech_chunk(static_cast<jd_handle>(handle), static_cast<uint64_t>(std::max<jlong>(0, offset)), static_cast<uint64_t>(std::max<jlong>(1, count)), &out);
@@ -124,6 +132,7 @@ JNINativeMethod methods[] = {
     {"nativeRead", "(JJJ)[B", reinterpret_cast<void*>(readDoc)},
     {"nativeSearch", "(J[BI)[B", reinterpret_cast<void*>(searchDoc)},
     {"nativeChapters", "(JI)[B", reinterpret_cast<void*>(chapters)},
+    {"nativeNoiseCandidates", "(JI)[B", reinterpret_cast<void*>(noiseCandidates)},
     {"nativeSpeechChunk", "(JJJ)[B", reinterpret_cast<void*>(speech)},
     {"nativeExportRules", "(J[B[B)V", reinterpret_cast<void*>(exportRules)}
 };
