@@ -7,14 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -73,7 +70,6 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                modifier = Modifier.statusBarsPaddingCompat(),
                 navigationIcon = {
                     IconButton(onClick = actions.onBackToLibrary) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回书架")
@@ -190,8 +186,9 @@ private fun ReaderPage(
                         ),
                         overflow = TextOverflow.Clip,
                         onTextLayout = { layout ->
-                            if (layout.lineCount > 0 && text.isNotEmpty()) {
-                                val end = layout.getLineEnd(layout.lineCount - 1, visibleEnd = true).coerceIn(0, text.length)
+                            if (layout.lineCount > 0 && text.isNotEmpty() && layout.size.height > 0) {
+                                val visibleLine = layout.getLineForVerticalPosition((layout.size.height - 1).toFloat())
+                                val end = layout.getLineEnd(visibleLine, visibleEnd = true).coerceIn(0, text.length)
                                 val count = text.codePointCount(0, end).toLong()
                                 if (count >= ReaderController.MIN_PAGE_CHARS) onVisibleCharsChanged(count)
                             }
