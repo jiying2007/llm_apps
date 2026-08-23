@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chinese_conversion">Chinese conversion</string>
+    <string name="chinese_conversion_body">Convert only the visible reading window with OpenCC-compatible phrase dictionaries. The source TXT and Core offsets stay unchanged.</string>
+    <string name="chinese_original">Original</string>
+    <string name="chinese_simplified">Simplified</string>
+    <string name="chinese_traditional">Traditional</string>
+    <string name="chinese_taiwan">Taiwan</string>
+    <string name="chinese_taiwan_phrases">Taiwan phrases</string>
+    <string name="chinese_hong_kong">Hong Kong</string>
+    <string name="chinese_overrides">Local override dictionary</string>
+    <string name="chinese_overrides_body">Optional phrase overrides run before conversion and are backed up locally. One mapping per line: source =&gt; target. Up to 200 mappings.</string>
+    <string name="chinese_overrides_hint">头发 =&gt; 頭髮\n软件 =&gt; 軟體</string>
+    <string name="chinese_overrides_count">%1$d valid local mappings</string>
+    <string name="save_dictionary">Save dictionary</string>
+    <string name="smart_clean3_pack">Built-in clean signature pack v%1$d</string>
+    <string name="smart_clean3_refiner">Smart Clean also checks inline promotional fragments and clearly malformed lines. These higher-risk suggestions are never preselected.</string>
+    <string name="noise_reason_inline_fragment">inline promotional fragment</string>
+    <string name="noise_reason_garbled_line">malformed / replacement-character line</string>
+</resources>

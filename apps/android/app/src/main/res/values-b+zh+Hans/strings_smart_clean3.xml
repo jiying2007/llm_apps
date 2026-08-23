@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chinese_conversion">中文转换</string>
+    <string name="chinese_conversion_body">仅对当前可见阅读窗口使用 OpenCC 兼容词组词典转换；源 TXT 与 Core 原始偏移始终不变。</string>
+    <string name="chinese_original">原文</string>
+    <string name="chinese_simplified">简体</string>
+    <string name="chinese_traditional">标准繁体</string>
+    <string name="chinese_taiwan">台湾正体</string>
+    <string name="chinese_taiwan_phrases">台湾正体+用语</string>
+    <string name="chinese_hong_kong">香港繁体</string>
+    <string name="chinese_overrides">本地覆盖词典</string>
+    <string name="chinese_overrides_body">可选的词组覆盖会在转换前优先保护，并随本地备份保存。每行一条：源词 =&gt; 目标词，最多 200 条。</string>
+    <string name="chinese_overrides_hint">头发 =&gt; 頭髮\n软件 =&gt; 軟體</string>
+    <string name="chinese_overrides_count">%1$d 条有效本地映射</string>
+    <string name="save_dictionary">保存词典</string>
+    <string name="smart_clean3_pack">内置净化特征包 v%1$d</string>
+    <string name="smart_clean3_refiner">Smart Clean 还会检查行内推广碎片和明显乱码行；这类高误杀风险建议永远不会默认勾选。</string>
+    <string name="noise_reason_inline_fragment">行内推广碎片</string>
+    <string name="noise_reason_garbled_line">乱码 / 替换字符异常行</string>
+</resources>

@@ -4,7 +4,9 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 final class ReaderController implements Closeable {
@@ -55,7 +57,10 @@ final class ReaderController implements Closeable {
     List<Hit> search(String query) throws IOException {
         ensureOpen();
         LinkedHashMap<Long, Hit> merged = new LinkedHashMap<>();
-        for (String variant : ChineseScript.searchVariants(query)) {
+        LinkedHashSet<String> variants = new LinkedHashSet<>(ChineseDisplayConverter.searchVariants(query));
+        variants.addAll(ChineseScript.searchVariants(query));
+        for (String variant : variants) {
+            if (variant == null || variant.trim().isEmpty()) continue;
             for (String line : NativeCore.search(handle, variant, 500).split("\n")) {
                 int tab = line.indexOf('\t');
                 if (tab <= 0) continue;
@@ -89,16 +94,29 @@ final class ReaderController implements Closeable {
 
     List<NoiseCandidate> noiseCandidates() throws IOException {
         ensureOpen();
-        ArrayList<NoiseCandidate> candidates = new ArrayList<>();
+        LinkedHashMap<String, NoiseCandidate> merged = new LinkedHashMap<>();
         for (String line : NativeCore.noiseCandidates(handle, 80).split("\n")) {
             if (line.isEmpty()) continue;
             String[] fields = line.split("\t", 4);
             if (fields.length != 4) continue;
             try {
-                candidates.add(new NoiseCandidate(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), fields[2], fields[3]));
+                NoiseCandidate candidate = new NoiseCandidate(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), fields[2], fields[3]);
+                merged.put(candidate.reason() + '\u001f' + candidate.text(), candidate);
             } catch (NumberFormatException ignored) {
             }
         }
+        if (documentFile != null) {
+            for (SmartCleanRefiner.Candidate refined : SmartCleanRefiner.scan(documentFile, 40)) {
+                String key = refined.reason() + '\u001f' + refined.text();
+                NoiseCandidate existing = merged.get(key);
+                if (existing == null || refined.score() > existing.score()) {
+                    merged.put(key, new NoiseCandidate(refined.score(), refined.count(), refined.reason(), refined.text()));
+                }
+            }
+        }
+        ArrayList<NoiseCandidate> candidates = new ArrayList<>(merged.values());
+        candidates.sort(Comparator.comparingInt(NoiseCandidate::score).reversed().thenComparing(Comparator.comparingInt(NoiseCandidate::count).reversed()));
+        if (candidates.size() > 100) return new ArrayList<>(candidates.subList(0, 100));
         return candidates;
     }
 
@@ -108,7 +126,7 @@ final class ReaderController implements Closeable {
         int tab = packed.indexOf('\t');
         if (tab < 0) return new Speech(from, "");
         try {
-            return new Speech(Long.parseLong(packed.substring(0, tab)), packed.substring(tab + 1));
+            return new Speech(Long.parseLong(packed.substring(0, tab)), ChineseDisplayConverter.convert(packed.substring(tab + 1)));
         } catch (NumberFormatException error) {
             throw new IOException("invalid speech core response", error);
         }
