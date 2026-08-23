@@ -54,6 +54,10 @@
 
     <string name="add_folder_library">加入 TXT 資料夾</string>
     <string name="sync_folders">同步資料夾 · %1$d</string>
+    <string name="manage_folder_library">管理資料夾 · %1$d</string>
+    <string name="folder_library_roots">TXT 資料夾目錄</string>
+    <string name="folder_library_empty">目前沒有保留的資料夾目錄。</string>
+    <string name="remove_folder_root">移除此資料夾目錄</string>
     <string name="folder_sync_complete">資料夾同步完成</string>
     <string name="folder_sync_result">%1$d 個目錄 · 發現 %2$d · 匯入/更新 %3$d · 未變更 %4$d · 失敗 %5$d</string>
     <string name="refresh_library">重新整理書庫</string>
@@ -70,9 +74,6 @@
     <string name="full_import_background">現在即可閱讀這段有界預覽，完整私有匯入和索引會繼續在本機完成。</string>
     <string name="open_full_book">開啟完整書籍</string>
 
-    <string name="add">新增</string>
-    <string name="ok">確定</string>
-    <string name="close">關閉</string>
     <string name="competitive_ok">確定</string>
     <string name="competitive_close">關閉</string>
 </resources>
