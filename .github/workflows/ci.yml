@@ -155,4 +155,4 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/verify-terminal.sh
-          ./scripts/verify-terminal-quality.sh
+          bash ./scripts/verify-terminal-quality.sh
