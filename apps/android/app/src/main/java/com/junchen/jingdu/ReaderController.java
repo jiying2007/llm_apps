@@ -7,8 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class ReaderController implements Closeable {
-    static final long READ_AHEAD_CHARS = 5000;
-    static final long MIN_PAGE_CHARS = 180;
+    static final long MIN_PAGE_CHARS = 120;
+    static final long DEFAULT_PAGE_CHARS = 800;
+    static final long WINDOW_CHARS = 6000;
 
     record Hit(long offset, String context) {}
     record Chapter(long offset, String title) {}
@@ -29,7 +30,7 @@ final class ReaderController implements Closeable {
 
     String page() throws IOException {
         ensureOpen();
-        return NativeCore.read(handle, position, READ_AHEAD_CHARS);
+        return NativeCore.read(handle, position, WINDOW_CHARS);
     }
 
     long position() { return position; }
@@ -40,46 +41,42 @@ final class ReaderController implements Closeable {
     }
 
     void move(long delta) {
-        jump(position + delta);
+        long target;
+        try {
+            target = Math.addExact(position, delta);
+        } catch (ArithmeticException overflow) {
+            target = delta >= 0 ? Long.MAX_VALUE : 0;
+        }
+        jump(target);
     }
 
     List<Hit> search(String query) throws IOException {
-        File file = requireFile();
-        long searchHandle = NativeCore.open(file);
-        try {
-            ArrayList<Hit> hits = new ArrayList<>();
-            for (String line : NativeCore.search(searchHandle, query, 500).split("\n")) {
-                int tab = line.indexOf('\t');
-                if (tab <= 0) continue;
-                try {
-                    hits.add(new Hit(Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
-                } catch (NumberFormatException ignored) {
-                }
+        ensureOpen();
+        ArrayList<Hit> hits = new ArrayList<>();
+        for (String line : NativeCore.search(handle, query, 500).split("\n")) {
+            int tab = line.indexOf('\t');
+            if (tab <= 0) continue;
+            try {
+                hits.add(new Hit(Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
+            } catch (NumberFormatException ignored) {
             }
-            return hits;
-        } finally {
-            NativeCore.nativeClose(searchHandle);
         }
+        return hits;
     }
 
     List<Chapter> chapters() throws IOException {
-        File file = requireFile();
-        long chapterHandle = NativeCore.open(file);
-        try {
-            ArrayList<Chapter> chapters = new ArrayList<>();
-            for (String line : NativeCore.chapters(chapterHandle, 20000).split("\n")) {
-                int tab = line.indexOf('\t');
-                if (tab <= 0) continue;
-                try {
-                    chapters.add(new Chapter(
-                            Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
-                } catch (NumberFormatException ignored) {
-                }
+        ensureOpen();
+        ArrayList<Chapter> chapters = new ArrayList<>();
+        for (String line : NativeCore.chapters(handle, 20000).split("\n")) {
+            int tab = line.indexOf('\t');
+            if (tab <= 0) continue;
+            try {
+                chapters.add(new Chapter(
+                        Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
+            } catch (NumberFormatException ignored) {
             }
-            return chapters;
-        } finally {
-            NativeCore.nativeClose(chapterHandle);
         }
+        return chapters;
     }
 
     Speech speech(long from) throws IOException {
@@ -109,13 +106,7 @@ final class ReaderController implements Closeable {
         position = 0;
     }
 
-    private File requireFile() throws IOException {
-        File file = documentFile;
-        if (file == null) throw new IOException("no document open");
-        return file;
-    }
-
     private void ensureOpen() throws IOException {
-        if (handle == 0) throw new IOException("no document open");
+        if (handle == 0 || documentFile == null) throw new IOException("no document open");
     }
 }
