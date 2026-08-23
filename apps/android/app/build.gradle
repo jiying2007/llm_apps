@@ -1,12 +1,13 @@
 plugins {
     id "com.android.application"
+    id "org.jetbrains.kotlin.plugin.compose"
 }
 
 def applicationIdValue = providers.gradleProperty("jingduApplicationId").getOrElse("com.junchen.jingdu")
 def versionCodeProperty = providers.gradleProperty("jingduVersionCode")
 def versionNameProperty = providers.gradleProperty("jingduVersionName")
-def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrElse(2)
-def versionNameValue = versionNameProperty.getOrElse("2.0.0")
+def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrElse(3)
+def versionNameValue = versionNameProperty.getOrElse("2.1.0")
 def signingPropertiesFile = rootProject.file("keystore.properties")
 def signingProperties = new Properties()
 if (signingPropertiesFile.isFile()) {
@@ -20,7 +21,7 @@ def releaseSigningConfigured = signingPropertiesFile.isFile() && signingKeys.eve
 
 android {
     namespace = "com.junchen.jingdu"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = applicationIdValue
@@ -28,6 +29,7 @@ android {
         targetSdk = 36
         versionCode = versionCodeValue
         versionName = versionNameValue
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters "arm64-v8a", "armeabi-v7a", "x86_64"
         }
@@ -56,10 +58,15 @@ android {
         }
         release {
             minifyEnabled = true
-            shrinkResources = false
+            shrinkResources = true
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             if (releaseSigningConfigured) signingConfig = signingConfigs.release
         }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = false
     }
 
     externalNativeBuild {
@@ -78,6 +85,35 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    packaging {
+        resources {
+            excludes += ["/META-INF/{AL2.0,LGPL2.1}"]
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api")
+    }
+}
+
+dependencies {
+    def composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    implementation composeBom
+    androidTestImplementation composeBom
+
+    implementation "androidx.activity:activity-compose:1.13.0"
+    implementation "androidx.compose.foundation:foundation"
+    implementation "androidx.compose.material3:material3"
+    implementation "androidx.compose.material:material-icons-extended"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+    debugImplementation "androidx.compose.ui:ui-tooling"
+
+    androidTestImplementation "androidx.compose.ui:ui-test-junit4"
+    debugImplementation "androidx.compose.ui:ui-test-manifest"
+    androidTestImplementation "androidx.test.ext:junit:1.3.0"
 }
 
 tasks.register("validateStoreRelease") {

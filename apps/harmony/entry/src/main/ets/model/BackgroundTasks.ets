@@ -205,6 +205,11 @@ export function pruneRevisionsTask(bookDir: string, normalizedSha256: string,
     if (name.startsWith('clean-') && name.endsWith('.txt') && name !== keepClean) remove = true;
     if (name.startsWith('clean-') && name.endsWith('.txt.tmp')) remove = true;
     if (name.startsWith('.document-') && name.endsWith('.tmp')) remove = true;
+    if (name.endsWith('.jdx.tmp')) remove = true;
+    if (name.endsWith('.jdx')) {
+      let sourceName = name.substring(0, name.length - 4);
+      if (!fileExists(`${bookDir}/${sourceName}`)) remove = true;
+    }
     if (name === 'document.txt' || name === 'clean.txt' || name === 'clean.revision') remove = true;
     if (remove) removeIfExists(`${bookDir}/${name}`);
   });

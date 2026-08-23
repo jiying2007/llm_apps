@@ -48,10 +48,11 @@ final class BookRepository {
         final String sourceSha256;
         final String normalizedSha256;
         long progress;
+        long charCount;
         long touchedAt;
 
         Book(String id, String name, String encoding, long size, String sourceSha256,
-             String normalizedSha256, long progress, long touchedAt) {
+             String normalizedSha256, long progress, long charCount, long touchedAt) {
             this.id = id;
             this.name = name;
             this.encoding = encoding;
@@ -59,6 +60,7 @@ final class BookRepository {
             this.sourceSha256 = sourceSha256;
             this.normalizedSha256 = normalizedSha256;
             this.progress = progress;
+            this.charCount = charCount;
             this.touchedAt = touchedAt;
         }
     }
@@ -95,6 +97,7 @@ final class BookRepository {
                         sourceSha,
                         normalizedSha,
                         item.optLong("progress"),
+                        item.optLong("charCount"),
                         item.optLong("touchedAt")));
             }
         } catch (Exception ignored) {
@@ -127,8 +130,7 @@ final class BookRepository {
             publishImmutable(normalizedTemporary, normalizedFile(sourceSha, normalizedSha));
             normalizedTemporary = null;
 
-            long progress = existing != null && existing.normalizedSha256.equals(normalizedSha)
-                    ? existing.progress : 0;
+            boolean sameRevision = existing != null && existing.normalizedSha256.equals(normalizedSha);
             Book book = new Book(
                     sourceSha,
                     displayName(uri),
@@ -136,7 +138,8 @@ final class BookRepository {
                     size,
                     sourceSha,
                     normalizedSha,
-                    progress,
+                    sameRevision ? existing.progress : 0,
+                    sameRevision ? existing.charCount : 0,
                     System.currentTimeMillis());
             upsert(book);
             return book;
@@ -146,10 +149,47 @@ final class BookRepository {
         }
     }
 
+    synchronized Book redecode(Book book, String requestedEncoding) throws Exception {
+        if (book == null) throw new IOException("no book selected");
+        File raw = rawFile(book.id);
+        if (!raw.isFile()) throw new IOException("private source copy is missing");
+
+        String encoding = requestedEncoding == null ? AUTO : requestedEncoding;
+        if (AUTO.equals(encoding)) encoding = detect(raw);
+
+        File temporary = File.createTempFile(".document-", ".tmp", directory(book.id));
+        try {
+            normalize(raw, temporary, encoding);
+            String normalizedSha = NativeCore.fileSha256(temporary);
+            publishImmutable(temporary, normalizedFile(book.id, normalizedSha));
+            boolean sameRevision = book.normalizedSha256.equals(normalizedSha);
+            Book updated = new Book(
+                    book.id,
+                    book.name,
+                    encoding,
+                    book.size,
+                    book.sourceSha256,
+                    normalizedSha,
+                    sameRevision ? book.progress : 0,
+                    sameRevision ? book.charCount : 0,
+                    System.currentTimeMillis());
+            upsert(updated);
+            return updated;
+        } finally {
+            deleteTemporary(temporary);
+        }
+    }
+
     synchronized void saveProgress(Book book, long progress) {
         if (book == null) return;
         book.progress = Math.max(0, progress);
         book.touchedAt = System.currentTimeMillis();
+        upsert(book);
+    }
+
+    synchronized void updateCharCount(Book book, long charCount) {
+        if (book == null || charCount <= 0 || book.charCount == charCount) return;
+        book.charCount = charCount;
         upsert(book);
     }
 
@@ -304,6 +344,7 @@ final class BookRepository {
                 item.put("sourceSha256", book.sourceSha256);
                 item.put("normalizedSha256", book.normalizedSha256);
                 item.put("progress", book.progress);
+                item.put("charCount", book.charCount);
                 item.put("touchedAt", book.touchedAt);
                 array.put(item);
             }

@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 project(jingdu_core LANGUAGES CXX)
 
 add_library(jingdu_core STATIC
-  src/core_api.cpp
+  src/core_api_cached.cpp
+  src/index_cache.cpp
   src/sha256.cpp
 )
 target_include_directories(jingdu_core PUBLIC include PRIVATE src)

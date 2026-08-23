@@ -58,6 +58,7 @@ int main() {
   check(detect(gb, sizeof(gb)) == "GB18030", "GB18030 fallback");
 
   const char* path = "jingdu-core-test.txt";
+  const std::string cachePath = std::string(path) + ".jdx";
   {
     std::ofstream file(path, std::ios::binary);
     file << "第一章 开始\nhello 世界\nChapter 2 Next\nhello again\n";
@@ -85,6 +86,7 @@ int main() {
   jd_handle handle = 0;
   check(jd_open_utf8(path, &handle) == JD_OK && handle != 0, "open");
   check(jd_char_count(handle) > 20, "char count");
+  check(std::ifstream(cachePath).good(), "index cache created after first open");
 
   jd_buffer buffer{};
   check(jd_read(handle, 0, 6, &buffer) == JD_OK && !take(&buffer).empty(), "read");
@@ -111,7 +113,27 @@ int main() {
         "repair content");
 
   jd_close(handle);
+  {
+    std::ofstream broken(cachePath, std::ios::trunc);
+    broken << "corrupt\n";
+  }
+  handle = 0;
+  check(jd_open_utf8(path, &handle) == JD_OK && handle != 0,
+        "corrupt index cache falls back to source scan");
+  check(jd_read(handle, 0, 6, &buffer) == JD_OK && !take(&buffer).empty(),
+        "read after cache recovery");
+  jd_close(handle);
+  {
+    std::ifstream repairedCache(cachePath);
+    std::string magic;
+    std::getline(repairedCache, magic);
+    check(magic == "JDX1", "index cache repaired after fallback");
+  }
+
   std::remove(path);
+  std::remove(cachePath.c_str());
+  std::remove((cachePath + ".tmp").c_str());
   std::remove(repairedPath);
+  std::remove((std::string(repairedPath) + ".jdx").c_str());
   return 0;
 }

@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   native-core:
     runs-on: ubuntu-latest
@@ -28,22 +32,49 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Android terminal verification
+      - name: Android product verification
         run: ./gradlew --no-daemon --warning-mode all androidCheck
-      - name: Android architecture contract
+      - name: Android product contract
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
-          grep -q 'NativeCore.open(file)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+          for path in \
+            apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/UiComponents.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/UiFormatters.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/NativeIndexCache.java \
+            apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt; do
+            test -f "$path"
+          done
+          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+          grep -q 'enableEdgeToEdge' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'onSaveInstanceState' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'restoreSession' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'STATE_NORMALIZED_SHA' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'bookmarkKey(book)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'NativeIndexCache.pruneOrphans' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
+          grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+          grep -q 'onValueChangeFinished' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+          grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+          grep -q 'onTextLayout' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
           grep -q 'ATOMIC_MOVE' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
-          grep -q 'existing.normalizedSha256.equals(normalizedSha)' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
-          grep -q 'if (!cleanMode) repository.saveProgress' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
-          grep -q '净读预览不写入原文书签' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
           grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
           grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
-          grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
+          grep -q 'NativeCore.search(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+          grep -q 'NativeCore.chapters(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+          grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
+          grep -q 'compileSdk = 37' apps/android/app/build.gradle
 
   harmony-contract:
     runs-on: ubuntu-latest
@@ -68,6 +99,7 @@ jobs:
           grep -q 'openDocumentTask' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
           grep -q 'document-${normalizedSha256}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
           grep -q 'clean-${revision}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+          grep -q "name.endsWith('.jdx')" apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
           grep -q 'await this.reader.open' apps/harmony/entry/src/main/ets/pages/Index.ets
           grep -q 'pruneRevisionsTask' apps/harmony/entry/src/main/ets/pages/Index.ets
           grep -q 'if (!this.cleanMode) this.store.saveProgress' apps/harmony/entry/src/main/ets/pages/Index.ets
