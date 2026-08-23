@@ -45,7 +45,8 @@ required=(
   docs/PRODUCT.md docs/PRODUCT_REQUIREMENTS.md docs/UX.md docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
   docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md
   docs/HARMONY_RUNNER.md docs/RELEASE.md
-  core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/sha256.cpp
+  core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
+  core/native/src/index_cache.h core/native/src/index_cache.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
   apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
   apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
@@ -56,6 +57,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/UiFormatters.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/NativeIndexCache.java
   apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
   apps/android/app/src/main/res/values/themes.xml
   apps/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
@@ -78,15 +80,22 @@ test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
 grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
+grep -q 'load_index_cache' core/native/src/core_api_cached.cpp
+grep -q 'JDX1' core/native/src/index_cache.cpp
 grep -q 'sourceSha256' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
 grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'onSaveInstanceState' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'restoreSession' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'STATE_NORMALIZED_SHA' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'previousBook.normalizedSha256 == book.normalizedSha256' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'bookmarkKey(book)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'NativeIndexCache.pruneOrphans' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
-grep -q 'pruneDocumentRevisions' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'NativeCore.search(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+grep -q 'NativeCore.chapters(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
 grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
 grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
@@ -101,6 +110,7 @@ grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'previous.normalizedSha256 === book.normalizedSha256' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'document-${normalizedSha256}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'clean-${revision}.txt' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
+grep -q "name.endsWith('.jdx')" apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'pruneRevisionsTask' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'taskpool.execute' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'self-hosted,harmonyos' docs/HARMONY_RUNNER.md
