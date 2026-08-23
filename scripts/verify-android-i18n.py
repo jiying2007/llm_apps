@@ -34,6 +34,7 @@ def strings(path: Path) -> dict[str, str]:
         raise SystemExit(f"empty localized strings in {path.relative_to(ROOT)}: {empty}")
     return values
 
+
 localized = {locale: strings(path) for locale, path in LOCALES.items()}
 base_keys = set(localized["en-US"])
 for locale, values in localized.items():
@@ -96,7 +97,12 @@ for name in ["MainActivity.kt", "BillingManager.kt"]:
         raise SystemExit(f"runtime localization resource use missing in {name}")
 
 ui_test = (base.parents[4] / "androidTest/java/com/junchen/jingdu/JingduUiTest.kt").read_text(encoding="utf-8")
-if "targetContext.getString" not in ui_test or "promo_repeated" not in ui_test:
+required_test_contract = (
+    "InstrumentationRegistry.getInstrumentation().targetContext",
+    "context.getString(R.string.",
+    '"promo_repeated"',
+)
+if any(token not in ui_test for token in required_test_contract):
     raise SystemExit("Compose AndroidTest must resolve UI expectations from the active locale")
 
 print("Android i18n contract OK: en-US / zh-Hans / zh-Hant; keys/placeholders/smoke contract aligned")
