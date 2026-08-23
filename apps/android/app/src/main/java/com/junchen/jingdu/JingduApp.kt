@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 
 data class JingduActions(
     val onImport: () -> Unit,
+    val onBatchImport: () -> Unit,
     val onOpenBook: (String) -> Unit,
     val onDeleteLibraryBook: (String) -> Unit,
     val onBackToLibrary: () -> Unit,
@@ -55,6 +56,10 @@ data class JingduActions(
     val onImportGlobalRules: () -> Unit,
     val onUpgradePro: () -> Unit,
     val onRestorePro: () -> Unit,
+    val onExportBackup: () -> Unit,
+    val onImportBackup: () -> Unit,
+    val onRefreshTtsVoices: () -> Unit,
+    val onSelectTtsVoice: (String) -> Unit,
     val onToggleCleanPreview: () -> Unit,
     val onExportClean: () -> Unit,
     val onEncodingSelected: (String) -> Unit,
