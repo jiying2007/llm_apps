@@ -3,6 +3,7 @@ project(jingdu_core LANGUAGES CXX)
 
 add_library(jingdu_core STATIC
   src/core_api.cpp
+  src/index_cache.cpp
   src/sha256.cpp
 )
 target_include_directories(jingdu_core PUBLIC include PRIVATE src)
