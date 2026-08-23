@@ -47,7 +47,7 @@ required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
   .github/workflows/ci.yml .github/workflows/harmony-device.yml
-  docs/PRODUCT.md docs/PRODUCT_REQUIREMENTS.md docs/GROWTH_MONETIZATION.md docs/UX.md
+  docs/PRODUCT.md docs/PRODUCT_REQUIREMENTS.md docs/GROWTH_MONETIZATION.md docs/UX.md docs/LOCALIZATION.md
   docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
   docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md
   docs/PLAY_CONSOLE_SETUP.md docs/HARMONY_RUNNER.md docs/RELEASE.md
@@ -56,6 +56,8 @@ required=(
   fastlane/metadata/android/zh-HK/title.txt fastlane/metadata/android/zh-HK/short_description.txt fastlane/metadata/android/zh-HK/full_description.txt
   fastlane/metadata/android/en-US/title.txt fastlane/metadata/android/en-US/short_description.txt fastlane/metadata/android/en-US/full_description.txt
   store/play/CUSTOM_LISTINGS.zh-CN.md store/play/SCREENSHOT_BRIEF.zh-CN.md
+  store/play/CUSTOM_LISTINGS.zh-Hant.md store/play/SCREENSHOT_BRIEF.zh-Hant.md
+  store/play/CUSTOM_LISTINGS.en-US.md store/play/SCREENSHOT_BRIEF.en-US.md
   scripts/verify-play-store.sh scripts/verify-android-i18n.py
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
   core/native/src/index_cache.h core/native/src/index_cache.cpp core/native/src/sha256.cpp
@@ -71,6 +73,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/NativeIndexCache.java
+  apps/android/app/src/main/java/com/junchen/jingdu/ChineseScript.java
   apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
   apps/android/app/src/main/java/com/junchen/jingdu/RuleCodec.kt
   apps/android/app/src/main/java/com/junchen/jingdu/RuleLibrary.kt
@@ -125,6 +128,7 @@ grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepositor
 grep -q 'NativeCore.search(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 grep -q 'NativeCore.chapters(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 grep -q 'NativeCore.noiseCandidates' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+grep -q 'ChineseScript.searchVariants' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 
 grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
 grep -q 'R.string.batch_import' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
@@ -141,6 +145,7 @@ grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
 grep -q 'com.android.billingclient:billing:9.1.0' apps/android/app/build.gradle
 grep -q 'com.google.android.play:review:2.0.2' apps/android/app/build.gradle
 grep -q 'compileSdk = 37' apps/android/app/build.gradle
+grep -q 'getOrElse("2.2.0")' apps/android/build.gradle
 grep -q 'generateLocaleConfig = true' apps/android/app/build.gradle
 grep -q 'android:label="@string/app_name"' apps/android/app/src/main/AndroidManifest.xml
 
