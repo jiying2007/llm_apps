@@ -26,7 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
-data class JingduActions(
+internal data class JingduActions(
     val onImport: () -> Unit, val onBatchImport: () -> Unit, val onOpenBook: (String) -> Unit, val onDeleteLibraryBook: (String) -> Unit,
     val onToggleFavorite: (String) -> Unit, val onSetBookTags: (String, String) -> Unit,
     val onBackToLibrary: () -> Unit, val onNavigatePrevious: () -> Unit, val onNavigateNext: () -> Unit, val onSeekFraction: (Float) -> Unit,
@@ -48,7 +48,7 @@ private val BrandLight = lightColorScheme(primary = Color(0xFF386A52), onPrimary
 private val BrandDark = darkColorScheme(primary = Color(0xFF9DD5B6), onPrimary = Color(0xFF073823), primaryContainer = Color(0xFF20513A), onPrimaryContainer = Color(0xFFB9F0D1), secondary = Color(0xFFB6CCBD), surface = Color(0xFF111411), background = Color(0xFF0E110F))
 
 @Composable
-fun JingduApp(state: AppUiState, actions: JingduActions) {
+internal fun JingduApp(state: AppUiState, actions: JingduActions) {
     MaterialTheme(colorScheme = if (state.settings.palette == ReaderPalette.NIGHT) BrandDark else BrandLight) {
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
