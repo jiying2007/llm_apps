@@ -18,7 +18,12 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class TtsController implements AutoCloseable {
-    interface Listener { void onPosition(long offset); void onStopped(String reason); }
+    interface Listener {
+        void onPosition(long offset);
+        void onStopped(String reason);
+        default void onPaused() { }
+        default void onResumed() { }
+    }
     record VoiceOption(String name, String label) {}
 
     private static final String HANS_MARKERS = "这为后发国书读时会里还进对从个们来说现学与体门见风东语网无龙边开长";
@@ -31,11 +36,14 @@ final class TtsController implements AutoCloseable {
     private final AudioFocusRequest focus;
     private final AtomicLong generation = new AtomicLong();
     private boolean ready;
+    private boolean pausedForFocus;
+    private boolean resumeOnFocusGain;
     private String desiredVoiceName = "";
     private Locale preferredLocale = Locale.getDefault();
     private ReaderController reader;
     private Listener listener;
     private long offset;
+    private long pendingNextOffset;
 
     TtsController(Context context) {
         audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
@@ -45,24 +53,36 @@ final class TtsController implements AutoCloseable {
                 .build();
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(attributes)
+                .setWillPauseWhenDucked(true)
                 .setOnAudioFocusChangeListener(change -> {
-                    if (change == AudioManager.AUDIOFOCUS_LOSS
-                            || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+                    if (change == AudioManager.AUDIOFOCUS_GAIN) {
+                        main.post(this::resumeAfterFocus);
+                    } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
                             || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+                        main.post(this::pauseForFocus);
+                    } else if (change == AudioManager.AUDIOFOCUS_LOSS) {
                         main.post(() -> stop("audio focus"));
                     }
-                })
+                }, main)
                 .build();
         tts = new TextToSpeech(context.getApplicationContext(), status -> {
             ready = status == TextToSpeech.SUCCESS;
             if (ready) applyDesiredVoice();
         });
+        tts.setAudioAttributes(attributes);
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String utteranceId) { }
 
             @Override public void onDone(String utteranceId) {
                 long token = parseToken(utteranceId);
-                main.post(() -> { if (token == generation.get()) speakNext(token); });
+                main.post(() -> {
+                    if (token != generation.get() || pausedForFocus || reader == null) return;
+                    if (pendingNextOffset > offset) {
+                        offset = pendingNextOffset;
+                        if (listener != null) listener.onPosition(offset);
+                    }
+                    speakNext(token);
+                });
             }
 
             @Override public void onError(String utteranceId, int errorCode) {
@@ -99,12 +119,18 @@ final class TtsController implements AutoCloseable {
         this.reader = reader;
         this.listener = listener;
         this.offset = Math.max(0, from);
+        this.pendingNextOffset = this.offset;
+        this.pausedForFocus = false;
+        this.resumeOnFocusGain = false;
         long token = generation.incrementAndGet();
         speakNext(token);
     }
 
     void stop(String reason) {
         generation.incrementAndGet();
+        resumeOnFocusGain = false;
+        pausedForFocus = false;
+        pendingNextOffset = offset;
         tts.stop();
         audio.abandonAudioFocusRequest(focus);
         Listener old = listener;
@@ -113,7 +139,7 @@ final class TtsController implements AutoCloseable {
         if (reason != null && old != null) old.onStopped(reason);
     }
 
-    boolean isSpeaking() { return reader != null; }
+    boolean isSpeaking() { return reader != null && !pausedForFocus; }
     void setRate(float rate) { tts.setSpeechRate(Math.max(0.5f, Math.min(2f, rate))); }
     void setPitch(float pitch) { tts.setPitch(Math.max(0.5f, Math.min(2f, pitch))); }
     void setLanguage(Locale locale) { preferredLocale = locale == null ? Locale.getDefault() : locale; tts.setLanguage(preferredLocale); }
@@ -150,15 +176,34 @@ final class TtsController implements AutoCloseable {
         }
     }
 
+    private void pauseForFocus() {
+        if (reader == null || pausedForFocus) return;
+        resumeOnFocusGain = true;
+        pausedForFocus = true;
+        generation.incrementAndGet();
+        tts.stop();
+        if (listener != null) listener.onPaused();
+    }
+
+    private void resumeAfterFocus() {
+        if (reader == null || !pausedForFocus || !resumeOnFocusGain) return;
+        pausedForFocus = false;
+        resumeOnFocusGain = false;
+        pendingNextOffset = offset;
+        long token = generation.incrementAndGet();
+        if (listener != null) listener.onResumed();
+        speakNext(token);
+    }
+
     private void speakNext(long token) {
-        if (reader == null || token != generation.get()) return;
+        if (reader == null || pausedForFocus || token != generation.get()) return;
         try {
             ReaderController.Speech chunk = reader.speech(offset);
             if (chunk.text().trim().isEmpty() || chunk.nextOffset() <= offset) {
                 stop("end");
                 return;
             }
-            offset = chunk.nextOffset();
+            pendingNextOffset = chunk.nextOffset();
             if (listener != null) listener.onPosition(offset);
             tts.speak(chunk.text(), TextToSpeech.QUEUE_FLUSH, new Bundle(), Long.toString(token));
         } catch (Exception error) {

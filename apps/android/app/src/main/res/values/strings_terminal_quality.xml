@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_favorites">Favorites</string>
+    <string name="library_filter_reading">Reading</string>
+    <string name="library_filter_finished">Finished</string>
+    <string name="library_sort_recent">Recent</string>
+    <string name="library_sort_name">Name</string>
+    <string name="library_sort_progress">Progress</string>
+    <string name="library_sort_label">Sort</string>
+    <string name="favorite_book">Favorite</string>
+    <string name="unfavorite_book">Remove favorite</string>
+    <string name="edit_tags">Edit tags</string>
+    <string name="book_tags_title">Local tags</string>
+    <string name="book_tags_body">Comma-separated tags are stored only on this device.</string>
+    <string name="book_tags_hint">fiction, reread, favorite author</string>
+    <string name="save">Save</string>
+    <string name="status_unread">Unread</string>
+    <string name="status_reading">Reading</string>
+    <string name="status_finished">Finished</string>
+    <string name="smart_clean_risk_high">High confidence</string>
+    <string name="smart_clean_risk_medium">Review</string>
+    <string name="smart_clean_risk_low">Low confidence</string>
+    <string name="smart_clean_impact">%1$d matches · about %2$d characters</string>
+    <string name="smart_clean_explain_high">Strong promotional/URL evidence or repeated promotional text. Selected by default.</string>
+    <string name="smart_clean_explain_medium">Likely noise, but review the sample before applying.</string>
+    <string name="smart_clean_explain_low">Repetition alone can be legitimate prose. Not selected by default.</string>
+    <string name="smart_clean_undo">Undo last Smart Clean</string>
+    <string name="smart_clean_undone">Restored the rules from before the last Smart Clean.</string>
+    <string name="smart_clean_apply_warning">Only selected whole-line candidates are removed. Original TXT is never modified.</string>
+    <string name="library_tagline_terminal">Long TXT · Smart Clean · Fully local</string>
+</resources>

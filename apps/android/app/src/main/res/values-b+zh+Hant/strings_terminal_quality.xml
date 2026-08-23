@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_filter_all">全部</string>
+    <string name="library_filter_favorites">收藏</string>
+    <string name="library_filter_reading">閱讀中</string>
+    <string name="library_filter_finished">已讀</string>
+    <string name="library_sort_recent">最近閱讀</string>
+    <string name="library_sort_name">書名</string>
+    <string name="library_sort_progress">閱讀進度</string>
+    <string name="library_sort_label">排序</string>
+    <string name="favorite_book">加入收藏</string>
+    <string name="unfavorite_book">取消收藏</string>
+    <string name="edit_tags">編輯標籤</string>
+    <string name="book_tags_title">本機標籤</string>
+    <string name="book_tags_body">使用逗號分隔，標籤只保存在本機。</string>
+    <string name="book_tags_hint">長篇、重讀、喜歡的作者</string>
+    <string name="save">儲存</string>
+    <string name="status_unread">未讀</string>
+    <string name="status_reading">閱讀中</string>
+    <string name="status_finished">已讀</string>
+    <string name="smart_clean_risk_high">高置信</string>
+    <string name="smart_clean_risk_medium">建議複核</string>
+    <string name="smart_clean_risk_low">低置信</string>
+    <string name="smart_clean_impact">%1$d 處命中 · 約 %2$d 個字元</string>
+    <string name="smart_clean_explain_high">存在明確廣告、網址或重複廣告證據，預設選取。</string>
+    <string name="smart_clean_explain_medium">大概率是干擾內容，但建議確認樣例後再套用。</string>
+    <string name="smart_clean_explain_low">僅憑重複可能誤傷正常正文，預設不選。</string>
+    <string name="smart_clean_undo">撤銷上一次智慧淨化</string>
+    <string name="smart_clean_undone">已恢復到上一次智慧淨化前的規則。</string>
+    <string name="smart_clean_apply_warning">僅刪除已選取的整行候選；原始 TXT 永遠不會被修改。</string>
+    <string name="library_tagline_terminal">長篇 TXT · 智慧淨化 · 完全本機</string>
+</resources>

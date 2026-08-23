@@ -5,37 +5,46 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 RES = ROOT / "apps/android/app/src/main/res"
-LOCALES = {
-    "en-US": RES / "values/strings.xml",
-    "zh-Hans": RES / "values-b+zh+Hans/strings.xml",
-    "zh-Hant": RES / "values-b+zh+Hant/strings.xml",
+LOCALE_DIRS = {
+    "en-US": RES / "values",
+    "zh-Hans": RES / "values-b+zh+Hans",
+    "zh-Hant": RES / "values-b+zh+Hant",
 }
 FORMAT = re.compile(r"%(?:\d+\$)?[-#+ 0,(]*\d*(?:\.\d+)?[a-zA-Z%]")
 SMOKE_KEYS = {
-    "app_title", "library_tagline", "empty_title", "select_txt", "full_text_search",
-    "chapters", "reading_progress", "smart_clean", "unlock_pro_apply", "offline_voice",
-    "local_asset_backup", "billing_unavailable", "error_import",
+    "app_title", "library_tagline", "library_tagline_terminal", "empty_title", "select_txt",
+    "full_text_search", "chapters", "reading_progress", "smart_clean", "smart_clean_undo",
+    "smart_clean_risk_high", "library_filter_favorites", "library_sort_progress",
+    "unlock_pro_apply", "offline_voice", "local_asset_backup", "billing_unavailable", "error_import",
 }
 
 
-def strings(path: Path) -> dict[str, str]:
-    if not path.is_file():
-        raise SystemExit(f"missing locale resource: {path.relative_to(ROOT)}")
-    root = ET.parse(path).getroot()
+def strings(directory: Path) -> dict[str, str]:
+    if not directory.is_dir():
+        raise SystemExit(f"missing locale resource directory: {directory.relative_to(ROOT)}")
+    files = sorted(directory.glob("strings*.xml"))
+    if not files:
+        raise SystemExit(f"missing locale string resources: {directory.relative_to(ROOT)}")
     values: dict[str, str] = {}
-    for node in root:
-        if node.tag != "string" or "name" not in node.attrib:
-            continue
-        values[node.attrib["name"]] = "".join(node.itertext()).strip()
+    for path in files:
+        root = ET.parse(path).getroot()
+        for node in root:
+            if node.tag != "string" or "name" not in node.attrib:
+                continue
+            name = node.attrib["name"]
+            value = "".join(node.itertext()).strip()
+            if name in values:
+                raise SystemExit(f"duplicate localized string {name} in {directory.relative_to(ROOT)}")
+            values[name] = value
     if len(values) < 100:
-        raise SystemExit(f"suspiciously small locale resource: {path.relative_to(ROOT)} ({len(values)} keys)")
+        raise SystemExit(f"suspiciously small locale resource set: {directory.relative_to(ROOT)} ({len(values)} keys)")
     empty = sorted(name for name, value in values.items() if not value)
     if empty:
-        raise SystemExit(f"empty localized strings in {path.relative_to(ROOT)}: {empty}")
+        raise SystemExit(f"empty localized strings in {directory.relative_to(ROOT)}: {empty}")
     return values
 
 
-localized = {locale: strings(path) for locale, path in LOCALES.items()}
+localized = {locale: strings(directory) for locale, directory in LOCALE_DIRS.items()}
 base_keys = set(localized["en-US"])
 for locale, values in localized.items():
     current = set(values)
@@ -83,7 +92,7 @@ presentation_files = [
 for name in presentation_files:
     text = (base / name).read_text(encoding="utf-8")
     if cjk.search(text):
-        raise SystemExit(f"hard-coded CJK UI copy found in {name}; move it to strings.xml")
+        raise SystemExit(f"hard-coded CJK UI copy found in {name}; move it to string resources")
     if "stringResource(R.string." not in text:
         raise SystemExit(f"localized UI resource use missing in {name}")
 
@@ -105,4 +114,4 @@ required_test_contract = (
 if any(token not in ui_test for token in required_test_contract):
     raise SystemExit("Compose AndroidTest must resolve UI expectations from the active locale")
 
-print("Android i18n contract OK: en-US / zh-Hans / zh-Hant; keys/placeholders/smoke contract aligned")
+print("Android i18n contract OK: en-US / zh-Hans / zh-Hant; split resources/keys/placeholders/smoke aligned")
