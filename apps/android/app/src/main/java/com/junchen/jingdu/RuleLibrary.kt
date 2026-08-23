@@ -11,9 +11,9 @@ internal class RuleLibrary(context: Context) {
 
     fun save(rules: List<RepairRule>) {
         val normalized = rules
-            .filter { it.find.isNotBlank() }
-            .take(MAX_RULES)
+            .filter { it.find.isNotBlank() && validField(it.find) && validField(it.replacement) }
             .distinctBy { Triple(it.mode, it.find, it.replacement) }
+            .take(MAX_RULES)
         preferences.edit().putString(KEY_RULES, encode(normalized)).apply()
     }
 
@@ -44,16 +44,22 @@ internal class RuleLibrary(context: Context) {
         .toString(2)
 
     fun importJson(text: String): List<RepairRule> {
+        val imported = parseExportJson(text, allowEmpty = false)
+        val updated = (load() + imported).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(MAX_RULES)
+        save(updated)
+        return updated
+    }
+
+    fun parseExportJson(text: String, allowEmpty: Boolean): List<RepairRule> {
         val root = JSONObject(text)
         if (root.optInt("schema") != 1 || root.optString("type") != "jingdu-global-clean-rules") {
             throw IllegalArgumentException("不是受支持的净读规则文件")
         }
         val rulesArray = root.optJSONArray("rules") ?: JSONArray()
+        if (rulesArray.length() > MAX_RULES) throw IllegalArgumentException("规则数量超过上限")
         val imported = decode(rulesArray.toString())
-        if (imported.isEmpty()) throw IllegalArgumentException("规则文件中没有有效规则")
-        val updated = (load() + imported).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(MAX_RULES)
-        save(updated)
-        return updated
+        if (!allowEmpty && imported.isEmpty()) throw IllegalArgumentException("规则文件中没有有效规则")
+        return imported
     }
 
     private fun encode(rules: List<RepairRule>): String {
