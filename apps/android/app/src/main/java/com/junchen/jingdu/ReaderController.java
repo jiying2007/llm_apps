@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,6 +23,8 @@ final class ReaderController implements Closeable {
     private File documentFile;
     private long length;
     private long position;
+    private String lastRawPage = "";
+    private String lastDisplayPage = "";
 
     void open(File file, long restoredPosition) throws IOException {
         close();
@@ -33,7 +36,9 @@ final class ReaderController implements Closeable {
 
     String page() throws IOException {
         ensureOpen();
-        return NativeCore.read(handle, position, WINDOW_CHARS);
+        lastRawPage = NativeCore.read(handle, position, WINDOW_CHARS);
+        lastDisplayPage = ChineseDisplayConverter.convert(lastRawPage);
+        return lastDisplayPage;
     }
 
     long position() { return position; }
@@ -41,14 +46,21 @@ final class ReaderController implements Closeable {
 
     void jump(long value) {
         position = Math.min(Math.max(0, value), Math.max(0, length - 1));
+        lastRawPage = "";
+        lastDisplayPage = "";
     }
 
     void move(long delta) {
+        long mappedDelta = delta;
+        if (!lastRawPage.isEmpty() && !lastDisplayPage.isEmpty() && delta != 0) {
+            long magnitude = ChineseDisplayConverter.sourceCharsForDisplayed(lastRawPage, lastDisplayPage, Math.abs(delta));
+            mappedDelta = delta < 0 ? -magnitude : magnitude;
+        }
         long target;
         try {
-            target = Math.addExact(position, delta);
+            target = Math.addExact(position, mappedDelta);
         } catch (ArithmeticException overflow) {
-            target = delta >= 0 ? Long.MAX_VALUE : 0;
+            target = mappedDelta >= 0 ? Long.MAX_VALUE : 0;
         }
         jump(target);
     }
@@ -65,7 +77,7 @@ final class ReaderController implements Closeable {
                 if (tab <= 0) continue;
                 try {
                     long offset = Long.parseLong(line.substring(0, tab));
-                    merged.putIfAbsent(offset, new Hit(offset, line.substring(tab + 1)));
+                    merged.putIfAbsent(offset, new Hit(offset, ChineseDisplayConverter.convert(line.substring(tab + 1))));
                 } catch (NumberFormatException ignored) {
                 }
             }
@@ -84,7 +96,7 @@ final class ReaderController implements Closeable {
             int tab = line.indexOf('\t');
             if (tab <= 0) continue;
             try {
-                chapters.add(new Chapter(Long.parseLong(line.substring(0, tab)), line.substring(tab + 1)));
+                chapters.add(new Chapter(Long.parseLong(line.substring(0, tab)), ChineseDisplayConverter.convert(line.substring(tab + 1))));
             } catch (NumberFormatException ignored) {
             }
         }
@@ -93,16 +105,29 @@ final class ReaderController implements Closeable {
 
     List<NoiseCandidate> noiseCandidates() throws IOException {
         ensureOpen();
-        ArrayList<NoiseCandidate> candidates = new ArrayList<>();
+        LinkedHashMap<String, NoiseCandidate> merged = new LinkedHashMap<>();
         for (String line : NativeCore.noiseCandidates(handle, 80).split("\n")) {
             if (line.isEmpty()) continue;
             String[] fields = line.split("\t", 4);
             if (fields.length != 4) continue;
             try {
-                candidates.add(new NoiseCandidate(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), fields[2], fields[3]));
+                NoiseCandidate candidate = new NoiseCandidate(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]), fields[2], fields[3]);
+                merged.put(candidate.reason() + '\u001f' + candidate.text(), candidate);
             } catch (NumberFormatException ignored) {
             }
         }
+        if (documentFile != null) {
+            for (SmartCleanRefiner.Candidate refined : SmartCleanRefiner.scan(documentFile, 40)) {
+                String key = refined.reason() + '\u001f' + refined.text();
+                NoiseCandidate existing = merged.get(key);
+                if (existing == null || refined.score() > existing.score()) {
+                    merged.put(key, new NoiseCandidate(refined.score(), refined.count(), refined.reason(), refined.text()));
+                }
+            }
+        }
+        ArrayList<NoiseCandidate> candidates = new ArrayList<>(merged.values());
+        candidates.sort(Comparator.comparingInt(NoiseCandidate::score).reversed().thenComparing(Comparator.comparingInt(NoiseCandidate::count).reversed()));
+        if (candidates.size() > 100) return new ArrayList<>(candidates.subList(0, 100));
         return candidates;
     }
 
@@ -112,7 +137,7 @@ final class ReaderController implements Closeable {
         int tab = packed.indexOf('\t');
         if (tab < 0) return new Speech(from, "");
         try {
-            return new Speech(Long.parseLong(packed.substring(0, tab)), packed.substring(tab + 1));
+            return new Speech(Long.parseLong(packed.substring(0, tab)), ChineseDisplayConverter.convert(packed.substring(tab + 1)));
         } catch (NumberFormatException error) {
             throw new IOException("invalid speech core response", error);
         }
@@ -131,6 +156,8 @@ final class ReaderController implements Closeable {
         documentFile = null;
         length = 0;
         position = 0;
+        lastRawPage = "";
+        lastDisplayPage = "";
     }
 
     private void ensureOpen() throws IOException {
