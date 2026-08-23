@@ -51,14 +51,12 @@ required=(
   docs/ARCHITECTURE.md docs/CORE_CONTRACT.md docs/DATA_MODEL.md docs/ENCODING.md
   docs/PERFORMANCE.md docs/TESTING.md docs/DEVICE_MATRIX.md docs/QUALITY_GATES.md
   docs/PLAY_CONSOLE_SETUP.md docs/HARMONY_RUNNER.md docs/RELEASE.md
-  fastlane/metadata/android/zh-CN/title.txt
-  fastlane/metadata/android/zh-CN/short_description.txt
-  fastlane/metadata/android/zh-CN/full_description.txt
-  fastlane/metadata/android/en-US/title.txt
-  fastlane/metadata/android/en-US/short_description.txt
-  fastlane/metadata/android/en-US/full_description.txt
+  fastlane/metadata/android/zh-CN/title.txt fastlane/metadata/android/zh-CN/short_description.txt fastlane/metadata/android/zh-CN/full_description.txt
+  fastlane/metadata/android/zh-TW/title.txt fastlane/metadata/android/zh-TW/short_description.txt fastlane/metadata/android/zh-TW/full_description.txt
+  fastlane/metadata/android/zh-HK/title.txt fastlane/metadata/android/zh-HK/short_description.txt fastlane/metadata/android/zh-HK/full_description.txt
+  fastlane/metadata/android/en-US/title.txt fastlane/metadata/android/en-US/short_description.txt fastlane/metadata/android/en-US/full_description.txt
   store/play/CUSTOM_LISTINGS.zh-CN.md store/play/SCREENSHOT_BRIEF.zh-CN.md
-  scripts/verify-play-store.sh
+  scripts/verify-play-store.sh scripts/verify-android-i18n.py
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
   core/native/src/index_cache.h core/native/src/index_cache.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
@@ -79,6 +77,10 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReviewPrompter.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
+  apps/android/app/src/main/res/resources.properties
+  apps/android/app/src/main/res/values/strings.xml
+  apps/android/app/src/main/res/values-b+zh+Hans/strings.xml
+  apps/android/app/src/main/res/values-b+zh+Hant/strings.xml
   apps/android/app/src/main/res/values/themes.xml
   apps/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
   apps/android/app/src/main/res/mipmap-anydpi-v33/ic_launcher.xml
@@ -97,6 +99,8 @@ done
 
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+
+python3 ./scripts/verify-android-i18n.py
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
 grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
@@ -123,12 +127,12 @@ grep -q 'NativeCore.chapters(handle' apps/android/app/src/main/java/com/junchen/
 grep -q 'NativeCore.noiseCandidates' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 
 grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
-grep -q '批量导入' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
+grep -q 'R.string.batch_import' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
 grep -q 'ProductSettingsSheet' apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
-grep -q '智能净读' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
-grep -q '解锁 Pro 应用建议' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
-grep -q '离线朗读声音' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
-grep -q '本地资产备份' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
+grep -q 'R.string.smart_clean' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+grep -q 'R.string.unlock_pro_apply' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+grep -q 'R.string.offline_voice' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
+grep -q 'R.string.local_asset_backup' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
 
 grep -q 'jingdu_pro_lifetime' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
 grep -q 'queryPurchasesAsync' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
@@ -137,6 +141,8 @@ grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
 grep -q 'com.android.billingclient:billing:9.1.0' apps/android/app/build.gradle
 grep -q 'com.google.android.play:review:2.0.2' apps/android/app/build.gradle
 grep -q 'compileSdk = 37' apps/android/app/build.gradle
+grep -q 'generateLocaleConfig = true' apps/android/app/build.gradle
+grep -q 'android:label="@string/app_name"' apps/android/app/src/main/AndroidManifest.xml
 
 grep -q 'sourceSha256' apps/harmony/entry/src/main/ets/model/BookStore.ets
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
@@ -148,14 +154,12 @@ grep -q 'self-hosted,harmonyos' docs/HARMONY_RUNNER.md
 grep -q 'version "9.3.1"' apps/android/build.gradle
 grep -q '^org.gradle.configuration-cache=false$' apps/android/gradle.properties
 grep -q 'gradle-9.5.0-bin.zip' apps/android/gradle/wrapper/gradle-wrapper.properties
-grep -q 'distributionSha256Sum=553c78f50dafcd54d65b9a444649057857469edf836431389695608536d6b746' \
-  apps/android/gradle/wrapper/gradle-wrapper.properties
-echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/android/gradle/wrapper/gradle-wrapper.jar' \
-  | sha256sum --check --strict
+grep -q 'distributionSha256Sum=553c78f50dafcd54d65b9a444649057857469edf836431389695608536d6b746' apps/android/gradle/wrapper/gradle-wrapper.properties
+echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/android/gradle/wrapper/gradle-wrapper.jar' | sha256sum --check --strict
 
 test ! -f .github/workflows/finalize-content-addressing.yml
 test ! -f .github/workflows/final-runtime-polish.yml
 test ! -f .github/workflows/upgrade-gradle-wrapper.yml
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderSurfaceView.java
 
-echo 'Terminal source/product/commercial contract OK'
+echo 'Terminal source/product/commercial/localization contract OK'
