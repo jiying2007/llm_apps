@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
             onSearchQueryChanged = { uiState = uiState.copy(searchQuery = it) },
             onSearch = ::search,
             onJump = ::jumpTo,
+            onSyncTtsPosition = ::syncTtsPosition,
             onAddBookmark = ::addBookmark,
             onDeleteBookmark = ::deleteBookmark,
             onAddRule = ::addRule,
@@ -409,6 +410,14 @@ class MainActivity : ComponentActivity() {
         if (uiState.busyLabel != null || currentBook == null) return
         stopAutoPaging(); stopTts(); pageHistory.clear(); reader.jump(offset)
         uiState = uiState.copy(panel = null)
+        render()
+    }
+
+    private fun syncTtsPosition(offset: Long) {
+        if (uiState.busyLabel != null || currentBook == null || cleanMode || reader.length() <= 0) return
+        val bounded = offset.coerceIn(0L, (reader.length() - 1).coerceAtLeast(0L))
+        if (bounded == reader.position()) return
+        reader.jump(bounded)
         render()
     }
 
