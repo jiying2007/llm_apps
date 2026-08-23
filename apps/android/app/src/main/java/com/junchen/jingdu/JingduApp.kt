@@ -58,8 +58,6 @@ data class JingduActions(
     val onRestorePro: () -> Unit,
     val onExportBackup: () -> Unit,
     val onImportBackup: () -> Unit,
-    val onRefreshTtsVoices: () -> Unit,
-    val onSelectTtsVoice: (String) -> Unit,
     val onToggleCleanPreview: () -> Unit,
     val onExportClean: () -> Unit,
     val onEncodingSelected: (String) -> Unit,
