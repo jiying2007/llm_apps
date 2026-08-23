@@ -13,11 +13,14 @@ internal class FolderLibraryStore(context: Context) {
 
     data class FolderEntry(
         val uri: Uri,
+        val documentId: String,
         val name: String,
         val size: Long,
-        val modifiedAt: Long,
+        val lastModified: Long,
         val signature: String,
-    )
+    ) {
+        val hasReliableMetadata: Boolean get() = size >= 0 && lastModified > 0
+    }
 
     data class SyncResult(val roots: Int, val discovered: Int, val imported: Int, val skipped: Int, val failed: Int)
 
@@ -64,16 +67,17 @@ internal class FolderLibraryStore(context: Context) {
                     val sizeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
                     val modifiedIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
                     while (cursor.moveToNext() && output.size < maxFiles) {
-                        val id = cursor.getString(idIndex) ?: continue
+                        val documentId = cursor.getString(idIndex) ?: continue
                         val name = cursor.getString(nameIndex).orEmpty()
                         val mime = cursor.getString(mimeIndex).orEmpty()
                         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                            if (depth < MAX_DEPTH) queue.add(id to depth + 1)
+                            if (depth < MAX_DEPTH) queue.add(documentId to depth + 1)
                         } else if (name.endsWith(".txt", ignoreCase = true) || mime == "text/plain") {
-                            val uri = DocumentsContract.buildDocumentUriUsingTree(root, id)
+                            val uri = DocumentsContract.buildDocumentUriUsingTree(root, documentId)
                             val size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex) else -1L
-                            val modified = if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) cursor.getLong(modifiedIndex) else -1L
-                            output += FolderEntry(uri, name, size, modified, "$id:$size:$modified")
+                            val lastModified = if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) cursor.getLong(modifiedIndex) else -1L
+                            val signature = "$documentId:$size:$lastModified"
+                            output += FolderEntry(uri, documentId, name, size, lastModified, signature)
                         }
                     }
                 }
@@ -82,10 +86,13 @@ internal class FolderLibraryStore(context: Context) {
         return output.distinctBy { it.uri.toString() }
     }
 
-    fun needsImport(entry: FolderEntry): Boolean = prefs.getString(seenKey(entry.uri), null) != entry.signature
+    /** Unknown size/mtime is intentionally treated as changed so providers cannot hide updates. */
+    fun needsImport(entry: FolderEntry): Boolean =
+        !entry.hasReliableMetadata || prefs.getString(seenKey(entry.uri), null) != entry.signature
 
     fun markImported(entry: FolderEntry) {
-        prefs.edit().putString(seenKey(entry.uri), entry.signature).apply()
+        if (entry.hasReliableMetadata) prefs.edit().putString(seenKey(entry.uri), entry.signature).apply()
+        else prefs.edit().remove(seenKey(entry.uri)).apply()
     }
 
     fun clearSeen(uri: Uri) { prefs.edit().remove(seenKey(uri)).apply() }
