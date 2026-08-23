@@ -23,8 +23,6 @@ final class ReaderController implements Closeable {
     private File documentFile;
     private long length;
     private long position;
-    private String lastRawPage = "";
-    private String lastDisplayPage = "";
 
     void open(File file, long restoredPosition) throws IOException {
         close();
@@ -36,9 +34,7 @@ final class ReaderController implements Closeable {
 
     String page() throws IOException {
         ensureOpen();
-        lastRawPage = NativeCore.read(handle, position, WINDOW_CHARS);
-        lastDisplayPage = ChineseDisplayConverter.convert(lastRawPage);
-        return lastDisplayPage;
+        return NativeCore.read(handle, position, WINDOW_CHARS);
     }
 
     long position() { return position; }
@@ -46,21 +42,14 @@ final class ReaderController implements Closeable {
 
     void jump(long value) {
         position = Math.min(Math.max(0, value), Math.max(0, length - 1));
-        lastRawPage = "";
-        lastDisplayPage = "";
     }
 
     void move(long delta) {
-        long mappedDelta = delta;
-        if (!lastRawPage.isEmpty() && !lastDisplayPage.isEmpty() && delta != 0) {
-            long magnitude = ChineseDisplayConverter.sourceCharsForDisplayed(lastRawPage, lastDisplayPage, Math.abs(delta));
-            mappedDelta = delta < 0 ? -magnitude : magnitude;
-        }
         long target;
         try {
-            target = Math.addExact(position, mappedDelta);
+            target = Math.addExact(position, delta);
         } catch (ArithmeticException overflow) {
-            target = mappedDelta >= 0 ? Long.MAX_VALUE : 0;
+            target = delta >= 0 ? Long.MAX_VALUE : 0;
         }
         jump(target);
     }
@@ -156,8 +145,6 @@ final class ReaderController implements Closeable {
         documentFile = null;
         length = 0;
         position = 0;
-        lastRawPage = "";
-        lastDisplayPage = "";
     }
 
     private void ensureOpen() throws IOException {
