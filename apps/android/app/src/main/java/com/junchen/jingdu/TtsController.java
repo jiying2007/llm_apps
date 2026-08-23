@@ -24,7 +24,6 @@ final class TtsController implements AutoCloseable {
         default void onPaused() { }
         default void onResumed() { }
     }
-    interface TextTransform { String apply(String text); }
     record VoiceOption(String name, String label) {}
 
     private static final String HANS_MARKERS = "这为后发国书读时会里还进对从个们来说现学与体门见风东语网无龙边开长";
@@ -43,7 +42,6 @@ final class TtsController implements AutoCloseable {
     private Locale preferredLocale = Locale.getDefault();
     private ReaderController reader;
     private Listener listener;
-    private TextTransform textTransform = text -> text;
     private long offset;
     private long pendingNextOffset;
 
@@ -98,16 +96,15 @@ final class TtsController implements AutoCloseable {
         });
     }
 
-    void start(ReaderController reader, long from, Listener listener, TextTransform transform) {
+    void start(ReaderController reader, long from, Listener listener) {
         stop(null);
         if (!ready) {
             if (listener != null) listener.onStopped("TTS engine not ready");
             return;
         }
-        this.textTransform = transform == null ? text -> text : transform;
         if (desiredVoiceName.isEmpty()) {
             try {
-                preferredLocale = detectDocumentLocale(this.textTransform.apply(reader.page()));
+                preferredLocale = detectDocumentLocale(reader.page());
                 tts.setLanguage(preferredLocale);
             } catch (Exception ignored) {
                 preferredLocale = Locale.getDefault();
@@ -139,7 +136,6 @@ final class TtsController implements AutoCloseable {
         Listener old = listener;
         listener = null;
         reader = null;
-        textTransform = text -> text;
         if (reason != null && old != null) old.onStopped(reason);
     }
 
@@ -209,13 +205,7 @@ final class TtsController implements AutoCloseable {
             }
             pendingNextOffset = chunk.nextOffset();
             if (listener != null) listener.onPosition(offset);
-            String spoken = textTransform.apply(chunk.text());
-            if (spoken == null || spoken.trim().isEmpty()) {
-                offset = pendingNextOffset;
-                speakNext(token);
-                return;
-            }
-            tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, new Bundle(), Long.toString(token));
+            tts.speak(chunk.text(), TextToSpeech.QUEUE_FLUSH, new Bundle(), Long.toString(token));
         } catch (Exception error) {
             stop(error.getMessage() == null ? "tts failure" : error.getMessage());
         }
