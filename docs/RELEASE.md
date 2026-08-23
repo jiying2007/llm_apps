@@ -19,20 +19,24 @@ Release infrastructure archives signed APK/AAB, R8 mapping, SHA-256 manifest and
 
 GitHub source provenance is automated by `.github/workflows/source-release.yml`. It is deliberately separate from Google Play production rollout.
 
-To request an immutable source release, create or fast-forward a temporary branch named `release/source-vX.Y.Z` to the current `main` HEAD before that main commit's CI completes. The Source Release workflow does not poll or rely on an arbitrary timeout: it runs from the successful `CI` `workflow_run` completion for `main`, confirms that the CI head is still the current `main`, then looks for exactly one matching `release/source-vX.Y.Z` ref that points to that same SHA.
+To request an immutable source release, create or fast-forward a temporary branch named `release/source-vX.Y.Z` to the current `main` HEAD. The release workflow is self-contained and does not depend on another workflow's timing, actor identity, `workflow_run` delivery, or a polling timeout.
 
-A failed source-release attempt is safely replayable by fixing the workflow through the normal PR path, merging to a new `main` commit, then fast-forwarding the same `release/source-vX.Y.Z` request branch to that new main while its CI runs. The workflow refuses ambiguous requests, refuses a version that disagrees with both Android version defaults, and never moves an existing tag to another commit.
+The workflow first refuses any request branch that does not point exactly at current `main`, refuses a requested version that disagrees with both Android version defaults, and refuses to move an existing tag to another commit. It then independently runs the release-candidate gates on that exact immutable main SHA:
 
-The trigger does not rely on `github.actor == repository_owner`, because repository automation may create or update refs through a GitHub App identity. Safety instead comes from the immutable constraints: a release request must point at the current green `main`, only the source-declared semantic version can be released, and existing tags are immutable.
+1. shared native Core build/tests/static analysis via `scripts/check-native.sh`;
+2. Android `androidCheck` plus the Android i18n contract;
+3. terminal/source/product/commercial contract and Play metadata/lifetime-Pro contract.
+
+Only after all release-candidate jobs pass does the publish job run. This intentionally duplicates the critical release verification at release time rather than coupling source publication to the duration or event propagation of ordinary CI.
 
 On success the workflow:
 
-1. creates or verifies Git tag `vX.Y.Z` at the exact green `main` commit;
+1. creates or verifies Git tag `vX.Y.Z` at the exact verified `main` commit;
 2. creates an idempotent GitHub Source Release with explicit notice that no signed APK/AAB or Play rollout evidence is implied;
 3. prunes only temporary development branches (`feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`) that belong to merged same-repository PRs and are not used by an open PR;
 4. removes the temporary `release/source-vX.Y.Z` request branch.
 
-Long-lived branch names outside those explicit temporary prefixes are never pruned automatically merely because they once appeared as a merged PR head.
+Long-lived branch names outside those explicit temporary prefixes are never pruned automatically merely because they once appeared as a merged PR head. A failed source-release request remains as a branch and can be safely replayed after a normal workflow-fix PR by fast-forwarding it to the new exact `main`.
 
 The workflow has no signing key and cannot activate Play products or publish Play Console listings. A GitHub Source Release is provenance evidence, not production-store evidence.
 
