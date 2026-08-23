@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var tts: TtsController
     private lateinit var readerPreferences: ReaderPreferences
     private lateinit var ruleLibrary: RuleLibrary
+    private lateinit var userBackup: UserBackup
     private lateinit var reviewPrompter: ReviewPrompter
     private lateinit var billing: BillingManager
     @Volatile private var proUnlocked = false
@@ -50,6 +51,10 @@ class MainActivity : ComponentActivity() {
 
     private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { importUri(it) }
+    }
+
+    private val batchImportLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) batchImportUris(uris)
     }
 
     private val exportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
@@ -66,9 +71,18 @@ class MainActivity : ComponentActivity() {
         uri?.let(::exportGlobalRulesToUri)
     }
 
+    private val backupImportLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(::importBackupFromUri)
+    }
+
+    private val backupExportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let(::exportBackupToUri)
+    }
+
     private val actions by lazy {
         JingduActions(
             onImport = { importLauncher.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) },
+            onBatchImport = { batchImportLauncher.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) },
             onOpenBook = ::openBookById,
             onDeleteLibraryBook = ::deleteLibraryBook,
             onBackToLibrary = ::backToLibrary,
@@ -97,6 +111,8 @@ class MainActivity : ComponentActivity() {
             onImportGlobalRules = ::importGlobalRules,
             onUpgradePro = { billing.purchase() },
             onRestorePro = { billing.restore() },
+            onExportBackup = ::exportBackup,
+            onImportBackup = ::importBackup,
             onToggleCleanPreview = ::toggleCleanPreview,
             onExportClean = ::exportClean,
             onEncodingSelected = ::redecode,
@@ -129,17 +145,20 @@ class MainActivity : ComponentActivity() {
         repository = BookRepository(this)
         readerPreferences = ReaderPreferences(this)
         ruleLibrary = RuleLibrary(this)
+        userBackup = UserBackup(readerPreferences, ruleLibrary)
         reviewPrompter = ReviewPrompter(this)
         tts = TtsController(this)
         val settings = readerPreferences.load()
         tts.setRate(settings.ttsRate)
         tts.setPitch(settings.ttsPitch)
+        tts.setVoiceName(settings.ttsVoiceName)
         uiState = uiState.copy(settings = settings, globalRules = ruleLibrary.load())
         refreshLibrary()
 
         billing = BillingManager(
             activity = this,
             onState = { state ->
+                val wasUnlocked = proUnlocked
                 proUnlocked = state.unlocked
                 uiState = uiState.copy(
                     proUnlocked = state.unlocked,
@@ -148,6 +167,10 @@ class MainActivity : ComponentActivity() {
                     proPrice = state.price,
                     globalRules = ruleLibrary.load(),
                 )
+                if (!wasUnlocked && state.unlocked) {
+                    refreshTtsVoices()
+                    if (cleanMode) currentBook?.let { openBook(it, clean = true) }
+                }
             },
             onMessage = ::showMessage,
         )
@@ -238,6 +261,37 @@ class MainActivity : ComponentActivity() {
             task = { repository.importUri(uri, BookRepository.AUTO) },
             success = { openBook(it, clean = false) },
             errorTitle = "导入失败",
+        )
+    }
+
+    private fun batchImportUris(uris: List<Uri>) {
+        val selected = uris.take(MAX_BATCH_IMPORT_FILES)
+        runWork(
+            label = "正在批量导入 ${selected.size} 本 TXT…",
+            task = {
+                var imported = 0
+                var failed = 0
+                selected.forEach { uri ->
+                    try {
+                        repository.importUri(uri, BookRepository.AUTO)
+                        imported++
+                    } catch (_: Throwable) {
+                        failed++
+                    }
+                }
+                imported to failed
+            },
+            success = { (imported, failed) ->
+                refreshLibrary()
+                showMessage(
+                    buildString {
+                        append("已导入 $imported 本 TXT")
+                        if (failed > 0) append("，$failed 本失败")
+                        if (uris.size > selected.size) append("；单次最多 $MAX_BATCH_IMPORT_FILES 本")
+                    },
+                )
+            },
+            errorTitle = "批量导入失败",
         )
     }
 
@@ -434,6 +488,7 @@ class MainActivity : ComponentActivity() {
             ReaderPanel.CHAPTERS -> if (!uiState.chaptersLoaded) loadChapters()
             ReaderPanel.BOOKMARKS -> refreshBookmarks()
             ReaderPanel.CLEAN -> refreshRules()
+            ReaderPanel.SETTINGS -> refreshTtsVoices()
             else -> Unit
         }
     }
@@ -657,12 +712,7 @@ class MainActivity : ComponentActivity() {
         runWork(
             label = "正在导出全局规则…",
             task = {
-                val bytes = ruleLibrary.exportJson().toByteArray(Charsets.UTF_8)
-                contentResolver.openOutputStream(uri, "w").use { output ->
-                    if (output == null) throw IOException("目标位置不可写")
-                    output.write(bytes)
-                    output.flush()
-                }
+                writeUtf8(uri, ruleLibrary.exportJson())
                 true
             },
             success = { showMessage("全局规则已导出") },
@@ -682,8 +732,50 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun exportBackup() {
+        if (!requirePro()) return
+        backupExportLauncher.launch("jingdu-local-settings-rules-backup.json")
+    }
+
+    private fun importBackup() {
+        if (!requirePro()) return
+        backupImportLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
+    }
+
+    private fun exportBackupToUri(uri: Uri) {
+        runWork(
+            label = "正在导出本地设置与规则…",
+            task = {
+                writeUtf8(uri, userBackup.exportJson())
+                true
+            },
+            success = { showMessage("设置与全局规则备份已导出；书籍正文未包含在备份中。") },
+            errorTitle = "备份导出失败",
+        )
+    }
+
+    private fun importBackupFromUri(uri: Uri) {
+        runWork(
+            label = "正在恢复设置与全局规则…",
+            task = { userBackup.importJson(readLimitedUtf8(uri, MAX_BACKUP_BYTES)) },
+            success = { result ->
+                tts.setRate(result.settings.ttsRate)
+                tts.setPitch(result.settings.ttsPitch)
+                tts.setVoiceName(result.settings.ttsVoiceName)
+                uiState = uiState.copy(
+                    settings = result.settings,
+                    globalRules = result.globalRules,
+                    panel = ReaderPanel.SETTINGS,
+                )
+                refreshTtsVoices()
+                showMessage("已恢复阅读设置和 ${result.globalRules.size} 条全局规则")
+            },
+            errorTitle = "备份恢复失败",
+        )
+    }
+
     private fun readLimitedUtf8(uri: Uri, limit: Int): String {
-        val input = contentResolver.openInputStream(uri) ?: throw IOException("规则文件不可读")
+        val input = contentResolver.openInputStream(uri) ?: throw IOException("文件不可读")
         input.use { stream ->
             val output = ByteArrayOutputStream()
             val buffer = ByteArray(16 * 1024)
@@ -692,10 +784,18 @@ class MainActivity : ComponentActivity() {
                 val count = stream.read(buffer)
                 if (count < 0) break
                 total += count
-                if (total > limit) throw IOException("规则文件过大")
+                if (total > limit) throw IOException("文件过大")
                 output.write(buffer, 0, count)
             }
             return output.toString(Charsets.UTF_8.name())
+        }
+    }
+
+    private fun writeUtf8(uri: Uri, text: String) {
+        contentResolver.openOutputStream(uri, "w").use { output ->
+            if (output == null) throw IOException("目标位置不可写")
+            output.write(text.toByteArray(Charsets.UTF_8))
+            output.flush()
         }
     }
 
@@ -777,18 +877,29 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun refreshTtsVoices() {
+        val voices = tts.offlineVoices().map { TtsVoiceModel(it.name(), it.label()) }
+        uiState = uiState.copy(ttsVoices = voices)
+    }
+
     private fun updateSettings(settings: ReaderSettings) {
+        if (settings.ttsVoiceName != uiState.settings.ttsVoiceName && !proUnlocked) {
+            billing.purchase()
+            return
+        }
         val normalized = settings.copy(
             fontSizeSp = settings.fontSizeSp.coerceIn(16f, 34f),
             lineHeightMultiplier = settings.lineHeightMultiplier.coerceIn(1.2f, 2.0f),
             horizontalPaddingDp = settings.horizontalPaddingDp.coerceIn(12f, 48f),
             ttsRate = settings.ttsRate.coerceIn(0.6f, 1.8f),
             ttsPitch = settings.ttsPitch.coerceIn(0.7f, 1.4f),
+            ttsVoiceName = settings.ttsVoiceName.take(256),
             autoPageDelayMs = settings.autoPageDelayMs.coerceIn(2500L, 15000L),
         )
         readerPreferences.save(normalized)
         tts.setRate(normalized.ttsRate)
         tts.setPitch(normalized.ttsPitch)
+        tts.setVoiceName(normalized.ttsVoiceName)
         uiState = uiState.copy(settings = normalized)
     }
 
@@ -984,6 +1095,8 @@ class MainActivity : ComponentActivity() {
         private const val STATE_CLEAN_MODE = "jingdu.cleanMode"
         private const val STATE_PENDING_EXPORT = "jingdu.pendingExport"
         private const val MAX_RULE_IMPORT_BYTES = 1024 * 1024
+        private const val MAX_BACKUP_BYTES = 2 * 1024 * 1024
+        private const val MAX_BATCH_IMPORT_FILES = 100
 
         private fun stripTxt(name: String): String =
             if (name.lowercase().endsWith(".txt")) name.dropLast(4) else name
