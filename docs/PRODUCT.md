@@ -2,175 +2,262 @@
 
 ## Positioning
 
-**净读 is the offline cleaner-reader for Chinese long-form TXT.** It does not compete on format count. Its product mindshare is deliberately narrow:
+**净读 is the offline cleaner-reader for Chinese long-form TXT.** It deliberately competes on TXT depth rather than format count.
 
 > **Long TXT · Smart Clean · Fully local**  
 > **长篇 TXT · 智能净化 · 完全本地**
 
-Its promise is stronger than “can open TXT”:
+The terminal promise is:
 
-> Open messy TXT correctly, make distracting text explainable and safely removable, keep very long books responsive, and preserve the reader's place for weeks or months without sending book text anywhere.
+> Open messy TXT correctly, become readable quickly, diagnose what is wrong, repair structure/noise safely, keep very long books responsive, and preserve long-session reading without sending book text anywhere.
 
-The public store name remains localized for discovery (`净读 - TXT 小说阅读器`, `淨讀 - TXT 小說閱讀器`, `Jingdu - Offline TXT Reader`). English UI/store support makes the product usable on non-Chinese system locales; it does not expand 2.x into a generic multi-format or English-first ebook reader.
+Store names remain localized for discovery: `净读 - TXT 小说阅读器`, `淨讀 - TXT 小說閱讀器`, `Jingdu - Offline TXT Reader`.
+
+## Current product generation
+
+- Shared Core ABI: **v2**.
+- Smart Clean: **generation 4**.
+- Built-in deterministic clean signature pack: **v3**.
+- Chinese display conversion: OpenCC-compatible **OpenccJava 1.4.2**.
+- Android product line/source release: **2.2.x** until the next explicit version bump.
+- First-class Android UI locales: **zh-Hans / zh-Hant / en-US**.
+
+Detailed intelligence architecture lives in `SMART_CLEAN_ARCHITECTURE.md` and `COMPETITIVE_MOAT.md`.
 
 ## Primary users
 
-1. Readers who keep local TXT novels/archives and want a calm daily reader.
-2. Users who regularly meet GB18030/GBK/Big5/UTF-16 mojibake.
-3. Web-novel readers whose TXT contains repeated ads, site tails, URLs or watermarks in Simplified or Traditional Chinese.
-4. Long-session readers who care about 20–200+ MiB responsiveness, TTS and position recovery.
-5. Privacy-conscious users who do not want accounts, cloud upload, ads or analytics in the reading path.
-6. Chinese-text readers whose device/app UI language may be Simplified Chinese, Traditional Chinese or English.
+1. Readers with local Chinese TXT novels/archives who want a calm daily reader.
+2. Users who encounter GB18030/GBK/GB2312/Big5/UTF-16 mojibake.
+3. Web-novel readers whose TXT contains ads, watermarks, URLs, repeated tails, malformed fragments or noisy chapter structure.
+4. Long-session readers who care about 20/100/200 MiB responsiveness, stable progress/bookmarks and background TTS.
+5. Readers with many TXT files who benefit from explicit folder libraries and batch automation.
+6. Privacy-conscious users who do not want accounts, ads, analytics, cloud upload or remote AI in the reading path.
 
-## Core jobs
+## Product loop
 
-### Open it correctly
-- Single or multi-select local TXT import with AUTO encoding detection.
-- Manual re-decode from the retained private source copy without picking the external source again.
-- Source bytes are never modified/deleted.
-- Re-decode preserves the reader's source-identity progress rather than treating encoding correction as a new book.
-- Immutable normalized revisions and reusable `.jdx` sparse-index cache keep large-file reopen credible.
+```text
+TXT / user-selected TXT folder
+  -> bounded first-readable preview
+  -> immutable private source + normalized revision/index
+  -> TXT Doctor
+  -> Smart TOC
+  -> Smart Clean 4
+  -> reading / OpenCC display / background TTS
+  -> reusable local rules, corrections, feedback and optional Pro batch automation
+```
 
-### Make it clean — Smart Clean 2.0
-- Free exact per-book find/replace/delete rules.
-- Free local Smart Clean scan and preview for repeated lines, URLs/domains and common Simplified/Traditional promotional/watermark patterns.
-- Every candidate exposes a stable localized reason, match count, approximate affected characters, confidence/risk and a sample before apply.
-- High-confidence promotional evidence may be selected by default; repetition-only low-confidence candidates are deliberately not selected by default.
-- Shared Core returns stable locale-neutral reason codes; platform shells own localization and risk explanation.
-- Pro applies selected Smart Clean suggestions in one action and unlocks safe whole-line `*` wildcard rules.
-- The rule set from immediately before the last Smart Clean apply is retained locally so that apply is one-step reversible without retaining book text.
-- Pro global rules are reusable user-owned assets; recommended Simplified and Traditional Chinese web-novel patterns can seed the library.
-- Clean output is an immutable derived revision and can be exported without touching the source.
-- Original progress/bookmarks never receive Clean offsets.
+## Open it correctly and quickly
 
-### Find it across Chinese scripts
-- Exact search remains the primary operation.
-- Android additionally tries curated, safe one-to-one Simplified/Traditional character variants and merges hits by document offset.
-- This is a search convenience layer, not whole-document conversion; ambiguous character conversion is deliberately not guessed.
+- Single TXT import, multi-select import and user-selected SAF folder roots.
+- AUTO encoding detection plus manual re-decode from the retained private source copy.
+- Source bytes are never modified or deleted.
+- New single-book import can render a disposable bounded preview from at most 512 KiB / 12,000 code points before full canonical private import/normalization/indexing completes.
+- The preview is never treated as the authoritative document revision.
+- Folder roots use persisted read-only SAF URI permission; no broad storage permission is requested.
+- Folder synchronization uses document identity + size + last-modified metadata to skip unchanged files. Providers that do not supply reliable metadata are conservatively re-imported rather than silently missing changes.
+- Content-addressed immutable normalized revisions and `.jdx` sparse-index caches remain the canonical large-file architecture.
 
-### Keep me in the text
-- Library exposes recent books, progress, encoding and size plus local favorite/tag metadata.
-- Library can filter All/Favorites/Reading/Finished and sort by Recent/Name/Progress without opening/indexing every book.
-- Search, chapters, bookmarks and progress seeking are direct reading tools.
-- Bookmarks use retained source identity so an encoding rescue does not make the user's reading landmarks disappear.
-- Progress persistence is throttled during page navigation and force-flushed on lifecycle/navigation boundaries, reducing metadata I/O without sacrificing recovery.
-- Paper/Light/Night, typography, margins, TTS, auto paging, sleep timer and volume-key paging support long sessions.
-- Reader intent can recover after configuration/process recreation using stable identity/revision/offset, never native handles.
-- When no explicit offline TTS voice is selected, Android infers a suitable `zh-CN`, `zh-TW`, `zh-HK` or English locale from visible document text; an explicit user voice always wins.
-- TTS pauses on transient audio-focus loss and resumes the interrupted chunk after focus returns; permanent focus loss stops playback.
+## TXT Doctor
+
+TXT Doctor turns technical subsystems into one user-understandable health report:
+
+- encoding/text integrity;
+- malformed/replacement-character samples;
+- chapter/TOC quality;
+- Smart Clean candidate count/cleanliness;
+- combined TXT health score.
+
+Diagnosis uses bounded Core windows and stores scores/counts only, never sampled book text.
+
+## Smart TOC
+
+- Core source code-point offsets remain authoritative.
+- Base chapter detection is augmented with verified Chinese special headings such as 序章、楔子、番外、后记/後記、尾声/尾聲 and 大结局/大結局.
+- TOC quality reports duplicate titles, nearby numeric gaps and suspicious overlong/prose-like headings.
+- Users may hide an incorrectly detected heading or add a chapter at the current source offset.
+- These repairs are local metadata overlays; they never rewrite TXT or change the persisted reading coordinate system.
+
+## Smart Clean 4
+
+Smart Clean is precision-first and explainable.
+
+### Detection stack
+
+1. deterministic versioned built-in signatures;
+2. shared native URL/promotion/repetition statistics;
+3. bounded streaming inline-fragment/malformed-line refinement;
+4. candidate-only tiny local semantic classifier;
+5. local KEEP / DELETE / PROTECT feedback memory.
+
+Every normal candidate remains inspectable with reason, risk, count, approximate impact and sample text before apply. Inline/garbled and semantic-BODY evidence stays conservative.
+
+### Tiny local model
+
+- accepts one pre-filtered candidate only, maximum 512 characters;
+- 64 hashed character-bigram buckets with signed-int8-style weights and auditable structural features;
+- outputs BODY / AD / UNCERTAIN;
+- wide UNCERTAIN range and strong chapter-heading protection;
+- never opens a file, receives a whole document or uses a network/runtime ML service.
+
+Training and held-out hard-negative evaluation are checked into the repository and CI verifies exact reproducibility plus precision-first safety gates.
+
+### User correction memory
+
+- `KEEP`: do not auto-delete this candidate for the book and contributes a keep signal.
+- `DELETE`: explicit user-owned delete signal.
+- `PROTECT`: strongest protection signal for batch automation.
+- Only SHA-256 fingerprints + decision metadata are stored; candidate/book text is not retained in the feedback store.
+
+### Apply / undo
+
+Selected cleanup becomes explicit local rules and an immutable derived Clean revision. The source TXT stays untouched. The immediately previous rule set is retained as a rule-only one-step undo snapshot; history does not copy book text.
+
+## Chinese display conversion
+
+OpenCC-compatible conversion is a display layer, not a source rewrite.
+
+Modes:
+- Original;
+- Simplified (`t2s`);
+- Traditional (`s2t`);
+- Taiwan (`s2tw`);
+- Taiwan phrases (`s2twp`);
+- Hong Kong (`s2hk`).
+
+Conversion applies only to bounded reader/search/chapter/TTS strings. Source TXT, normalized revision, bookmarks, search offsets, TOC offsets and progress remain in normalized source code-point coordinates. Up to 200 local `source => target` phrase overrides take priority over OpenCC and participate in local backup.
+
+## Keep me in the text
+
+- Library: recent/progress, favorite, local tags, unread/reading/finished filters and recent/name/progress sort.
+- Search, Smart TOC, bookmarks and direct progress seeking.
+- Source-identity bookmarks survive encoding rescue.
+- Progress persistence is throttled and force-flushed at lifecycle/navigation boundaries.
+- Paper/Light/Night, typography, margins, auto paging and sleep timer.
+- Reader intent restores from stable book/revision/offset identity, never native handles.
+
+## Professional local TTS
+
+- Basic system TTS remains local/free.
+- Android can host long read-aloud in an `exported=false` foreground `mediaPlayback` service.
+- Framework `MediaSession` provides lock-screen and headset play/pause/next/previous/stop controls.
+- Read-aloud source offsets are broadcast only inside the app package and synchronize the reader position/current-window highlight.
+- Existing audio-focus behavior pauses/resumes transient interruptions without skipping the interrupted chunk; permanent focus loss stops.
+- Installed offline voice selection remains a Pro convenience when the system TTS engine exposes offline voices.
+
+## Folder library and Pro batch automation
+
+Folder libraries are available through explicit user-selected SAF roots and remain a local organization feature.
+
+Pro sells saved repetitive work:
+
+- batch dry-run across up to 100 library books;
+- combined Smart Clean + TOC health report;
+- explicit batch apply of precision-first safe cleanup candidates;
+- reusable global rules/recommended rule packs;
+- global-rule import/export;
+- offline TTS voice selection;
+- local settings/global-rule backup.
+
+Batch apply excludes KEEP/PROTECT, semantic BODY, inline fragment and garbled-line candidates unless an explicit DELETE decision makes the user intent authoritative. Batch reports contain identifiers/names/scores/counts only and declare `containsBookText=false`.
+
+## Verifiable privacy
+
+Privacy is an architectural feature and an in-app verifiable fact:
+
+- Android Manifest has no INTERNET permission;
+- no broad storage permission;
+- no account;
+- no advertising SDK;
+- no runtime analytics SDK;
+- no book-text upload capability;
+- no remote clean rules or semantic inference.
+
+The app can export a privacy audit containing configuration/counts only, never book text. Third-party OpenCC/OpenccJava legal assets are retained in the repository and packaged into Android application assets.
 
 ## Performance position
 
-Performance is a product feature, not an implementation afterthought. Qualification uses 1–5 / 20 / 100 / 200 MiB workloads, with 300 MiB retained as an extended stress class. The managed UI never owns the whole document; bounded native windows, content-addressed immutable revisions and validated `.jdx` caches are architectural invariants.
+Performance is a product feature. Qualification uses 1–5 / 20 / 100 / 200 MiB workloads, with 300 MiB as an extended stress class.
 
-Release-device targets and the hosted Core regression gate are defined in `PERFORMANCE_SLO.md`. Hosted CI protects against algorithmic/memory regressions; Android Macrobenchmark/device evidence protects actual startup, first-page and frame behavior.
+Architectural invariants:
 
-## Localization model
+- managed UI never owns the whole canonical document;
+- bounded native reading windows;
+- content-addressed immutable revisions;
+- reusable validated sparse indexes;
+- first-readable preview is separated from full canonical import work;
+- Smart Clean whole-document work streams with bounded memory;
+- semantic inference is candidate-only.
 
-### Application UI
-- Android first-class UI languages: `zh-Hans`, `zh-Hant`, `en-US`.
-- `en-US` is the unqualified fallback for unsupported system languages.
-- Android uses the platform per-app/system language mechanism and generated LocaleConfig; Jingdu does not maintain a competing language preference.
-- Split `strings*.xml` resources are allowed, but all three locales must retain identical key and placeholder contracts.
-- UI locale never determines document encoding, Smart Clean behavior, search variants or TTS content-language detection.
-
-### Google Play
-- Default listings: `zh-CN`, `zh-TW`, `zh-HK`, `en-US`.
-- Custom Listing and screenshot production specs exist for Simplified Chinese, Traditional Chinese and English.
-- Taiwan/Hong Kong may share general Traditional copy until measured regional wording differences justify separate content.
-- `jingdu_pro_lifetime` product title/description must be localized in the same four Play locales.
-
-See `LOCALIZATION.md` for the terminal localization contract and CI rules.
+Release-device targets and hosted Core gates remain defined in `PERFORMANCE_SLO.md`. Hosted CI is not a substitute for physical-device startup/frame/memory evidence.
 
 ## Free / Pro business model
 
 ### Free is a complete reader
-Free includes import/re-decode, large-file reading, library organization, search, chapters, bookmarks, reading settings, base system TTS, auto paging, sleep timer, exact per-book Clean rules, Smart Clean scanning and full candidate/risk preview.
+
+Free includes:
+- import/re-decode and folder library;
+- large-file reading/index cache;
+- TXT Doctor and Smart TOC;
+- search, chapters, bookmarks, progress;
+- themes/typography;
+- OpenCC display conversion and local phrase overrides;
+- basic system TTS, auto paging and sleep timer;
+- exact per-book Clean rules;
+- Smart Clean scan/preview and local correction visibility.
 
 ### Pro Lifetime sells automation and reusable local assets
+
 One-time Google Play product: `jingdu_pro_lifetime`.
 
 Pro includes:
-- apply selected Smart Clean candidates and undo the most recent Smart Clean rule apply;
+- one-action application of selected Smart Clean suggestions and one-step rule undo;
 - safe whole-line wildcard rules;
-- reusable global rule library and recommended Simplified/Traditional patterns;
-- global rule JSON import/export;
-- offline TTS voice selection when the installed engine provides offline voices;
-- local settings/global-rule backup and restore.
+- reusable global rule library / recommended patterns;
+- global-rule JSON import/export;
+- batch diagnostics + explicit safe batch apply;
+- selectable installed offline TTS voices;
+- local settings/global-rule backup/restore.
 
-Do not move search, chapters, bookmarks, local library organization, basic themes or basic TTS behind Pro. A subscription is not part of the current model because the current product has no recurring cloud/server service.
+No subscription is justified while there is no recurring cloud/server service. Do not move basic reading, search, TXT Doctor, Smart TOC, bookmarks, themes or base TTS behind Pro.
 
 ## Product principles
 
-1. **Offline/privacy by architecture** — no account, advertising SDK, analytics SDK or book-text upload. Google Play Billing/Review are platform services, not reading telemetry.
-2. **TXT depth over format breadth** — do not add EPUB/PDF merely to match feature lists.
-3. **Chinese-content depth, multilingual shell** — Simplified and Traditional content get equal product attention; English UI improves accessibility/discovery without changing the content-first focus.
-4. **Free sells trust; Pro sells saved work** — pay after value is visible, not at first launch.
-5. **Explain before delete** — Smart Clean must expose reason/risk/impact and preserve a reversible path; repetition alone is not sufficient reason for aggressive default selection.
-6. **Correctness before decoration** — encoding, offset domains, immutable revisions, localization boundaries, crash recovery and cache validation are product features.
-7. **Long-session reliability** — progress, bookmarks, TTS and reader intent must survive ordinary lifecycle interruptions and encoding rescue.
-8. **Progressive disclosure** — Library/Reader stay calm; advanced tools live in contextual sheets.
-9. **Large-file credibility** — 20/100/200 MiB are normal qualification sizes; 300 MiB remains an extended stress case.
-10. **User-owned assets** — rules/settings and lightweight library metadata stay local and can be managed without exporting book正文.
+1. **TXT depth over format breadth.**
+2. **Offline/privacy by architecture and verification.**
+3. **Precision before deletion.** Missing an ad is preferable to deleting prose.
+4. **Explain before apply; preserve undo.**
+5. **Source/Core offsets are the permanent coordinate system.**
+6. **First readable before background completeness where safely possible.**
+7. **Free sells trust; Pro sells saved repetitive work.**
+8. **Chinese-content depth, multilingual shell.**
+9. **Long-session reliability is a product feature.**
+10. **User-owned local assets compound value without an account.**
 
-## Information architecture
-
-### Library
-- Localized brand/privacy promise with `Long TXT · Smart Clean · Fully local` positioning.
-- Recent/all books with progress, encoding, size, status, favorite and optional local tags.
-- All/Favorites/Reading/Finished filters and Recent/Name/Progress sorting.
-- Primary import plus multi-select batch import.
-- Card tap continues reading; destructive action removes only the private copy.
-
-### Reader
-- Top: back, title, search, chapters, more.
-- Center: typography-first bounded page surface.
-- Bottom: previous, position slider, next, TTS.
-- More: bookmarks, Clean, encoding/re-decode, reading settings, delete.
-
-### Clean
-- Original/Clean switch and export.
-- Free Smart Clean scan first; candidates show localized reason/count/risk/impact/text before purchase.
-- Risk-based safe default selection: high-confidence first, low-confidence repetition requires explicit selection.
-- One-step undo restores the per-book rule set from before the last Smart Clean apply.
-- Pro CTA appears only when the user tries to apply selected suggestions or use Pro rule assets.
-- Per-book rules and Pro global rule library stay visible and editable.
-
-### Settings
-- Reading appearance and base TTS remain free.
-- Pro offline voice selector exposes only voices that the Android TTS engine marks as not requiring network.
-- Pro local backup exports settings/global rules only.
-
-## Growth position
-
-Default Chinese ASO targets the high-intent category phrase `TXT 小说阅读器` / `TXT 小說閱讀器`; English discovery communicates offline/local TXT and Chinese encoding/cleanup depth. Marketing should consistently lead with long TXT reliability, explainable Smart Clean and fully local processing. Custom Store Listings split discovery by intent: TXT reader, encoding rescue, Smart Clean/noise removal and local/private novel reading. Marketing copy must describe implemented behavior; keyword stuffing or unsupported performance claims are prohibited.
-
-## Non-goals for 2.x
+## Non-goals
 
 - Online bookstore/OPDS/social/community.
-- Mandatory sync/account.
+- Mandatory account or cloud sync.
 - In-reader advertising.
 - AI features that upload private book text.
 - Subscription without a real recurring service.
-- Arbitrary regex execution on whole books.
+- Arbitrary whole-book regex execution.
 - Generic EPUB/PDF/MOBI/multi-format breadth.
-- Runtime whole-document Simplified/Traditional conversion.
+- Whole-document local LLM/BERT inference for cleanup.
+- Whole-book Simplified/Traditional converted copies.
 - Compatibility layers for pre-2.x experimental private state.
 
 ## Success measures
 
-Release/test objectives, without adding an analytics SDK:
-- typical TXT imports to a readable page without configuration;
-- valid large revisions reopen from cache without UI-thread stalls;
-- 20/100/200 MiB qualification is recorded against `PERFORMANCE_SLO.md` and `DEVICE_MATRIX.md`;
-- Smart Clean finds real Simplified/Traditional promotional noise, clearly labels low-confidence repetition, and keeps ordinary content untouched until explicit apply;
-- the last Smart Clean apply can be reversed without retaining or uploading book text;
-- encoding rescue preserves a useful reading position and source-identity bookmarks;
-- long reading does not rewrite whole library metadata on every page navigation;
-- transient audio-focus interruptions do not skip TTS content;
-- Free users can evaluate Smart Clean value before any paywall;
-- Play purchase/restore survives reinstall and cached verified Pro remains usable offline;
-- Reader controls remain usable at 200% font scale and adaptive widths;
-- Android resources remain complete for `en-US / zh-Hans / zh-Hant`, including split resource files, and Compose AndroidTest resolves expectations from the active locale;
-- store listing conversion is tested by Play experiments/custom listings rather than keyword stuffing;
-- Android retains no direct `INTERNET` permission and no advertising/analytics runtime SDK.
+Without adding runtime analytics SDKs, release/support/store evidence should show:
+
+- typical TXT reaches a readable preview/open state without encoding setup;
+- source-identity progress/bookmarks survive encoding rescue;
+- Smart TOC finds useful structure without changing source offsets;
+- Smart Clean held-out auto-AD decisions maintain precision-first quality gates with no hard-negative BODY false positives;
+- KEEP/DELETE/PROTECT memory never stores正文;
+- Pro batch dry-run precedes explicit apply and never changes source TXT;
+- background TTS survives ordinary Activity lifecycle changes and supports MediaSession controls;
+- folder sync skips reliably unchanged documents and conservatively reimports unknown metadata;
+- 20/100/200 MiB real-device qualification is recorded against `PERFORMANCE_SLO.md` / `DEVICE_MATRIX.md`;
+- Android resources remain complete across en-US / zh-Hans / zh-Hant;
+- Android retains no direct INTERNET/broad-storage permission and no ads/analytics runtime SDK.
