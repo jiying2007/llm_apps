@@ -65,7 +65,17 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
                     .statusBarsPaddingCompat()
                     .padding(horizontal = 24.dp, vertical = 18.dp)
             ) {
-                Text("净读", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "净读",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (state.books.isNotEmpty()) {
+                        TextButton(onClick = actions.onBatchImport) { Text("批量导入") }
+                    }
+                }
                 Text(
                     "本地 TXT · 无广告 · 不上传",
                     style = MaterialTheme.typography.bodyMedium,
@@ -83,7 +93,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         if (state.books.isEmpty()) {
-            EmptyLibrary(Modifier.padding(padding), actions.onImport)
+            EmptyLibrary(Modifier.padding(padding), actions.onImport, actions.onBatchImport)
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(300.dp),
@@ -120,7 +130,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
 }
 
 @Composable
-private fun EmptyLibrary(modifier: Modifier, onImport: () -> Unit) {
+private fun EmptyLibrary(modifier: Modifier, onImport: () -> Unit, onBatchImport: () -> Unit) {
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -144,7 +154,7 @@ private fun EmptyLibrary(modifier: Modifier, onImport: () -> Unit) {
         Text("把本地 TXT 变得好读", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(10.dp))
         Text(
-            "自动识别常见中文编码，支持大文件、搜索、目录、净读规则和离线朗读。源文件始终保持不变。",
+            "自动识别常见中文编码，支持大文件、搜索、目录、智能净读和离线朗读。源文件始终保持不变。",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -155,6 +165,7 @@ private fun EmptyLibrary(modifier: Modifier, onImport: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             Text("选择 TXT 文件")
         }
+        TextButton(onClick = onBatchImport) { Text("一次选择多本 TXT") }
     }
 }
 
