@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from train_smartclean_model_compat import hash_bigram, source_weights
 
+BUCKETS = 64
 AD_THRESHOLD = 20
 BODY_THRESHOLD = -12
 STRONG_MARKERS = (
@@ -16,6 +16,26 @@ STRONG_MARKERS = (
     "關注公眾號", "本書來自", "更多精彩", "搜尋書名", "請牢記網域",
 )
 SPECIAL_HEADINGS = {"序章", "楔子", "前言", "序言", "后记", "後記", "尾声", "尾聲", "大结局", "大結局", "终章", "終章"}
+
+
+def hash_bigram(first: str, second: str) -> int:
+    value = 0x811C9DC5
+    for character in (first, second):
+        code = ord(character)
+        value = ((value ^ (code & 0xFF)) * 0x01000193) & 0xFFFFFFFF
+        value = ((value ^ ((code >> 8) & 0xFF)) * 0x01000193) & 0xFFFFFFFF
+    return value & (BUCKETS - 1)
+
+
+def source_weights(path: Path) -> list[int]:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"private val weights = intArrayOf\((.*?)\)\n", text, re.S)
+    if not match:
+        raise SystemExit(f"cannot locate runtime weights in {path}")
+    values = [int(value) for value in re.findall(r"-?\d+", match.group(1))]
+    if len(values) != BUCKETS:
+        raise SystemExit(f"runtime model must contain {BUCKETS} weights, found {len(values)}")
+    return values
 
 
 def load_rows(path: Path) -> list[tuple[str, str]]:
@@ -73,28 +93,29 @@ def classify(text: str, weights: list[int]) -> tuple[str, int]:
 def main() -> int:
     source = Path("apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt")
     weights = source_weights(source)
-    if len(weights) != 64 or any(weight < -8 or weight > 8 for weight in weights):
-        raise SystemExit("runtime weights must be 64 bounded signed-int8-style values")
+    if any(weight < -8 or weight > 8 for weight in weights):
+        raise SystemExit("runtime weights must be bounded signed-int8-style values")
 
     rows = load_rows(Path("quality/smartclean/eval-v1.tsv"))
     true_ad = sum(label == "AD" for label, _ in rows)
-    predicted_ad = [(label, text, classify(text, weights)) for label, text in rows if classify(text, weights)[0] == "AD"]
-    true_positive = sum(label == "AD" for label, _, _ in predicted_ad)
+    decisions = [(label, text, *classify(text, weights)) for label, text in rows]
+    predicted_ad = [item for item in decisions if item[2] == "AD"]
+    true_positive = sum(item[0] == "AD" for item in predicted_ad)
     false_positive = [item for item in predicted_ad if item[0] != "AD"]
     precision = 1.0 if not predicted_ad else true_positive / len(predicted_ad)
     recall = 0.0 if true_ad == 0 else true_positive / true_ad
 
     if false_positive:
-        for label, text, decision in false_positive:
-            print(f"FALSE POSITIVE {decision}: {text}")
+        for _, text, label, score in false_positive:
+            print(f"FALSE POSITIVE {label}/{score}: {text}")
         raise SystemExit("Smart Clean auto-AD hard-negative false positive detected")
     if precision < 0.995:
         raise SystemExit(f"Smart Clean auto-AD precision too low: {precision:.4f}")
     if recall < 0.20:
         raise SystemExit(f"Smart Clean model became trivial/inert: AD recall {recall:.4f} < 0.20")
 
-    headings = [text for label, text in rows if label == "BODY" and looks_like_heading(text)]
-    unsafe_headings = [(text, classify(text, weights)) for text in headings if classify(text, weights)[0] == "AD"]
+    headings = [item for item in decisions if item[0] == "BODY" and looks_like_heading(item[1])]
+    unsafe_headings = [item for item in headings if item[2] == "AD"]
     if unsafe_headings:
         raise SystemExit(f"chapter heading classified as AD: {unsafe_headings}")
 
