@@ -20,11 +20,16 @@ internal class SmartCleanFeedbackStore(context: Context) {
     fun record(bookId: String, reason: String, text: String, feedback: SmartCleanFeedback) {
         if (bookId.isBlank() || text.isBlank()) return
         val fingerprint = fingerprint(reason, text)
-        val editor = prefs.edit().putString("book.$bookId.$fingerprint", feedback.name)
-        if (feedback != SmartCleanFeedback.NONE) {
-            val aggregate = "agg.$fingerprint.${feedback.name.lowercase()}"
-            editor.putInt(aggregate, (prefs.getInt(aggregate, 0) + 1).coerceAtMost(10_000))
-        }
+        val key = "book.$bookId.$fingerprint"
+        val previous = runCatching {
+            SmartCleanFeedback.valueOf(prefs.getString(key, null) ?: SmartCleanFeedback.NONE.name)
+        }.getOrDefault(SmartCleanFeedback.NONE)
+        if (previous == feedback) return
+
+        val editor = prefs.edit()
+        adjustAggregate(editor, fingerprint, previous, -1)
+        if (feedback == SmartCleanFeedback.NONE) editor.remove(key) else editor.putString(key, feedback.name)
+        adjustAggregate(editor, fingerprint, feedback, +1)
         editor.apply()
     }
 
@@ -38,7 +43,14 @@ internal class SmartCleanFeedbackStore(context: Context) {
     fun clearBook(bookId: String) {
         val prefix = "book.$bookId."
         val editor = prefs.edit()
-        prefs.all.keys.filter { it.startsWith(prefix) }.forEach(editor::remove)
+        prefs.all.forEach { (key, value) ->
+            if (!key.startsWith(prefix)) return@forEach
+            val fingerprint = key.removePrefix(prefix)
+            val feedback = runCatching { SmartCleanFeedback.valueOf(value as? String ?: "") }
+                .getOrDefault(SmartCleanFeedback.NONE)
+            adjustAggregate(editor, fingerprint, feedback, -1)
+            editor.remove(key)
+        }
         editor.apply()
     }
 
@@ -59,6 +71,18 @@ internal class SmartCleanFeedbackStore(context: Context) {
     }
 
     data class FeedbackSummary(val keep: Int, val delete: Int, val protect: Int)
+
+    private fun adjustAggregate(
+        editor: android.content.SharedPreferences.Editor,
+        fingerprint: String,
+        feedback: SmartCleanFeedback,
+        delta: Int,
+    ) {
+        if (feedback == SmartCleanFeedback.NONE || delta == 0) return
+        val aggregate = "agg.$fingerprint.${feedback.name.lowercase()}"
+        val value = (prefs.getInt(aggregate, 0) + delta).coerceIn(0, 10_000)
+        if (value == 0) editor.remove(aggregate) else editor.putInt(aggregate, value)
+    }
 
     private fun bookKey(bookId: String, reason: String, text: String) = "book.$bookId.${fingerprint(reason, text)}"
 
