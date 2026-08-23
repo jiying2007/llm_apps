@@ -1,7 +1,7 @@
 package com.junchen.jingdu
 
 enum class AppScreen { LIBRARY, READER, IMPORT_PREVIEW }
-enum class ReaderPanel { SEARCH, CHAPTERS, BOOKMARKS, CLEAN, SETTINGS, ENCODING, DOCTOR }
+enum class ReaderPanel { SEARCH, CHAPTERS, BOOKMARKS, CLEAN, SETTINGS, ENCODING, DOCTOR, SMART_CLEAN_LAB, PRIVACY }
 enum class RepairRuleMode { LITERAL, LINE_GLOB }
 enum class LibraryBookStatus { UNREAD, READING, FINISHED }
 enum class LibrarySort { RECENT, NAME, PROGRESS }
