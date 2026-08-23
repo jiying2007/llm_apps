@@ -2,22 +2,31 @@
 #include "index_cache.h"
 
 #define jd_open_utf8 jd_open_utf8_uncached_internal
-// Intentional translation-unit composition: this wrapper replaces only the public open entry point
+#define jd_export_rules jd_export_rules_legacy_internal
+// Intentional translation-unit composition: this wrapper replaces selected public entry points
 // while keeping the ABI v2 implementation private to one compiled translation unit.
 // NOLINTNEXTLINE(bugprone-suspicious-include)
 #include "core_api.cpp"
+#undef jd_export_rules
 #undef jd_open_utf8
 
 namespace {
 constexpr size_t kNoiseSketchWidth = 32768;
 constexpr size_t kNoiseCandidateLimit = 2048;
 constexpr size_t kNoiseMaxLineBytes = 512;
+constexpr size_t kMaxPackedRuleFieldBytes = 2048;
 
 struct NoiseCandidate {
   std::string text;
   uint32_t count = 0;
   uint32_t score = 0;
   std::string reason;
+};
+
+struct ExtendedRule {
+  bool line_glob = false;
+  std::string find;
+  std::string replacement;
 };
 
 uint64_t noiseHash(const std::string& value) {
@@ -136,6 +145,67 @@ std::string safeNoiseField(std::string value) {
     if (character == '\t' || character == '\r' || character == '\n') character = ' ';
   }
   return value;
+}
+
+std::vector<ExtendedRule> parseExtendedRules(const char* packed) {
+  std::vector<ExtendedRule> rules;
+  if (packed == nullptr) return rules;
+  const std::string all(packed);
+  size_t start = 0;
+  while (start <= all.size()) {
+    size_t end = all.find('\x1e', start);
+    if (end == std::string::npos) end = all.size();
+    const std::string record = all.substr(start, end - start);
+    if (!record.empty()) {
+      const size_t first = record.find('\x1f');
+      if (first != std::string::npos) {
+        if (record.compare(0, first, "@g") == 0) {
+          const size_t second = record.find('\x1f', first + 1);
+          if (second != std::string::npos && second > first + 1) {
+            const std::string pattern = record.substr(first + 1, second - first - 1);
+            const std::string replacement = record.substr(second + 1);
+            if (pattern.size() <= kMaxPackedRuleFieldBytes &&
+                replacement.size() <= kMaxPackedRuleFieldBytes) {
+              rules.push_back({true, pattern, replacement});
+            }
+          }
+        } else if (first > 0) {
+          const std::string find = record.substr(0, first);
+          const std::string replacement = record.substr(first + 1);
+          if (find.size() <= kMaxPackedRuleFieldBytes &&
+              replacement.size() <= kMaxPackedRuleFieldBytes) {
+            rules.push_back({false, find, replacement});
+          }
+        }
+      }
+    }
+    if (end == all.size()) break;
+    start = end + 1;
+  }
+  return rules;
+}
+
+bool lineGlobMatches(const std::string& text, const std::string& pattern) {
+  size_t textIndex = 0;
+  size_t patternIndex = 0;
+  size_t starIndex = std::string::npos;
+  size_t retryText = 0;
+  while (textIndex < text.size()) {
+    if (patternIndex < pattern.size() && pattern[patternIndex] == '*') {
+      starIndex = patternIndex++;
+      retryText = textIndex;
+    } else if (patternIndex < pattern.size() && pattern[patternIndex] == text[textIndex]) {
+      ++patternIndex;
+      ++textIndex;
+    } else if (starIndex != std::string::npos) {
+      patternIndex = starIndex + 1;
+      textIndex = ++retryText;
+    } else {
+      return false;
+    }
+  }
+  while (patternIndex < pattern.size() && pattern[patternIndex] == '*') ++patternIndex;
+  return patternIndex == pattern.size();
 }
 }  // namespace
 
@@ -257,4 +327,48 @@ extern "C" jd_status jd_noise_candidates(jd_handle handle, uint32_t limit, jd_bu
            << safeNoiseField(candidate.text) << '\n';
   }
   return setBuffer(result.str(), out);
+}
+
+extern "C" jd_status jd_export_rules(jd_handle handle, const char* packed_rules,
+                                      const char* output_path) {
+  const auto document = getDocument(handle);
+  if (!document) return JD_EHANDLE;
+  if (output_path == nullptr || *output_path == '\0') return JD_EINVAL;
+
+  const auto rules = parseExtendedRules(packed_rules);
+  std::ifstream input(document->path, std::ios::binary);
+  if (!input) return JD_EIO;
+  const std::string temporary = std::string(output_path) + ".tmp";
+  std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+  if (!output) return JD_EIO;
+
+  std::string line;
+  while (std::getline(input, line)) {
+    for (const auto& rule : rules) {
+      if (rule.line_glob) {
+        if (lineGlobMatches(trimAscii(line), rule.find)) line = rule.replacement;
+      } else {
+        replaceAll(&line, rule.find, rule.replacement);
+      }
+    }
+    output.write(line.data(), static_cast<std::streamsize>(line.size()));
+    if (!input.eof()) output.put('\n');
+    if (!output) {
+      output.close();
+      std::remove(temporary.c_str());
+      return JD_EIO;
+    }
+  }
+  output.flush();
+  if (!output) {
+    output.close();
+    std::remove(temporary.c_str());
+    return JD_EIO;
+  }
+  output.close();
+  if (std::rename(temporary.c_str(), output_path) != 0) {
+    std::remove(temporary.c_str());
+    return JD_EIO;
+  }
+  return JD_OK;
 }
