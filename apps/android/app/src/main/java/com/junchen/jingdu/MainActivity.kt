@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -26,13 +27,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : ComponentActivity() {
-    private data class OpenedBook(
-        val book: BookRepository.Book,
-        val reader: ReaderController,
-        val clean: Boolean,
-        val contentFile: File,
-    )
-
     private val main = Handler(Looper.getMainLooper())
     private val workers: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "jingdu-worker").apply { isDaemon = true }
@@ -43,6 +37,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var repository: BookRepository
     private lateinit var tts: TtsController
     private lateinit var readerPreferences: ReaderPreferences
+    private lateinit var ruleLibrary: RuleLibrary
+    private lateinit var reviewPrompter: ReviewPrompter
+    private lateinit var billing: BillingManager
+    @Volatile private var proUnlocked = false
     private var reader = ReaderController()
     private var currentBook: BookRepository.Book? = null
     private var cleanMode = false
@@ -58,6 +56,14 @@ class MainActivity : ComponentActivity() {
         val source = pendingExport
         pendingExport = null
         if (uri != null && source != null) exportFile(source, uri)
+    }
+
+    private val ruleImportLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(::importGlobalRulesFromUri)
+    }
+
+    private val ruleExportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let(::exportGlobalRulesToUri)
     }
 
     private val actions by lazy {
@@ -80,6 +86,17 @@ class MainActivity : ComponentActivity() {
             onAddRule = ::addRule,
             onDeleteRule = ::deleteRule,
             onClearRules = ::clearRules,
+            onAnalyzeSmartClean = ::analyzeSmartClean,
+            onToggleNoiseCandidate = ::toggleNoiseCandidate,
+            onApplySmartClean = ::applySmartClean,
+            onAddGlobalRule = ::addGlobalRule,
+            onDeleteGlobalRule = ::deleteGlobalRule,
+            onClearGlobalRules = ::clearGlobalRules,
+            onInstallRecommendedRules = ::installRecommendedRules,
+            onExportGlobalRules = ::exportGlobalRules,
+            onImportGlobalRules = ::importGlobalRules,
+            onUpgradePro = { billing.purchase() },
+            onRestorePro = { billing.restore() },
             onToggleCleanPreview = ::toggleCleanPreview,
             onExportClean = ::exportClean,
             onEncodingSelected = ::redecode,
@@ -111,12 +128,30 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         repository = BookRepository(this)
         readerPreferences = ReaderPreferences(this)
+        ruleLibrary = RuleLibrary(this)
+        reviewPrompter = ReviewPrompter(this)
         tts = TtsController(this)
         val settings = readerPreferences.load()
         tts.setRate(settings.ttsRate)
         tts.setPitch(settings.ttsPitch)
-        uiState = uiState.copy(settings = settings)
+        uiState = uiState.copy(settings = settings, globalRules = ruleLibrary.load())
         refreshLibrary()
+
+        billing = BillingManager(
+            activity = this,
+            onState = { state ->
+                proUnlocked = state.unlocked
+                uiState = uiState.copy(
+                    proUnlocked = state.unlocked,
+                    proAvailable = state.available,
+                    proConnected = state.connected,
+                    proPrice = state.price,
+                    globalRules = ruleLibrary.load(),
+                )
+            },
+            onMessage = ::showMessage,
+        )
+        billing.start()
 
         setContent { JingduApp(uiState, actions) }
 
@@ -125,6 +160,11 @@ class MainActivity : ComponentActivity() {
         } else {
             restoreSession(savedInstanceState)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::billing.isInitialized) billing.start()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -244,6 +284,9 @@ class MainActivity : ComponentActivity() {
             chaptersLoaded = false,
             bookmarks = emptyList(),
             repairRules = emptyList(),
+            globalRules = ruleLibrary.load(),
+            noiseCandidates = emptyList(),
+            smartCleanAnalyzed = false,
         )
 
         workers.execute {
@@ -272,6 +315,7 @@ class MainActivity : ComponentActivity() {
                     uiState = uiState.copy(busyLabel = null, currentBook = toCard(book), cleanMode = clean)
                     render()
                     refreshLibrary()
+                    if (!clean && previousBook?.id != book.id) reviewPrompter.recordBookOpened()
                 }
             } catch (error: Throwable) {
                 candidate.close()
@@ -377,6 +421,9 @@ class MainActivity : ComponentActivity() {
             chaptersLoaded = false,
             bookmarks = emptyList(),
             repairRules = emptyList(),
+            globalRules = ruleLibrary.load(),
+            noiseCandidates = emptyList(),
+            smartCleanAnalyzed = false,
         )
     }
 
@@ -461,38 +508,43 @@ class MainActivity : ComponentActivity() {
 
     private fun rulesKey(book: BookRepository.Book) = "rules.${book.id}"
 
-    private fun rulesFor(book: BookRepository.Book): String =
+    private fun bookRulesPacked(book: BookRepository.Book): String =
         getPreferences(MODE_PRIVATE).getString(rulesKey(book), "") ?: ""
 
-    private fun parseRules(packed: String): List<RepairRule> {
-        if (packed.isEmpty()) return emptyList()
-        return packed.split('\u001e').mapNotNull { record ->
-            val separator = record.indexOf('\u001f')
-            if (separator <= 0) null else RepairRule(record.substring(0, separator), record.substring(separator + 1))
-        }
-    }
+    private fun bookRules(book: BookRepository.Book): List<RepairRule> = RuleCodec.parse(bookRulesPacked(book))
 
-    private fun packRules(rules: List<RepairRule>): String =
-        rules.joinToString("\u001e") { "${it.find}\u001f${it.replacement}" }
+    private fun effectiveRules(book: BookRepository.Book): List<RepairRule> =
+        RuleCodec.combined(bookRules(book), ruleLibrary.load(), proUnlocked)
+
+    private fun effectivePackedRules(book: BookRepository.Book): String = RuleCodec.pack(effectiveRules(book))
 
     private fun refreshRules() {
         val book = currentBook ?: return
-        uiState = uiState.copy(repairRules = parseRules(rulesFor(book)))
+        uiState = uiState.copy(
+            repairRules = bookRules(book),
+            globalRules = ruleLibrary.load(),
+        )
     }
 
-    private fun saveRules(rules: List<RepairRule>) {
+    private fun saveRules(rules: List<RepairRule>, rebuildIfClean: Boolean = true) {
         val book = currentBook ?: return
-        getPreferences(MODE_PRIVATE).edit().putString(rulesKey(book), packRules(rules)).apply()
-        uiState = uiState.copy(repairRules = rules)
-        if (cleanMode) openBook(book, clean = true)
+        val valid = rules.filter(RuleCodec::isValid).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(500)
+        getPreferences(MODE_PRIVATE).edit().putString(rulesKey(book), RuleCodec.pack(valid)).apply()
+        uiState = uiState.copy(repairRules = valid)
+        if (rebuildIfClean && cleanMode) openBook(book, clean = true)
     }
 
-    private fun addRule(find: String, replacement: String) {
-        if (find.isBlank()) return showMessage("查找文本不能为空")
-        if (find.any { it == '\u001e' || it == '\u001f' } || replacement.any { it == '\u001e' || it == '\u001f' }) {
-            return showMessage("规则包含保留控制字符")
+    private fun addRule(mode: RepairRuleMode, find: String, replacement: String) {
+        if (mode == RepairRuleMode.LINE_GLOB && !proUnlocked) {
+            billing.purchase()
+            return
         }
-        saveRules(uiState.repairRules + RepairRule(find, replacement))
+        val rule = RepairRule(find.trim(), replacement, mode)
+        if (!RuleCodec.isValid(rule)) return showMessage("规则为空、过长或包含保留控制字符。")
+        if (mode == RepairRuleMode.LINE_GLOB && '*' !in rule.find) {
+            return showMessage("整行通配规则至少需要一个 *。")
+        }
+        saveRules(uiState.repairRules + rule)
     }
 
     private fun deleteRule(index: Int) {
@@ -504,8 +556,157 @@ class MainActivity : ComponentActivity() {
         saveRules(emptyList())
     }
 
+    private fun analyzeSmartClean() {
+        val book = currentBook ?: return
+        runWork(
+            label = "正在本地扫描重复广告与水印…",
+            task = {
+                ReaderController().use { source ->
+                    source.open(repository.normalizedFile(book), 0)
+                    source.noiseCandidates()
+                }
+            },
+            success = { candidates ->
+                uiState = uiState.copy(
+                    panel = ReaderPanel.CLEAN,
+                    smartCleanAnalyzed = true,
+                    noiseCandidates = candidates.map {
+                        NoiseCandidateModel(
+                            score = it.score(),
+                            count = it.count(),
+                            reason = it.reason(),
+                            text = it.text(),
+                            selected = it.score() >= 60,
+                        )
+                    },
+                    message = if (candidates.isEmpty()) "没有发现高置信度干扰文本。" else null,
+                )
+            },
+            errorTitle = "智能净读扫描失败",
+        )
+    }
+
+    private fun toggleNoiseCandidate(index: Int) {
+        if (index !in uiState.noiseCandidates.indices) return
+        uiState = uiState.copy(
+            noiseCandidates = uiState.noiseCandidates.mapIndexed { i, candidate ->
+                if (i == index) candidate.copy(selected = !candidate.selected) else candidate
+            },
+        )
+    }
+
+    private fun applySmartClean() {
+        val book = currentBook ?: return
+        if (!proUnlocked) {
+            billing.purchase()
+            return
+        }
+        val selected = uiState.noiseCandidates.filter { it.selected }
+        if (selected.isEmpty()) return showMessage("请至少选择一条智能净读建议。")
+        val additions = selected.map { RepairRule(it.text, "", RepairRuleMode.LITERAL) }
+        val updated = (bookRules(book) + additions)
+            .distinctBy { Triple(it.mode, it.find, it.replacement) }
+            .take(500)
+        saveRules(updated, rebuildIfClean = false)
+        reviewPrompter.recordSmartCleanApplied()
+        uiState = uiState.copy(panel = null)
+        openBook(book, clean = true)
+    }
+
+    private fun addGlobalRule(mode: RepairRuleMode, find: String, replacement: String) {
+        if (!requirePro()) return
+        val rule = RepairRule(find.trim(), replacement, mode)
+        if (!RuleCodec.isValid(rule)) return showMessage("规则为空、过长或包含保留控制字符。")
+        if (mode == RepairRuleMode.LINE_GLOB && '*' !in rule.find) {
+            return showMessage("整行通配规则至少需要一个 *。")
+        }
+        uiState = uiState.copy(globalRules = ruleLibrary.add(rule))
+        if (cleanMode) currentBook?.let { openBook(it, clean = true) }
+    }
+
+    private fun deleteGlobalRule(index: Int) {
+        if (!requirePro()) return
+        uiState = uiState.copy(globalRules = ruleLibrary.remove(index))
+        if (cleanMode) currentBook?.let { openBook(it, clean = true) }
+    }
+
+    private fun clearGlobalRules() {
+        if (!requirePro()) return
+        ruleLibrary.save(emptyList())
+        uiState = uiState.copy(globalRules = emptyList())
+        if (cleanMode) currentBook?.let { openBook(it, clean = true) }
+    }
+
+    private fun installRecommendedRules() {
+        if (!requirePro()) return
+        uiState = uiState.copy(globalRules = ruleLibrary.installRecommended())
+        showMessage("已加入推荐的中文网文净读规则，可在全局规则中继续调整。")
+    }
+
+    private fun exportGlobalRules() {
+        if (!requirePro()) return
+        ruleExportLauncher.launch("jingdu-global-clean-rules.json")
+    }
+
+    private fun importGlobalRules() {
+        if (!requirePro()) return
+        ruleImportLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
+    }
+
+    private fun exportGlobalRulesToUri(uri: Uri) {
+        runWork(
+            label = "正在导出全局规则…",
+            task = {
+                val bytes = ruleLibrary.exportJson().toByteArray(Charsets.UTF_8)
+                contentResolver.openOutputStream(uri, "w").use { output ->
+                    if (output == null) throw IOException("目标位置不可写")
+                    output.write(bytes)
+                    output.flush()
+                }
+                true
+            },
+            success = { showMessage("全局规则已导出") },
+            errorTitle = "规则导出失败",
+        )
+    }
+
+    private fun importGlobalRulesFromUri(uri: Uri) {
+        runWork(
+            label = "正在导入全局规则…",
+            task = { ruleLibrary.importJson(readLimitedUtf8(uri, MAX_RULE_IMPORT_BYTES)) },
+            success = { rules ->
+                uiState = uiState.copy(globalRules = rules, panel = ReaderPanel.CLEAN)
+                showMessage("已导入 ${rules.size} 条全局规则")
+            },
+            errorTitle = "规则导入失败",
+        )
+    }
+
+    private fun readLimitedUtf8(uri: Uri, limit: Int): String {
+        val input = contentResolver.openInputStream(uri) ?: throw IOException("规则文件不可读")
+        input.use { stream ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(16 * 1024)
+            var total = 0
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > limit) throw IOException("规则文件过大")
+                output.write(buffer, 0, count)
+            }
+            return output.toString(Charsets.UTF_8.name())
+        }
+    }
+
+    private fun requirePro(): Boolean {
+        if (proUnlocked) return true
+        billing.purchase()
+        return false
+    }
+
     private fun buildClean(book: BookRepository.Book): File {
-        val packed = rulesFor(book)
+        val packed = effectivePackedRules(book)
         val revision = repository.repairRevision(book, packed)
         val output = repository.cleanFile(book, revision)
         if (output.isFile) return output
@@ -568,7 +769,10 @@ class MainActivity : ComponentActivity() {
         runWork(
             label = if (encoding == BookRepository.AUTO) "正在重新自动识别编码…" else "正在用 $encoding 重新解码…",
             task = { repository.redecode(book, encoding) },
-            success = { updated -> openBook(updated, clean = false) },
+            success = { updated ->
+                reviewPrompter.recordEncodingRescue()
+                openBook(updated, clean = false)
+            },
             errorTitle = "重新解码失败",
         )
     }
@@ -666,6 +870,9 @@ class MainActivity : ComponentActivity() {
             cleanMode = false,
             panel = null,
             chaptersLoaded = false,
+            repairRules = emptyList(),
+            noiseCandidates = emptyList(),
+            smartCleanAnalyzed = false,
             message = "已从净读书架移除",
         )
     }
@@ -718,7 +925,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showMessage(message: String) {
-        uiState = uiState.copy(message = message)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            uiState = uiState.copy(message = message)
+        } else {
+            main.post { uiState = uiState.copy(message = message) }
+        }
     }
 
     private fun friendlyError(title: String, error: Throwable): String {
@@ -759,6 +970,7 @@ class MainActivity : ComponentActivity() {
         workGeneration.incrementAndGet()
         main.removeCallbacksAndMessages(null)
         workers.shutdownNow()
+        if (::billing.isInitialized) billing.close()
         if (::tts.isInitialized) tts.close()
         reader.close()
         super.onDestroy()
@@ -771,5 +983,9 @@ class MainActivity : ComponentActivity() {
         private const val STATE_POSITION = "jingdu.position"
         private const val STATE_CLEAN_MODE = "jingdu.cleanMode"
         private const val STATE_PENDING_EXPORT = "jingdu.pendingExport"
+        private const val MAX_RULE_IMPORT_BYTES = 1024 * 1024
+
+        private fun stripTxt(name: String): String =
+            if (name.lowercase().endsWith(".txt")) name.dropLast(4) else name
     }
 }
