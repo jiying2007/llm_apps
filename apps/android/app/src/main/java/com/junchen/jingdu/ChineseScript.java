@@ -1,5 +1,6 @@
 package com.junchen.jingdu;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 
@@ -21,7 +22,7 @@ final class ChineseScript {
         String toSimplified = map(query, TRADITIONAL, SIMPLIFIED);
         if (!toTraditional.equals(query)) variants.add(toTraditional);
         if (!toSimplified.equals(query)) variants.add(toSimplified);
-        return List.copyOf(variants);
+        return new ArrayList<>(variants);
     }
 
     private static String map(String source, String from, String to) {
