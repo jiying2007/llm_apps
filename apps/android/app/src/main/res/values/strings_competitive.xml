@@ -42,6 +42,15 @@
     <string name="not_verified">Not verified</string>
 
     <string name="reading_aloud_background">Background read-aloud · lock-screen/headset controls enabled</string>
+    <string name="tts_media_channel">Read aloud</string>
+    <string name="tts_media_channel_body">Background local TXT read-aloud controls</string>
+    <string name="tts_media_artist">Jingdu · Local TXT</string>
+    <string name="tts_media_body">Local read aloud</string>
+    <string name="tts_media_previous">Previous</string>
+    <string name="tts_media_play">Play</string>
+    <string name="tts_media_pause">Pause</string>
+    <string name="tts_media_next">Next</string>
+    <string name="tts_media_stop">Stop</string>
 
     <string name="add_folder_library">Add TXT folder</string>
     <string name="sync_folders">Sync folders · %1$d</string>
