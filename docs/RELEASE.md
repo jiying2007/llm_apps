@@ -37,18 +37,15 @@ A release manifest is reviewed and merged through the normal pull-request proces
 
 `publish-source-release` has `needs` on all five jobs and runs only for `push` to `main`. Ordinary PR jobs remain read-only. Only the publication tail job receives job-scoped `contents: write` plus `pull-requests: read`.
 
-`scripts/publish-source-release.py` then resolves the Android source version and matching permanent manifest. If no manifest exists for that version, source publication is skipped. If a manifest exists, the publisher:
+`scripts/publish-source-release.py` then resolves the Android source version and matching permanent manifest. If no manifest exists for that version, source publication is skipped. If a manifest exists, the publisher uses three explicit states:
 
-1. validates the manifest contract and matching Android version defaults;
-2. refuses to move an existing tag or accept a tag that resolves to a different commit;
-3. creates or verifies Git tag `vX.Y.Z` at the exact already-gated `github.sha`;
-4. creates or completes an idempotent GitHub Source Release for that immutable tag;
-5. verifies the final tag resolves to the exact gated main commit;
-6. removes closed same-repository temporary PR branches under `feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`, plus `release/source-v*`, while preserving every currently open PR head.
+1. **tag + GitHub Release already exist** — publication is complete and becomes a permanent no-op on all later `main` pushes for that same version, even after `main` advances; the tag is never moved;
+2. **tag exists but Release is missing** — this is treated as an interrupted first publication and may be completed only if the orphan tag already resolves to the current fully-gated `github.sha`;
+3. **neither tag nor Release exists** — create both at the exact fully-gated `github.sha`, then verify the resulting tag resolves to that SHA.
 
-This cleanup intentionally removes both merged and abandoned closed temporary PR branches. Long-lived branch names outside the explicit temporary prefixes are never pruned automatically.
+A Release without its tag is an inconsistent state and fails hard. Existing published tags are historical provenance: later development on the same version cannot retarget them and cannot cause ordinary CI to fail merely because `main` advanced.
 
-A later ordinary `main` push is idempotent: if the version's immutable tag and Source Release already exist at the current release commit, publication does not create a second release. If an existing release tag points elsewhere, the job fails rather than moving it.
+After publication/no-op resolution, the publisher removes closed same-repository temporary PR branches under `feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`, plus `release/source-v*`, while preserving every currently open PR head. This cleanup intentionally removes both merged and abandoned closed temporary PR branches. Long-lived branch names outside the explicit temporary prefixes are never pruned automatically.
 
 The publisher has no signing key and cannot activate Play products, upload production listings or perform a Google Play rollout. A GitHub Source Release is **source provenance only**. It is not evidence of a signed APK/AAB, Google Play production, or HarmonyOS device qualification.
 
