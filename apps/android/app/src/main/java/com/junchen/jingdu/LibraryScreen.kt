@@ -7,9 +7,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -55,18 +57,36 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
     var batchBusy by remember { mutableStateOf(false) }
     var batchReport by remember { mutableStateOf<BatchAutomationReport?>(null) }
     var pendingBatchExport by remember { mutableStateOf<BatchAutomationReport?>(null) }
+    var manageFolders by rememberSaveable { mutableStateOf(false) }
+    var folderRevision by remember { mutableIntStateOf(0) }
+
+    val folderRoots = remember(folderRevision) { folderStore.roots() }
 
     val progressiveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        previewBusy = true; previewBookId = null; previewError = null; importPreview = null
+        previewBusy = true
+        previewBookId = null
+        previewError = null
+        importPreview = null
         scope.launch {
             val prepared = runCatching { withContext(Dispatchers.IO) { ProgressiveImport(context).prepare(uri) } }
             if (prepared.isFailure) {
-                previewBusy = false; previewError = prepared.exceptionOrNull()?.message
+                previewBusy = false
+                previewError = prepared.exceptionOrNull()?.message
                 return@launch
             }
             importPreview = prepared.getOrThrow()
-            val imported = runCatching { withContext(Dispatchers.IO) { BookRepository(context).importUri(uri, BookRepository.AUTO) } }
+            val imported = runCatching {
+                withContext(Dispatchers.IO) {
+                    val repository = BookRepository(context)
+                    val book = repository.importUri(uri, BookRepository.AUTO)
+                    ReaderController().use { warm ->
+                        warm.open(repository.normalizedFile(book), 0)
+                        repository.updateCharCount(book, warm.length())
+                    }
+                    book
+                }
+            }
             previewBusy = false
             imported.onSuccess { previewBookId = it.id }.onFailure { previewError = it.message }
         }
@@ -74,18 +94,28 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
 
     suspend fun syncFolders(): FolderLibraryStore.SyncResult = withContext(Dispatchers.IO) {
         val repository = BookRepository(context)
-        var discovered = 0; var imported = 0; var skipped = 0; var failed = 0
+        val existingBookIds = repository.list().mapTo(linkedSetOf()) { it.id }
+        var discovered = 0
+        var imported = 0
+        var skipped = 0
+        var failed = 0
         val roots = folderStore.roots()
         roots.forEach { root ->
             val entries = folderStore.scanTxt(root)
             discovered += entries.size
             entries.forEach { entry ->
-                if (!folderStore.needsImport(entry)) { skipped++; return@forEach }
+                if (!folderStore.needsImport(entry, existingBookIds)) {
+                    skipped++
+                    return@forEach
+                }
                 try {
-                    repository.importUri(entry.uri, BookRepository.AUTO)
-                    folderStore.markImported(entry)
+                    val book = repository.importUri(entry.uri, BookRepository.AUTO)
+                    folderStore.markImported(entry, book.id)
+                    existingBookIds += book.id
                     imported++
-                } catch (_: Throwable) { failed++ }
+                } catch (_: Throwable) {
+                    failed++
+                }
             }
         }
         FolderLibraryStore.SyncResult(roots.size, discovered, imported, skipped, failed)
@@ -93,35 +123,55 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
 
     val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        val persisted = runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }.isSuccess
+        if (!persisted) {
+            syncResult = FolderLibraryStore.SyncResult(folderRoots.size, 0, 0, 0, 1)
+            return@rememberLauncherForActivityResult
+        }
         folderStore.addRoot(uri)
+        folderRevision++
         syncBusy = true
         scope.launch {
-            syncResult = runCatching { syncFolders() }.getOrElse { FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1) }
+            syncResult = runCatching { syncFolders() }
+                .getOrElse { FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1) }
             syncBusy = false
         }
     }
 
     fun startFolderSync() {
-        if (folderStore.roots().isEmpty()) { folderLauncher.launch(null); return }
+        if (folderRoots.isEmpty()) {
+            folderLauncher.launch(null)
+            return
+        }
         syncBusy = true
         scope.launch {
-            syncResult = runCatching { syncFolders() }.getOrElse { FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1) }
+            syncResult = runCatching { syncFolders() }
+                .getOrElse { FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1) }
             syncBusy = false
         }
     }
 
+    fun removeFolderRoot(uri: android.net.Uri) {
+        runCatching { context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        folderStore.removeRoot(uri)
+        folderRevision++
+    }
+
     fun runBatch(applySafe: Boolean) {
-        if (!state.proUnlocked) { actions.onUpgradePro(); return }
+        if (!state.proUnlocked) {
+            actions.onUpgradePro()
+            return
+        }
+        val activity = context as? Activity ?: return
         batchBusy = true
         scope.launch {
             batchReport = withContext(Dispatchers.IO) {
                 val repository = BookRepository(context)
-                val activityPreferences = (context as? Activity)?.getPreferences(Context.MODE_PRIVATE)
-                    ?: context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE)
                 BatchAutomation(
                     repository = repository,
-                    activityPreferences = activityPreferences,
+                    activityPreferences = activity.getPreferences(Context.MODE_PRIVATE),
                     globalRules = RuleLibrary(context).load(),
                     feedback = SmartCleanFeedbackStore(context),
                     cleanHistory = CleanHistory(context),
@@ -135,7 +185,9 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
         val report = pendingBatchExport
         pendingBatchExport = null
         if (uri != null && report != null) runCatching {
-            context.contentResolver.openOutputStream(uri, "w")?.use { output -> output.write(BatchAutomation.toJson(report).toByteArray(Charsets.UTF_8)) }
+            context.contentResolver.openOutputStream(uri, "w")?.use { output ->
+                output.write(BatchAutomation.toJson(report).toByteArray(Charsets.UTF_8))
+            }
         }
     }
 
@@ -167,7 +219,8 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = { folderLauncher.launch(null) }, label = { Text(stringResource(R.string.add_folder_library)) }, leadingIcon = { Icon(Icons.Outlined.FolderOpen, null) })
-                    AssistChip(onClick = ::startFolderSync, enabled = !syncBusy, label = { Text(stringResource(R.string.sync_folders, folderStore.roots().size)) }, leadingIcon = { if (syncBusy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Refresh, null) })
+                    AssistChip(onClick = ::startFolderSync, enabled = !syncBusy, label = { Text(stringResource(R.string.sync_folders, folderRoots.size)) }, leadingIcon = { if (syncBusy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Refresh, null) })
+                    if (folderRoots.isNotEmpty()) AssistChip(onClick = { manageFolders = true }, label = { Text(stringResource(R.string.manage_folder_library, folderRoots.size)) }, leadingIcon = { Icon(Icons.Default.Folder, null) })
                     AssistChip(onClick = { runBatch(false) }, enabled = !batchBusy && state.books.isNotEmpty(), label = { Text(stringResource(R.string.batch_optimize)) }, leadingIcon = { Icon(Icons.Default.AutoFixHigh, null) })
                 }
                 if (state.books.isNotEmpty()) {
@@ -180,14 +233,22 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
                         Box {
                             AssistChip(onClick = { sortMenu = true }, label = { Text("${stringResource(R.string.library_sort_label)} · ${sortLabel(sortName)}") })
                             DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                                LibrarySort.entries.forEach { sort -> DropdownMenuItem(text = { Text(sortLabel(sort.name)) }, onClick = { sortName = sort.name; sortMenu = false }) }
+                                LibrarySort.entries.forEach { sort ->
+                                    DropdownMenuItem(text = { Text(sortLabel(sort.name)) }, onClick = { sortName = sort.name; sortMenu = false })
+                                }
                             }
                         }
                     }
                 }
             }
         },
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { progressiveLauncher.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) }, icon = { Icon(Icons.Default.Add, contentDescription = null) }, text = { Text(stringResource(R.string.import_txt)) }) },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { progressiveLauncher.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text(stringResource(R.string.import_txt)) },
+            )
+        },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         when {
@@ -197,11 +258,13 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
                 TextButton(onClick = { filterName = "ALL" }) { Text(stringResource(R.string.library_filter_all)) }
             }
             else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(300.dp), modifier = Modifier.fillMaxSize().padding(padding),
+                columns = GridCells.Adaptive(300.dp),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 112.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                items(filteredBooks, key = { it.id }) { book ->
+                gridItems(filteredBooks, key = { it.id }) { book ->
                     BookCard(book, { actions.onOpenBook(book.id) }, { deleteTarget = book.id }, { actions.onToggleFavorite(book.id) }, { tagTarget = book.id; tagInput = book.tags.joinToString(", ") })
                 }
             }
@@ -213,51 +276,126 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
             Column(Modifier.fillMaxWidth().fillMaxHeight(0.88f).padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.first_readable_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(stringResource(R.string.first_readable_meta, preview.name, preview.encoding, preview.sampledBytes / 1024), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (previewBusy) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(stringResource(R.string.full_import_background), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                if (previewBusy) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(stringResource(R.string.full_import_background), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
                 previewError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Surface(Modifier.fillMaxWidth().weight(1f), color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
                     SelectionContainer { Text(preview.text, Modifier.padding(16.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyLarge) }
                 }
-                previewBookId?.let { id -> Button(onClick = { importPreview = null; actions.onOpenBook(id) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.open_full_book)) } }
+                previewBookId?.let { id ->
+                    Button(onClick = { importPreview = null; actions.onOpenBook(id) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.open_full_book)) }
+                }
             }
         }
     }
 
-    if (previewError != null && importPreview == null) AlertDialog(onDismissRequest = { previewError = null }, title = { Text(stringResource(R.string.error_import)) }, text = { Text(previewError.orEmpty()) }, confirmButton = { TextButton(onClick = { previewError = null }) { Text(stringResource(R.string.ok)) } })
+    if (previewError != null && importPreview == null) AlertDialog(
+        onDismissRequest = { previewError = null },
+        title = { Text(stringResource(R.string.error_import)) },
+        text = { Text(previewError.orEmpty()) },
+        confirmButton = { TextButton(onClick = { previewError = null }) { Text(stringResource(R.string.competitive_ok)) } },
+    )
 
-    syncResult?.let { result -> AlertDialog(
-        onDismissRequest = { syncResult = null },
-        title = { Text(stringResource(R.string.folder_sync_complete)) },
-        text = { Text(stringResource(R.string.folder_sync_result, result.roots, result.discovered, result.imported, result.skipped, result.failed)) },
-        confirmButton = { TextButton(onClick = { syncResult = null; (context as? Activity)?.recreate() }) { Text(stringResource(R.string.refresh_library)) } },
-    ) }
+    syncResult?.let { result ->
+        AlertDialog(
+            onDismissRequest = { syncResult = null },
+            title = { Text(stringResource(R.string.folder_sync_complete)) },
+            text = { Text(stringResource(R.string.folder_sync_result, result.roots, result.discovered, result.imported, result.skipped, result.failed)) },
+            confirmButton = { TextButton(onClick = { syncResult = null; (context as? Activity)?.recreate() }) { Text(stringResource(R.string.refresh_library)) } },
+        )
+    }
 
-    batchReport?.let { report -> AlertDialog(
-        onDismissRequest = { if (!batchBusy) batchReport = null },
-        title = { Text(stringResource(R.string.batch_optimize_report)) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.batch_report_summary, report.booksScanned, report.totalCandidates, report.safeCandidates, report.tocAnomalies, report.failedBooks))
-            if (report.appliedRules > 0) Text(stringResource(R.string.batch_report_applied, report.appliedRules), color = MaterialTheme.colorScheme.primary)
-            report.books.take(5).forEach { Text("${stripTxt(it.name)} · ${it.healthScore}/100 · ${it.safeCandidates}", style = MaterialTheme.typography.bodySmall) }
-        } },
-        confirmButton = { Button(onClick = { runBatch(true) }, enabled = !batchBusy && report.safeCandidates > 0) { Text(stringResource(R.string.apply_safe_batch)) } },
-        dismissButton = { Row { TextButton(onClick = { pendingBatchExport = report; batchExportLauncher.launch("jingdu-batch-report.json") }) { Text(stringResource(R.string.export_action)) }; TextButton(onClick = { batchReport = null }) { Text(stringResource(R.string.close)) } } },
-    ) }
+    batchReport?.let { report ->
+        AlertDialog(
+            onDismissRequest = { if (!batchBusy) batchReport = null },
+            title = { Text(stringResource(R.string.batch_optimize_report)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.batch_report_summary, report.booksScanned, report.totalCandidates, report.safeCandidates, report.tocAnomalies, report.failedBooks))
+                    if (report.appliedRules > 0) Text(stringResource(R.string.batch_report_applied, report.appliedRules), color = MaterialTheme.colorScheme.primary)
+                    report.books.take(5).forEach { item ->
+                        Text(stringResource(R.string.batch_book_preview, stripTxt(item.name), item.healthScore, item.safeCandidates), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { runBatch(true) }, enabled = !batchBusy && report.safeCandidates > 0) { Text(stringResource(R.string.apply_safe_batch)) } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { pendingBatchExport = report; batchExportLauncher.launch("jingdu-batch-report.json") }) { Text(stringResource(R.string.export_action)) }
+                    TextButton(onClick = { batchReport = null }) { Text(stringResource(R.string.competitive_close)) }
+                }
+            },
+        )
+    }
 
-    deleteTarget?.let { target -> AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text(stringResource(R.string.remove_from_library_title)) }, text = { Text(stringResource(R.string.remove_from_library_body)) }, confirmButton = { TextButton(onClick = { actions.onDeleteLibraryBook(target); deleteTarget = null }) { Text(stringResource(R.string.delete)) } }, dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) } }) }
-    tagTarget?.let { target -> AlertDialog(onDismissRequest = { tagTarget = null }, title = { Text(stringResource(R.string.book_tags_title)) }, text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(stringResource(R.string.book_tags_body), color = MaterialTheme.colorScheme.onSurfaceVariant); OutlinedTextField(value = tagInput, onValueChange = { tagInput = it }, singleLine = false, placeholder = { Text(stringResource(R.string.book_tags_hint)) }) } }, confirmButton = { TextButton(onClick = { actions.onSetBookTags(target, tagInput); tagTarget = null }) { Text(stringResource(R.string.save)) } }, dismissButton = { TextButton(onClick = { tagTarget = null }) { Text(stringResource(R.string.cancel)) } }) }
+    if (manageFolders) AlertDialog(
+        onDismissRequest = { manageFolders = false },
+        title = { Text(stringResource(R.string.folder_library_roots)) },
+        text = {
+            if (folderRoots.isEmpty()) Text(stringResource(R.string.folder_library_empty))
+            else LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                items(folderRoots, key = { it.toString() }) { root ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(root.toString(), modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                        IconButton(onClick = { removeFolderRoot(root) }) { Icon(Icons.Default.Delete, stringResource(R.string.remove_folder_root)) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { manageFolders = false }) { Text(stringResource(R.string.competitive_close)) } },
+    )
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text(stringResource(R.string.remove_from_library_title)) },
+            text = { Text(stringResource(R.string.remove_from_library_body)) },
+            confirmButton = { TextButton(onClick = { actions.onDeleteLibraryBook(target); deleteTarget = null }) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    tagTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { tagTarget = null },
+            title = { Text(stringResource(R.string.book_tags_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.book_tags_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(value = tagInput, onValueChange = { tagInput = it }, singleLine = false, placeholder = { Text(stringResource(R.string.book_tags_hint)) })
+                }
+            },
+            confirmButton = { TextButton(onClick = { actions.onSetBookTags(target, tagInput); tagTarget = null }) { Text(stringResource(R.string.save)) } },
+            dismissButton = { TextButton(onClick = { tagTarget = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
 }
 
-@Composable private fun LibraryFilterChip(selected: Boolean, label: String, onClick: () -> Unit) { FilterChip(selected = selected, onClick = onClick, label = { Text(label) }) }
-@Composable private fun sortLabel(name: String): String = when (runCatching { LibrarySort.valueOf(name) }.getOrDefault(LibrarySort.RECENT)) { LibrarySort.RECENT -> stringResource(R.string.library_sort_recent); LibrarySort.NAME -> stringResource(R.string.library_sort_name); LibrarySort.PROGRESS -> stringResource(R.string.library_sort_progress) }
+@Composable
+private fun LibraryFilterChip(selected: Boolean, label: String, onClick: () -> Unit) {
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+}
+
+@Composable
+private fun sortLabel(name: String): String = when (runCatching { LibrarySort.valueOf(name) }.getOrDefault(LibrarySort.RECENT)) {
+    LibrarySort.RECENT -> stringResource(R.string.library_sort_recent)
+    LibrarySort.NAME -> stringResource(R.string.library_sort_name)
+    LibrarySort.PROGRESS -> stringResource(R.string.library_sort_progress)
+}
 
 @Composable
 private fun EmptyLibrary(modifier: Modifier, onImport: () -> Unit, onBatchImport: () -> Unit, onFolder: () -> Unit) {
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Surface(modifier = Modifier.size(88.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer) } }
-        Spacer(Modifier.height(24.dp)); Text(stringResource(R.string.empty_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(10.dp)); Text(stringResource(R.string.empty_body), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(24.dp)); Button(onClick = onImport) { Icon(Icons.Default.MenuBook, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.select_txt)) }
+        Surface(modifier = Modifier.size(88.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) {
+            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer) }
+        }
+        Spacer(Modifier.height(24.dp))
+        Text(stringResource(R.string.empty_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(10.dp))
+        Text(stringResource(R.string.empty_body), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(24.dp))
+        Button(onClick = onImport) { Icon(Icons.Default.MenuBook, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.select_txt)) }
         TextButton(onClick = onBatchImport) { Text(stringResource(R.string.select_multiple_txt)) }
         TextButton(onClick = onFolder) { Text(stringResource(R.string.add_folder_library)) }
     }
@@ -268,14 +406,28 @@ private fun BookCard(book: BookCardModel, onOpen: () -> Unit, onDelete: () -> Un
     var menu by remember { mutableStateOf(false) }
     ElevatedCard(onClick = onOpen, colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(modifier = Modifier.size(width = 58.dp, height = 78.dp), shape = MaterialTheme.shapes.medium, color = coverColor(book.id)) { Box(contentAlignment = Alignment.Center) { Text(book.name.trim().firstOrNull()?.toString()?.uppercase() ?: "TXT", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White) } }
+            Surface(modifier = Modifier.size(width = 58.dp, height = 78.dp), shape = MaterialTheme.shapes.medium, color = coverColor(book.id)) {
+                Box(contentAlignment = Alignment.Center) { Text(book.name.trim().firstOrNull()?.toString()?.uppercase() ?: "TXT", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White) }
+            }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) { Text(stripTxt(book.name), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis); if (book.favorite) Icon(Icons.Default.Star, contentDescription = stringResource(R.string.favorite_book), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
-                Spacer(Modifier.height(6.dp)); Text("${book.encoding} · ${formatBytes(book.sizeBytes)} · ${statusLabel(book.status)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (book.tags.isNotEmpty()) { Spacer(Modifier.height(5.dp)); Text(book.tags.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                Spacer(Modifier.height(10.dp)); LinearProgressIndicator(progress = { book.progressFraction }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(MaterialTheme.shapes.small))
-                Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(if (book.charCount > 0) "${(book.progressFraction * 100).roundToInt()}%" else stringResource(R.string.progress_pending), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatTouched(book.touchedAt, stringResource(R.string.not_read)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stripTxt(book.name), modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (book.favorite) Icon(Icons.Default.Star, contentDescription = stringResource(R.string.favorite_book), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("${book.encoding} · ${formatBytes(book.sizeBytes)} · ${statusLabel(book.status)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (book.tags.isNotEmpty()) {
+                    Spacer(Modifier.height(5.dp))
+                    Text(book.tags.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.height(10.dp))
+                LinearProgressIndicator(progress = { book.progressFraction }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(MaterialTheme.shapes.small))
+                Spacer(Modifier.height(6.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(if (book.charCount > 0) "${(book.progressFraction * 100).roundToInt()}%" else stringResource(R.string.progress_pending), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(formatTouched(book.touchedAt, stringResource(R.string.not_read)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.book_actions)) }
@@ -290,4 +442,9 @@ private fun BookCard(book: BookCardModel, onOpen: () -> Unit, onDelete: () -> Un
     }
 }
 
-@Composable private fun statusLabel(status: LibraryBookStatus): String = when (status) { LibraryBookStatus.UNREAD -> stringResource(R.string.status_unread); LibraryBookStatus.READING -> stringResource(R.string.status_reading); LibraryBookStatus.FINISHED -> stringResource(R.string.status_finished) }
+@Composable
+private fun statusLabel(status: LibraryBookStatus): String = when (status) {
+    LibraryBookStatus.UNREAD -> stringResource(R.string.status_unread)
+    LibraryBookStatus.READING -> stringResource(R.string.status_reading)
+    LibraryBookStatus.FINISHED -> stringResource(R.string.status_finished)
+}
