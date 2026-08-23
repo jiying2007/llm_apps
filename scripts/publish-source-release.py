@@ -129,27 +129,37 @@ def publish(tag: str, manifest: Path) -> None:
     encoded = urllib.parse.quote(tag, safe="")
     release_status, release = request(f"/releases/tags/{encoded}", allowed=(404,))
 
+    # A completed tag + Release is immutable historical provenance. Later main commits may
+    # legitimately retain the same source version until the next version bump; they must not
+    # move the tag or fail ordinary CI merely because main has advanced.
+    if existing is not None and release_status != 404:
+        _, target_sha = existing
+        print(
+            f"source release already published at immutable {tag} -> {target_sha}: "
+            f"{release.get('html_url')}"
+        )
+        return
+
+    # An orphan tag can be completed only when it already points at this exact gated main SHA.
+    # This repairs an interrupted first publication without permitting tag movement.
     if existing is not None:
         _, target_sha = existing
         if target_sha != MAIN_SHA:
-            fail(f"immutable tag {tag} points to {target_sha}, expected gated main {MAIN_SHA}")
-        if release_status == 404:
-            _, release = request(
-                "/releases",
-                method="POST",
-                payload={
-                    "tag_name": tag,
-                    "target_commitish": MAIN_SHA,
-                    "name": f"Jingdu {tag}",
-                    "body": release_body(tag, manifest),
-                    "draft": False,
-                    "prerelease": False,
-                    "make_latest": "true",
-                },
-            )
-            print(f"completed release for existing immutable tag: {release.get('html_url')}")
-        else:
-            print(f"source release already published: {release.get('html_url')}")
+            fail(f"orphan immutable tag {tag} points to {target_sha}, expected gated main {MAIN_SHA}")
+        _, release = request(
+            "/releases",
+            method="POST",
+            payload={
+                "tag_name": tag,
+                "target_commitish": target_sha,
+                "name": f"Jingdu {tag}",
+                "body": release_body(tag, manifest),
+                "draft": False,
+                "prerelease": False,
+                "make_latest": "true",
+            },
+        )
+        print(f"completed release for existing immutable tag: {release.get('html_url')}")
         return
 
     if release_status != 404:
