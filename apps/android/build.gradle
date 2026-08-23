@@ -1,6 +1,7 @@
 plugins {
     id "com.android.application" version "9.3.1" apply false
     id "com.android.test" version "9.3.1" apply false
+    id "androidx.baselineprofile" version "1.4.1" apply false
     id "org.jetbrains.kotlin.plugin.compose" version "2.4.10" apply false
 }
 
@@ -8,7 +9,7 @@ def releaseVersion = providers.gradleProperty("jingduVersionName").getOrElse("2.
 
 tasks.register("androidCheck") {
     group = "verification"
-    description = "Builds the Android product and runs lint plus Compose test compilation."
+    description = "Builds the Android product and runs lint plus Compose and Macrobenchmark test compilation."
     dependsOn(
             ":app:lintDebug",
             ":app:lintRelease",
