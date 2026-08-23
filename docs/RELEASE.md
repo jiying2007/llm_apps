@@ -19,16 +19,18 @@ Release infrastructure archives signed APK/AAB, R8 mapping, SHA-256 manifest and
 
 GitHub source provenance is automated by `.github/workflows/source-release.yml`. It is deliberately separate from Google Play production rollout.
 
-To publish an immutable source release after the exact `main` candidate is green, create or fast-forward a temporary branch named `release/source-vX.Y.Z` to the current `main` HEAD. The workflow is triggered by a push to that branch, so a failed source-release attempt is safely replayable by moving the same trigger branch to the next exact `main` commit after the workflow fix. It refuses any trigger branch that does not point exactly at `main`, refuses a version that disagrees with both Android version defaults, waits for the exact `main` push CI to complete successfully, and reruns terminal/store contracts before publishing.
+To request an immutable source release, create or fast-forward a temporary branch named `release/source-vX.Y.Z` to the current `main` HEAD before that main commit's CI completes. The Source Release workflow does not poll or rely on an arbitrary timeout: it runs from the successful `CI` `workflow_run` completion for `main`, confirms that the CI head is still the current `main`, then looks for exactly one matching `release/source-vX.Y.Z` ref that points to that same SHA.
 
-The trigger does not rely on `github.actor == repository_owner`, because repository automation may create or update refs through a GitHub App identity. Safety instead comes from the immutable constraints: only the source-declared semantic version can be released, the trigger must equal current `main`, and an existing tag is never moved to another commit.
+A failed source-release attempt is safely replayable by fixing the workflow through the normal PR path, merging to a new `main` commit, then fast-forwarding the same `release/source-vX.Y.Z` request branch to that new main while its CI runs. The workflow refuses ambiguous requests, refuses a version that disagrees with both Android version defaults, and never moves an existing tag to another commit.
+
+The trigger does not rely on `github.actor == repository_owner`, because repository automation may create or update refs through a GitHub App identity. Safety instead comes from the immutable constraints: a release request must point at the current green `main`, only the source-declared semantic version can be released, and existing tags are immutable.
 
 On success the workflow:
 
-1. creates or verifies Git tag `vX.Y.Z` at the exact `main` commit;
+1. creates or verifies Git tag `vX.Y.Z` at the exact green `main` commit;
 2. creates an idempotent GitHub Source Release with explicit notice that no signed APK/AAB or Play rollout evidence is implied;
 3. prunes only temporary development branches (`feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`) that belong to merged same-repository PRs and are not used by an open PR;
-4. removes the temporary `release/source-vX.Y.Z` trigger branch.
+4. removes the temporary `release/source-vX.Y.Z` request branch.
 
 Long-lived branch names outside those explicit temporary prefixes are never pruned automatically merely because they once appeared as a merged PR head.
 
