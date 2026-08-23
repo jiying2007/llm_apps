@@ -59,7 +59,10 @@ grep -q 'include(":app", ":macrobenchmark")' apps/android/settings.gradle
 grep -q 'benchmark-macro-junit4:1.4.1' apps/android/macrobenchmark/build.gradle
 grep -q 'uiautomator:2.4.0' apps/android/macrobenchmark/build.gradle
 grep -q 'StartupTimingMetric' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/StartupBenchmark.kt
+grep -q 'BaselineProfileMode.UseIfAvailable' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/StartupBenchmark.kt
 grep -q 'BaselineProfileRule' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
+grep -q 'includeInStartupProfile = true' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
+grep -q 'stableIterations = 3' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
 grep -q '<profileable android:shell="true"' apps/android/app/src/main/AndroidManifest.xml
 grep -q 'profileinstaller:1.4.1' apps/android/app/build.gradle
 
