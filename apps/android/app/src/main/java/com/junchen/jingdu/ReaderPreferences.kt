@@ -23,34 +23,40 @@ data class ReaderSettings(
 class ReaderPreferences(context: Context) {
     private val prefs = context.getSharedPreferences("jingdu.reader.settings.v1", Context.MODE_PRIVATE)
 
-    fun load(): ReaderSettings = ReaderSettings(
-        palette = enumOrDefault(prefs.getString("palette", null), ReaderPalette.PAPER),
-        typeface = enumOrDefault(prefs.getString("typeface", null), ReaderTypeface.SYSTEM),
-        fontSizeSp = prefs.getFloat("fontSizeSp", 20f).coerceIn(16f, 34f),
-        lineHeightMultiplier = prefs.getFloat("lineHeight", 1.55f).coerceIn(1.2f, 2.0f),
-        horizontalPaddingDp = prefs.getFloat("horizontalPadding", 24f).coerceIn(12f, 48f),
-        chineseMode = enumOrDefault(prefs.getString("chineseMode", null), ChineseDisplayMode.ORIGINAL),
-        chineseOverrides = (prefs.getString("chineseOverrides", "") ?: "").take(MAX_OVERRIDE_TEXT_CHARS),
-        ttsRate = prefs.getFloat("ttsRate", 1.0f).coerceIn(0.6f, 1.8f),
-        ttsPitch = prefs.getFloat("ttsPitch", 1.0f).coerceIn(0.7f, 1.4f),
-        ttsVoiceName = prefs.getString("ttsVoiceName", "") ?: "",
-        autoPageDelayMs = prefs.getLong("autoPageDelayMs", 6500L).coerceIn(2500L, 15000L),
-    )
+    fun load(): ReaderSettings {
+        val value = ReaderSettings(
+            palette = enumOrDefault(prefs.getString("palette", null), ReaderPalette.PAPER),
+            typeface = enumOrDefault(prefs.getString("typeface", null), ReaderTypeface.SYSTEM),
+            fontSizeSp = prefs.getFloat("fontSizeSp", 20f).coerceIn(16f, 34f),
+            lineHeightMultiplier = prefs.getFloat("lineHeight", 1.55f).coerceIn(1.2f, 2.0f),
+            horizontalPaddingDp = prefs.getFloat("horizontalPadding", 24f).coerceIn(12f, 48f),
+            chineseMode = enumOrDefault(prefs.getString("chineseMode", null), ChineseDisplayMode.ORIGINAL),
+            chineseOverrides = (prefs.getString("chineseOverrides", "") ?: "").take(MAX_OVERRIDE_TEXT_CHARS),
+            ttsRate = prefs.getFloat("ttsRate", 1.0f).coerceIn(0.6f, 1.8f),
+            ttsPitch = prefs.getFloat("ttsPitch", 1.0f).coerceIn(0.7f, 1.4f),
+            ttsVoiceName = prefs.getString("ttsVoiceName", "") ?: "",
+            autoPageDelayMs = prefs.getLong("autoPageDelayMs", 6500L).coerceIn(2500L, 15000L),
+        )
+        ChineseDisplayConverter.configure(value)
+        return value
+    }
 
     fun save(value: ReaderSettings) {
+        val safe = value.copy(chineseOverrides = value.chineseOverrides.take(MAX_OVERRIDE_TEXT_CHARS))
         prefs.edit()
-            .putString("palette", value.palette.name)
-            .putString("typeface", value.typeface.name)
-            .putFloat("fontSizeSp", value.fontSizeSp)
-            .putFloat("lineHeight", value.lineHeightMultiplier)
-            .putFloat("horizontalPadding", value.horizontalPaddingDp)
-            .putString("chineseMode", value.chineseMode.name)
-            .putString("chineseOverrides", value.chineseOverrides.take(MAX_OVERRIDE_TEXT_CHARS))
-            .putFloat("ttsRate", value.ttsRate)
-            .putFloat("ttsPitch", value.ttsPitch)
-            .putString("ttsVoiceName", value.ttsVoiceName)
-            .putLong("autoPageDelayMs", value.autoPageDelayMs)
+            .putString("palette", safe.palette.name)
+            .putString("typeface", safe.typeface.name)
+            .putFloat("fontSizeSp", safe.fontSizeSp)
+            .putFloat("lineHeight", safe.lineHeightMultiplier)
+            .putFloat("horizontalPadding", safe.horizontalPaddingDp)
+            .putString("chineseMode", safe.chineseMode.name)
+            .putString("chineseOverrides", safe.chineseOverrides)
+            .putFloat("ttsRate", safe.ttsRate)
+            .putFloat("ttsPitch", safe.ttsPitch)
+            .putString("ttsVoiceName", safe.ttsVoiceName)
+            .putLong("autoPageDelayMs", safe.autoPageDelayMs)
             .apply()
+        ChineseDisplayConverter.configure(safe)
     }
 
     fun exportMap(): Map<String, Any> {
