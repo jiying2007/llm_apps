@@ -110,6 +110,14 @@ grep -q 'EXTRA_BOOK_ID' apps/android/app/src/main/java/com/junchen/jingdu/TtsPla
 grep -q 'repository.saveProgress(book' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java
 grep -q 'EXTRA_ACTIVE' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java
 grep -q 'state.panel == null' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+grep -q 'actions.onSyncTtsPosition(offset)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+grep -q 'onSyncTtsPosition = ::syncTtsPosition' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'private fun syncTtsPosition(offset: Long)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'onSyncTtsPosition = {}' apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
+if grep -q 'actions.onJump(offset)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt; then
+  echo 'background TTS position sync must not reuse user jump semantics' >&2
+  exit 1
+fi
 grep -q 'SpanStyle(background' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
 grep -q 'setWillPauseWhenDucked(true)' apps/android/app/src/main/java/com/junchen/jingdu/TtsController.java
 
