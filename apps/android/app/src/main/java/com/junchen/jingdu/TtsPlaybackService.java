@@ -13,12 +13,13 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.view.KeyEvent;
 
 import java.io.File;
 
 /**
  * Background/lock-screen/headset TTS host. Text stays local: the service opens only the private
- * normalized/clean file path supplied by MainActivity and delegates speech chunking to Core.
+ * normalized/clean file path supplied by the app and delegates speech chunking to Core.
  */
 public final class TtsPlaybackService extends Service {
     static final String ACTION_START = "com.junchen.jingdu.tts.START";
@@ -53,6 +54,7 @@ public final class TtsPlaybackService extends Service {
     private long offset;
     private long nextOffset;
     private boolean playing;
+    private boolean playbackStarted;
     private String title = "Jingdu";
     private float rate = 1f;
     private float pitch = 1f;
@@ -72,6 +74,35 @@ public final class TtsPlaybackService extends Service {
             @Override public void onStop() { stopPlayback("user"); }
             @Override public void onSkipToNext() { skipNext(); }
             @Override public void onSkipToPrevious() { skipPrevious(); }
+            @Override public boolean onMediaButtonEvent(Intent intent) {
+                if (!Intent.ACTION_MEDIA_BUTTON.equals(intent.getAction())) return super.onMediaButtonEvent(intent);
+                KeyEvent event;
+                if (Build.VERSION.SDK_INT >= 33) event = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent.class);
+                else {
+                    @SuppressWarnings("deprecation")
+                    KeyEvent legacy = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+                    event = legacy;
+                }
+                if (event == null || event.getAction() != KeyEvent.ACTION_DOWN) return true;
+                switch (event.getKeyCode()) {
+                    case KeyEvent.KEYCODE_MEDIA_PLAY:
+                        resumeSpeech(); return true;
+                    case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                        pauseSpeech(); return true;
+                    case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                    case KeyEvent.KEYCODE_HEADSETHOOK:
+                        if (playing) pauseSpeech(); else resumeSpeech();
+                        return true;
+                    case KeyEvent.KEYCODE_MEDIA_NEXT:
+                        skipNext(); return true;
+                    case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                        skipPrevious(); return true;
+                    case KeyEvent.KEYCODE_MEDIA_STOP:
+                        stopPlayback("user"); return true;
+                    default:
+                        return super.onMediaButtonEvent(intent);
+                }
+            }
         });
         mediaSession.setActive(true);
         updatePlaybackState();
@@ -105,7 +136,7 @@ public final class TtsPlaybackService extends Service {
             reader.open(new File(path), intent.getLongExtra(EXTRA_OFFSET, 0));
             offset = reader.position();
             nextOffset = offset;
-            title = valueOr(intent.getStringExtra(EXTRA_TITLE), "Jingdu");
+            title = valueOr(intent.getStringExtra(EXTRA_TITLE), getString(R.string.app_title));
             rate = intent.getFloatExtra(EXTRA_RATE, 1f);
             pitch = intent.getFloatExtra(EXTRA_PITCH, 1f);
             voice = valueOr(intent.getStringExtra(EXTRA_VOICE), "");
@@ -114,10 +145,11 @@ public final class TtsPlaybackService extends Service {
             engine.setVoiceName(voice);
             mediaSession.setMetadata(new MediaMetadata.Builder()
                     .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-                    .putString(MediaMetadata.METADATA_KEY_ARTIST, "Jingdu · Local TXT")
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, getString(R.string.tts_media_artist))
                     .build());
             startRetries = 0;
             playing = true;
+            playbackStarted = true;
             startForeground(NOTIFICATION_ID, notification());
             updatePlaybackState();
             broadcast(null);
@@ -148,6 +180,8 @@ public final class TtsPlaybackService extends Service {
             }
             @Override public void onResumed() {
                 playing = true;
+                playbackStarted = true;
+                startForeground(NOTIFICATION_ID, notification());
                 updatePlaybackState();
                 broadcast(null);
             }
@@ -174,6 +208,7 @@ public final class TtsPlaybackService extends Service {
     private void resumeSpeech() {
         if (playing || reader.length() <= 0) return;
         playing = true;
+        playbackStarted = true;
         startRetries = 0;
         startForeground(NOTIFICATION_ID, notification());
         updatePlaybackState();
@@ -222,7 +257,8 @@ public final class TtsPlaybackService extends Service {
         if (engine != null) engine.stop(null);
         updatePlaybackState();
         broadcast(reason);
-        stopForeground(true);
+        if (playbackStarted) stopForeground(true);
+        playbackStarted = false;
         stopSelf();
     }
 
@@ -233,8 +269,10 @@ public final class TtsPlaybackService extends Service {
                 .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED,
                         Math.max(0, offset), 1f)
                 .build());
-        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        manager.notify(NOTIFICATION_ID, notification());
+        if (playbackStarted) {
+            NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            manager.notify(NOTIFICATION_ID, notification());
+        }
     }
 
     private Notification notification() {
@@ -244,16 +282,16 @@ public final class TtsPlaybackService extends Service {
         PendingIntent toggle = serviceIntent(ACTION_TOGGLE, 2);
         PendingIntent next = serviceIntent(ACTION_NEXT, 3);
         PendingIntent stop = serviceIntent(ACTION_STOP, 4);
-        Notification.Action previousAction = new Notification.Action.Builder(android.R.drawable.ic_media_previous, "Previous", previous).build();
+        Notification.Action previousAction = new Notification.Action.Builder(android.R.drawable.ic_media_previous, getString(R.string.tts_media_previous), previous).build();
         Notification.Action toggleAction = new Notification.Action.Builder(
                 playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
-                playing ? "Pause" : "Play", toggle).build();
-        Notification.Action nextAction = new Notification.Action.Builder(android.R.drawable.ic_media_next, "Next", next).build();
-        Notification.Action stopAction = new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stop).build();
+                getString(playing ? R.string.tts_media_pause : R.string.tts_media_play), toggle).build();
+        Notification.Action nextAction = new Notification.Action.Builder(android.R.drawable.ic_media_next, getString(R.string.tts_media_next), next).build();
+        Notification.Action stopAction = new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.tts_media_stop), stop).build();
         return new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
-                .setContentText("Local read aloud")
+                .setContentText(getString(R.string.tts_media_body))
                 .setContentIntent(content)
                 .setOnlyAlertOnce(true)
                 .setOngoing(playing)
@@ -282,8 +320,8 @@ public final class TtsPlaybackService extends Service {
 
     private void createChannel() {
         if (Build.VERSION.SDK_INT < 26) return;
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Read aloud", NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("Background local TXT read aloud controls");
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, getString(R.string.tts_media_channel), NotificationManager.IMPORTANCE_LOW);
+        channel.setDescription(getString(R.string.tts_media_channel_body));
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
     }
 
