@@ -67,7 +67,10 @@ final class ReaderController implements Closeable {
             }
             if (merged.size() >= 500) break;
         }
-        return merged.values().stream().sorted((left, right) -> Long.compare(left.offset(), right.offset())).limit(500).toList();
+        ArrayList<Hit> results = new ArrayList<>(merged.values());
+        results.sort((left, right) -> Long.compare(left.offset(), right.offset()));
+        if (results.size() > 500) return new ArrayList<>(results.subList(0, 500));
+        return results;
     }
 
     List<Chapter> chapters() throws IOException {
