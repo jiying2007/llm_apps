@@ -45,6 +45,7 @@ jobs:
             apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/UiComponents.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/UiFormatters.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt \
@@ -60,29 +61,42 @@ jobs:
           done
           test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
           test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
+          ! grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml
+
           grep -q 'enableEdgeToEdge' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'newSingleThreadExecutor' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'OpenMultipleDocuments' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-          grep -q 'onSaveInstanceState' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'restoreSession' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'STATE_NORMALIZED_SHA' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'bookmarkKey(book)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-          grep -q 'noiseCandidates' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-          grep -q 'jingdu_pro_lifetime' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
+          grep -q 'analyzeSmartClean' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'UserBackup' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'refreshTtsVoices' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          grep -q 'ReviewPrompter' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'NativeIndexCache.pruneOrphans' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+
           grep -q 'GridCells.Adaptive' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
+          grep -q '批量导入' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
           grep -q 'widthIn(max = maxTextWidth)' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
           grep -q 'onValueChangeFinished' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
-          grep -q 'ModalBottomSheet' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
           grep -q '智能净读' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
-          grep -q 'onTextLayout' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+          grep -q '解锁 Pro 应用建议' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
+          grep -q 'ProductSettingsSheet' apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
+          grep -q '离线朗读声音' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
+          grep -q '本地资产备份' apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
+
           grep -q 'ATOMIC_MOVE' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
           grep -q 'document-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
           grep -q 'clean-' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
           grep -q 'NativeCore.search(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
           grep -q 'NativeCore.chapters(handle' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+          grep -q 'NativeCore.noiseCandidates' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
           grep -q 'nativeNoiseCandidates' apps/android/app/src/main/java/com/junchen/jingdu/NativeCore.java
+
+          grep -q 'jingdu_pro_lifetime' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
+          grep -q 'queryPurchasesAsync' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
+          grep -q 'acknowledgePurchase' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
           grep -q 'billing:9.1.0' apps/android/app/build.gradle
           grep -q 'review:2.0.2' apps/android/app/build.gradle
           grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
