@@ -24,7 +24,7 @@ class JingduUiTest {
         }
 
         composeRule.onNodeWithText(context.getString(R.string.app_title)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.library_tagline)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.library_tagline_terminal)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.empty_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.select_txt)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
@@ -66,7 +66,7 @@ class JingduUiTest {
                     panel = ReaderPanel.CLEAN,
                     smartCleanAnalyzed = true,
                     noiseCandidates = listOf(
-                        NoiseCandidateModel(94, 326, "promo_repeated", "www.example.com"),
+                        NoiseCandidateModel(94, 326, "promo_repeated", "www.example.com", selected = true),
                     ),
                     proUnlocked = false,
                     proPrice = "US$6.99",
@@ -96,6 +96,8 @@ class JingduUiTest {
         onBatchImport = {},
         onOpenBook = {},
         onDeleteLibraryBook = {},
+        onToggleFavorite = {},
+        onSetBookTags = { _, _ -> },
         onBackToLibrary = {},
         onNavigatePrevious = {},
         onNavigateNext = {},
@@ -114,6 +116,7 @@ class JingduUiTest {
         onAnalyzeSmartClean = {},
         onToggleNoiseCandidate = {},
         onApplySmartClean = {},
+        onUndoSmartClean = {},
         onAddGlobalRule = { _, _, _ -> },
         onDeleteGlobalRule = {},
         onClearGlobalRules = {},
