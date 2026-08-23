@@ -42,6 +42,15 @@
     <string name="not_verified">未驗證</string>
 
     <string name="reading_aloud_background">背景朗讀 · 支援鎖定畫面和耳機控制</string>
+    <string name="tts_media_channel">朗讀</string>
+    <string name="tts_media_channel_body">背景本機 TXT 朗讀控制</string>
+    <string name="tts_media_artist">淨讀 · 本機 TXT</string>
+    <string name="tts_media_body">本機朗讀</string>
+    <string name="tts_media_previous">上一段</string>
+    <string name="tts_media_play">播放</string>
+    <string name="tts_media_pause">暫停</string>
+    <string name="tts_media_next">下一段</string>
+    <string name="tts_media_stop">停止</string>
 
     <string name="add_folder_library">加入 TXT 資料夾</string>
     <string name="sync_folders">同步資料夾 · %1$d</string>
