@@ -33,6 +33,7 @@ data class NoiseCandidateModel(
     val text: String,
     val selected: Boolean = true,
 )
+data class TtsVoiceModel(val name: String, val label: String)
 
 data class AppUiState(
     val screen: AppScreen = AppScreen.LIBRARY,
@@ -58,6 +59,7 @@ data class AppUiState(
     val proAvailable: Boolean = false,
     val proConnected: Boolean = false,
     val proPrice: String? = null,
+    val ttsVoices: List<TtsVoiceModel> = emptyList(),
     val ttsPlaying: Boolean = false,
     val autoPaging: Boolean = false,
     val sleepMinutes: Int = 0,
