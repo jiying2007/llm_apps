@@ -122,7 +122,20 @@ int main() {
                             std::istreambuf_iterator<char>());
   check(content.find("hi 世界") != std::string::npos &&
             content.find("hello") == std::string::npos,
-        "repair content");
+        "literal repair content");
+
+  const char* globPath = "jingdu-core-glob-repaired.txt";
+  check(jd_export_rules(handle, "@g\x1f*请收藏本站*\x1f", globPath) == JD_OK,
+        "whole-line glob repair export");
+  std::ifstream globRepaired(globPath, std::ios::binary);
+  const std::string globContent((std::istreambuf_iterator<char>(globRepaired)),
+                                std::istreambuf_iterator<char>());
+  check(globContent.find("请收藏本站") == std::string::npos,
+        "whole-line glob removes matching promotional lines");
+  check(globContent.find("正文内容一") != std::string::npos &&
+            globContent.find("正文内容二") != std::string::npos &&
+            globContent.find("正文内容三") != std::string::npos,
+        "whole-line glob preserves ordinary content");
 
   jd_close(handle);
   {
@@ -147,5 +160,7 @@ int main() {
   std::remove((cachePath + ".tmp").c_str());
   std::remove(repairedPath);
   std::remove((std::string(repairedPath) + ".jdx").c_str());
+  std::remove(globPath);
+  std::remove((std::string(globPath) + ".jdx").c_str());
   return 0;
 }
