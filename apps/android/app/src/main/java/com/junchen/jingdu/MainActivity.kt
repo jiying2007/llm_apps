@@ -25,6 +25,7 @@ import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
     private val main = Handler(Looper.getMainLooper())
@@ -41,12 +42,16 @@ class MainActivity : ComponentActivity() {
     private lateinit var userBackup: UserBackup
     private lateinit var reviewPrompter: ReviewPrompter
     private lateinit var billing: BillingManager
+    private lateinit var cleanHistory: CleanHistory
+    private lateinit var libraryMetadata: LibraryMetadataStore
     @Volatile private var proUnlocked = false
     private var reader = ReaderController()
     private var currentBook: BookRepository.Book? = null
     private var cleanMode = false
     private var visiblePageChars = ReaderController.DEFAULT_PAGE_CHARS
     private var pendingExport: File? = null
+    private var lastProgressPersistAt = 0L
+    private var lastProgressPersistPosition = -1L
     private var uiState by mutableStateOf(AppUiState())
 
     private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importUri(it) } }
@@ -67,6 +72,8 @@ class MainActivity : ComponentActivity() {
             onBatchImport = { batchImportLauncher.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) },
             onOpenBook = ::openBookById,
             onDeleteLibraryBook = ::deleteLibraryBook,
+            onToggleFavorite = ::toggleFavorite,
+            onSetBookTags = ::setBookTags,
             onBackToLibrary = ::backToLibrary,
             onNavigatePrevious = { navigatePrevious(userInitiated = true) },
             onNavigateNext = { navigateNext(userInitiated = true) },
@@ -85,6 +92,7 @@ class MainActivity : ComponentActivity() {
             onAnalyzeSmartClean = ::analyzeSmartClean,
             onToggleNoiseCandidate = ::toggleNoiseCandidate,
             onApplySmartClean = ::applySmartClean,
+            onUndoSmartClean = ::undoSmartClean,
             onAddGlobalRule = ::addGlobalRule,
             onDeleteGlobalRule = ::deleteGlobalRule,
             onClearGlobalRules = ::clearGlobalRules,
@@ -129,6 +137,8 @@ class MainActivity : ComponentActivity() {
         ruleLibrary = RuleLibrary(this)
         userBackup = UserBackup(readerPreferences, ruleLibrary)
         reviewPrompter = ReviewPrompter(this)
+        cleanHistory = CleanHistory(this)
+        libraryMetadata = LibraryMetadataStore(this)
         tts = TtsController(this)
         val settings = readerPreferences.load()
         tts.setRate(settings.ttsRate)
@@ -206,13 +216,28 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshLibrary() { uiState = uiState.copy(books = repository.list().map(::toCard)) }
 
-    private fun toCard(book: BookRepository.Book) = BookCardModel(
-        id = book.id, name = book.name, encoding = book.encoding, sizeBytes = book.size,
-        progress = book.progress, charCount = book.charCount, touchedAt = book.touchedAt,
-        normalizedSha256 = book.normalizedSha256,
-    )
+    private fun toCard(book: BookRepository.Book): BookCardModel {
+        val metadata = libraryMetadata.load(book.id)
+        return BookCardModel(
+            id = book.id, name = book.name, encoding = book.encoding, sizeBytes = book.size,
+            progress = book.progress, charCount = book.charCount, touchedAt = book.touchedAt,
+            normalizedSha256 = book.normalizedSha256, favorite = metadata.favorite, tags = metadata.tags,
+        )
+    }
 
     private fun findBook(id: String): BookRepository.Book? = repository.list().firstOrNull { it.id == id }
+
+    private fun toggleFavorite(id: String) {
+        if (findBook(id) == null) return
+        libraryMetadata.toggleFavorite(id)
+        refreshLibrary()
+    }
+
+    private fun setBookTags(id: String, tags: String) {
+        if (findBook(id) == null) return
+        libraryMetadata.setTags(id, tags)
+        refreshLibrary()
+    }
 
     private fun importUri(uri: Uri) {
         runWork(
@@ -281,6 +306,7 @@ class MainActivity : ComponentActivity() {
             globalRules = ruleLibrary.load(),
             noiseCandidates = emptyList(),
             smartCleanAnalyzed = false,
+            smartCleanUndoAvailable = cleanHistory.has(book.id),
         )
 
         workers.execute {
@@ -295,12 +321,14 @@ class MainActivity : ComponentActivity() {
                     currentBook = book
                     cleanMode = clean
                     pageHistory.clear()
+                    lastProgressPersistAt = 0L
+                    lastProgressPersistPosition = candidate.position()
                     repository.updateCharCount(book, candidate.length())
                     repository.pruneDocumentRevisions(book)
                     repository.pruneCleanRevisions(book, if (clean) file else null)
                     NativeIndexCache.pruneOrphans(repository.normalizedFile(book).parentFile)
                     previousReader.close()
-                    uiState = uiState.copy(busyLabel = null, currentBook = toCard(book), cleanMode = clean)
+                    uiState = uiState.copy(busyLabel = null, currentBook = toCard(book), cleanMode = clean, smartCleanUndoAvailable = cleanHistory.has(book.id))
                     render()
                     refreshLibrary()
                     if (!clean && previousBook?.id != book.id) reviewPrompter.recordBookOpened()
@@ -329,7 +357,7 @@ class MainActivity : ComponentActivity() {
         if (uiState.busyLabel != null) return
         try {
             val text = reader.page()
-            if (!cleanMode) repository.saveProgress(book, reader.position())
+            if (!cleanMode) persistProgress(book)
             uiState = uiState.copy(
                 screen = AppScreen.READER, currentBook = toCard(book), pageText = text,
                 position = reader.position(), length = reader.length(), cleanMode = cleanMode,
@@ -337,6 +365,16 @@ class MainActivity : ComponentActivity() {
         } catch (error: Throwable) {
             showMessage(friendlyError(getString(R.string.error_read), error))
         }
+    }
+
+    private fun persistProgress(book: BookRepository.Book, force: Boolean = false) {
+        val now = SystemClock.elapsedRealtime()
+        val position = reader.position()
+        if (!force && now - lastProgressPersistAt < PROGRESS_SAVE_INTERVAL_MS &&
+            abs(position - lastProgressPersistPosition) < PROGRESS_SAVE_CHAR_DELTA) return
+        repository.saveProgress(book, position)
+        lastProgressPersistAt = now
+        lastProgressPersistPosition = position
     }
 
     private fun navigateNext(userInitiated: Boolean) {
@@ -373,7 +411,7 @@ class MainActivity : ComponentActivity() {
     private fun backToLibrary() {
         uiState.panel?.let { uiState = uiState.copy(panel = null); return }
         val book = currentBook
-        if (book != null && !cleanMode) repository.saveProgress(book, reader.position())
+        if (book != null && !cleanMode) persistProgress(book, force = true)
         stopAutoPaging(); stopTts(); reader.close()
         currentBook = null; cleanMode = false; pageHistory.clear(); refreshLibrary()
         uiState = uiState.copy(
@@ -381,6 +419,7 @@ class MainActivity : ComponentActivity() {
             cleanMode = false, panel = null, busyLabel = null, searchQuery = "", searchResults = emptyList(),
             chapters = emptyList(), chaptersLoaded = false, bookmarks = emptyList(), repairRules = emptyList(),
             globalRules = ruleLibrary.load(), noiseCandidates = emptyList(), smartCleanAnalyzed = false,
+            smartCleanUndoAvailable = false,
         )
     }
 
@@ -429,13 +468,23 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun bookmarkKey(book: BookRepository.Book): String = "bookmarks.${book.id}.${book.normalizedSha256}"
-    private fun bookmarkPositions(book: BookRepository.Book): MutableSet<String> = getPreferences(MODE_PRIVATE).getStringSet(bookmarkKey(book), emptySet())?.toMutableSet() ?: mutableSetOf()
+    private fun bookmarkKey(book: BookRepository.Book): String = "bookmarks.${book.id}"
+    private fun legacyBookmarkKey(book: BookRepository.Book): String = "bookmarks.${book.id}.${book.normalizedSha256}"
+    private fun bookmarkPositions(book: BookRepository.Book): MutableSet<String> {
+        val preferences = getPreferences(MODE_PRIVATE)
+        val current = preferences.getStringSet(bookmarkKey(book), emptySet())?.toMutableSet() ?: mutableSetOf()
+        val legacy = preferences.getStringSet(legacyBookmarkKey(book), emptySet()).orEmpty()
+        if (legacy.isNotEmpty()) {
+            current.addAll(legacy)
+            preferences.edit().putStringSet(bookmarkKey(book), current).remove(legacyBookmarkKey(book)).apply()
+        }
+        return current
+    }
 
     private fun refreshBookmarks() {
         val book = currentBook ?: return
         val length = reader.length().coerceAtLeast(1)
-        val models = bookmarkPositions(book).mapNotNull { raw -> raw.toLongOrNull()?.let { offset -> BookmarkModel(offset, (offset.toDouble() / length.toDouble()).toFloat().coerceIn(0f, 1f)) } }.sortedBy { it.offset }
+        val models = bookmarkPositions(book).mapNotNull { raw -> raw.toLongOrNull()?.let { offset -> BookmarkModel(offset.coerceIn(0, length - 1), (offset.toDouble() / length.toDouble()).toFloat().coerceIn(0f, 1f)) } }.distinctBy { it.offset }.sortedBy { it.offset }
         uiState = uiState.copy(bookmarks = models)
     }
 
@@ -465,14 +514,15 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshRules() {
         val book = currentBook ?: return
-        uiState = uiState.copy(repairRules = bookRules(book), globalRules = ruleLibrary.load())
+        uiState = uiState.copy(repairRules = bookRules(book), globalRules = ruleLibrary.load(), smartCleanUndoAvailable = cleanHistory.has(book.id))
     }
 
-    private fun saveRules(rules: List<RepairRule>, rebuildIfClean: Boolean = true) {
+    private fun saveRules(rules: List<RepairRule>, rebuildIfClean: Boolean = true, preserveSmartCleanUndo: Boolean = false) {
         val book = currentBook ?: return
         val valid = rules.filter(RuleCodec::isValid).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(500)
         getPreferences(MODE_PRIVATE).edit().putString(rulesKey(book), RuleCodec.pack(valid)).apply()
-        uiState = uiState.copy(repairRules = valid)
+        if (!preserveSmartCleanUndo) cleanHistory.clear(book.id)
+        uiState = uiState.copy(repairRules = valid, smartCleanUndoAvailable = preserveSmartCleanUndo && cleanHistory.has(book.id))
         if (rebuildIfClean && cleanMode) openBook(book, clean = true)
     }
 
@@ -500,7 +550,11 @@ class MainActivity : ComponentActivity() {
                 uiState = uiState.copy(
                     panel = ReaderPanel.CLEAN,
                     smartCleanAnalyzed = true,
-                    noiseCandidates = candidates.map { NoiseCandidateModel(score = it.score(), count = it.count(), reason = it.reason(), text = it.text(), selected = it.score() >= 60) },
+                    smartCleanUndoAvailable = cleanHistory.has(book.id),
+                    noiseCandidates = candidates.map { candidate ->
+                        val model = NoiseCandidateModel(score = candidate.score(), count = candidate.count(), reason = candidate.reason(), text = candidate.text())
+                        model.copy(selected = model.defaultSafeSelection)
+                    },
                     message = if (candidates.isEmpty()) getString(R.string.smart_clean_empty) else null,
                 )
             },
@@ -518,12 +572,24 @@ class MainActivity : ComponentActivity() {
         if (!proUnlocked) { billing.purchase(); return }
         val selected = uiState.noiseCandidates.filter { it.selected }
         if (selected.isEmpty()) return showMessage(getString(R.string.select_clean_suggestion))
+        cleanHistory.save(book.id, bookRulesPacked(book))
         val additions = selected.map { RepairRule(it.text, "", RepairRuleMode.LITERAL) }
         val updated = (bookRules(book) + additions).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(500)
-        saveRules(updated, rebuildIfClean = false)
+        saveRules(updated, rebuildIfClean = false, preserveSmartCleanUndo = true)
         reviewPrompter.recordSmartCleanApplied()
-        uiState = uiState.copy(panel = null)
+        uiState = uiState.copy(panel = null, smartCleanUndoAvailable = true)
         openBook(book, clean = true)
+    }
+
+    private fun undoSmartClean() {
+        val book = currentBook ?: return
+        val snapshot = cleanHistory.peek(book.id) ?: return
+        val restored = RuleCodec.parse(snapshot)
+        cleanHistory.clear(book.id)
+        saveRules(restored, rebuildIfClean = false, preserveSmartCleanUndo = true)
+        uiState = uiState.copy(panel = null, smartCleanUndoAvailable = false)
+        openBook(book, clean = true)
+        showMessage(getString(R.string.smart_clean_undone))
     }
 
     private fun addGlobalRule(mode: RepairRuleMode, find: String, replacement: String) {
@@ -685,11 +751,16 @@ class MainActivity : ComponentActivity() {
 
     private fun redecode(encoding: String) {
         val book = currentBook ?: return
+        val preservedProgress = reader.position()
         uiState = uiState.copy(panel = null)
         runWork(
             label = if (encoding == BookRepository.AUTO) getString(R.string.busy_redecode_auto) else getString(R.string.busy_redecode, encoding),
             task = { repository.redecode(book, encoding) },
-            success = { updated -> reviewPrompter.recordEncodingRescue(); openBook(updated, clean = false) },
+            success = { updated ->
+                repository.saveProgress(updated, preservedProgress)
+                reviewPrompter.recordEncodingRescue()
+                openBook(updated, clean = false, restoredOverride = preservedProgress)
+            },
             errorTitle = getString(R.string.error_redecode),
         )
     }
@@ -719,6 +790,8 @@ class MainActivity : ComponentActivity() {
                 if (currentBook == null || uiState.busyLabel != null) return
                 pageHistory.clear(); reader.jump(offset); render()
             }
+            override fun onPaused() { uiState = uiState.copy(ttsPlaying = false) }
+            override fun onResumed() { uiState = uiState.copy(ttsPlaying = true) }
             override fun onStopped(reason: String?) {
                 uiState = uiState.copy(ttsPlaying = false)
                 if (reason != null && reason != "end") showMessage(ttsReason(reason))
@@ -758,24 +831,24 @@ class MainActivity : ComponentActivity() {
         val book = currentBook ?: return
         uiState = uiState.copy(deleteConfirmation = false)
         stopAutoPaging(); stopTts(); workGeneration.incrementAndGet(); reader.close()
-        repository.delete(book); clearBookPreferences(book)
+        repository.delete(book); clearBookPreferences(book); libraryMetadata.clear(book.id); cleanHistory.clearAllForBook(book.id)
         currentBook = null; cleanMode = false; pageHistory.clear(); refreshLibrary()
         uiState = uiState.copy(
             screen = AppScreen.LIBRARY, currentBook = null, pageText = "", position = 0, length = 0,
             cleanMode = false, panel = null, chaptersLoaded = false, repairRules = emptyList(),
-            noiseCandidates = emptyList(), smartCleanAnalyzed = false, message = getString(R.string.removed_from_library),
+            noiseCandidates = emptyList(), smartCleanAnalyzed = false, smartCleanUndoAvailable = false, message = getString(R.string.removed_from_library),
         )
     }
 
     private fun deleteLibraryBook(id: String) {
         val book = findBook(id) ?: return
         if (currentBook?.id == id) { deleteCurrentBook(); return }
-        repository.delete(book); clearBookPreferences(book); refreshLibrary(); showMessage(getString(R.string.removed_from_library))
+        repository.delete(book); clearBookPreferences(book); libraryMetadata.clear(book.id); cleanHistory.clearAllForBook(book.id); refreshLibrary(); showMessage(getString(R.string.removed_from_library))
     }
 
     private fun clearBookPreferences(book: BookRepository.Book) {
         val preferences = getPreferences(MODE_PRIVATE)
-        val editor = preferences.edit().remove(rulesKey(book))
+        val editor = preferences.edit().remove(rulesKey(book)).remove(bookmarkKey(book))
         preferences.all.keys.filter { it.startsWith("bookmarks.${book.id}.") || it == "bookmarks.${book.id}" }.forEach(editor::remove)
         editor.apply()
     }
@@ -834,7 +907,7 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         val book = currentBook
-        if (book != null && !cleanMode) repository.saveProgress(book, reader.position())
+        if (book != null && !cleanMode) persistProgress(book, force = true)
     }
 
     override fun onDestroy() {
@@ -854,6 +927,8 @@ class MainActivity : ComponentActivity() {
         private const val MAX_RULE_IMPORT_BYTES = 1024 * 1024
         private const val MAX_BACKUP_BYTES = 2 * 1024 * 1024
         private const val MAX_BATCH_IMPORT_FILES = 100
+        private const val PROGRESS_SAVE_INTERVAL_MS = 2_000L
+        private const val PROGRESS_SAVE_CHAR_DELTA = 4_096L
         private fun stripTxt(name: String): String = if (name.lowercase().endsWith(".txt")) name.dropLast(4) else name
     }
 }
