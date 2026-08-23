@@ -24,6 +24,7 @@ class JingduUiTest {
         composeRule.onNodeWithText("本地 TXT · 无广告 · 不上传").assertIsDisplayed()
         composeRule.onNodeWithText("把本地 TXT 变得好读").assertIsDisplayed()
         composeRule.onNodeWithText("选择 TXT 文件").assertIsDisplayed()
+        composeRule.onNodeWithText("一次选择多本 TXT").assertIsDisplayed()
     }
 
     @Test
@@ -89,6 +90,7 @@ class JingduUiTest {
 
     private fun noOpActions() = JingduActions(
         onImport = {},
+        onBatchImport = {},
         onOpenBook = {},
         onDeleteLibraryBook = {},
         onBackToLibrary = {},
@@ -117,6 +119,8 @@ class JingduUiTest {
         onImportGlobalRules = {},
         onUpgradePro = {},
         onRestorePro = {},
+        onExportBackup = {},
+        onImportBackup = {},
         onToggleCleanPreview = {},
         onExportClean = {},
         onEncodingSelected = {},
