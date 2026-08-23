@@ -97,6 +97,9 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
 
 @Composable
 private fun ReaderPage(text: String, settings: ReaderSettings, modifier: Modifier, onVisibleCharsChanged: (Long) -> Unit) {
+    val displayText = remember(text, settings.chineseMode, settings.chineseOverrides) {
+        ChineseDisplayConverter.convert(text, settings.chineseMode, settings.chineseOverrides)
+    }
     val pageBackground = when (settings.palette) { ReaderPalette.PAPER -> Color(0xFFF7F0DE); ReaderPalette.LIGHT -> Color(0xFFFFFBFF); ReaderPalette.NIGHT -> Color(0xFF151713) }
     val pageText = if (settings.palette == ReaderPalette.NIGHT) Color(0xFFE8E5DA) else Color(0xFF24241F)
     val family = if (settings.typeface == ReaderTypeface.SERIF) FontFamily.Serif else FontFamily.SansSerif
@@ -105,13 +108,14 @@ private fun ReaderPage(text: String, settings: ReaderSettings, modifier: Modifie
             val maxTextWidth = if (maxWidth >= 840.dp) 760.dp else maxWidth
             Box(Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = 18.dp), contentAlignment = Alignment.TopCenter) {
                 SelectionContainer {
-                    Text(text = text, modifier = Modifier.widthIn(max = maxTextWidth).fillMaxHeight(), style = TextStyle(color = pageText, fontFamily = family, fontSize = settings.fontSizeSp.sp, lineHeight = (settings.fontSizeSp * settings.lineHeightMultiplier).sp, textAlign = TextAlign.Justify), overflow = TextOverflow.Clip,
+                    Text(text = displayText, modifier = Modifier.widthIn(max = maxTextWidth).fillMaxHeight(), style = TextStyle(color = pageText, fontFamily = family, fontSize = settings.fontSizeSp.sp, lineHeight = (settings.fontSizeSp * settings.lineHeightMultiplier).sp, textAlign = TextAlign.Justify), overflow = TextOverflow.Clip,
                         onTextLayout = { layout ->
-                            if (layout.lineCount > 0 && text.isNotEmpty() && layout.size.height > 0) {
+                            if (layout.lineCount > 0 && displayText.isNotEmpty() && layout.size.height > 0) {
                                 val visibleLine = layout.getLineForVerticalPosition((layout.size.height - 1).toFloat())
-                                val end = layout.getLineEnd(visibleLine, visibleEnd = true).coerceIn(0, text.length)
-                                val count = text.codePointCount(0, end).toLong()
-                                if (count >= ReaderController.MIN_PAGE_CHARS) onVisibleCharsChanged(count)
+                                val end = layout.getLineEnd(visibleLine, visibleEnd = true).coerceIn(0, displayText.length)
+                                val displayedCount = displayText.codePointCount(0, end).toLong()
+                                val sourceCount = ChineseDisplayConverter.sourceCharsForDisplayed(text, displayText, displayedCount)
+                                if (sourceCount >= ReaderController.MIN_PAGE_CHARS) onVisibleCharsChanged(sourceCount)
                             }
                         })
                 }
