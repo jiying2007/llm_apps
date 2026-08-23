@@ -19,6 +19,21 @@ data class PrivacyAuditResult(
 
 /** Runtime-verifiable privacy facts. The generated report contains counts/configuration only. */
 internal object PrivacyAudit {
+    private val knownAnalyticsClasses = listOf(
+        "com.google.firebase.analytics.FirebaseAnalytics",
+        "com.microsoft.appcenter.AppCenter",
+        "com.umeng.analytics.MobclickAgent",
+        "com.sensorsdata.analytics.android.sdk.SensorsDataAPI",
+        "com.growingio.android.sdk.collection.GrowingIO",
+        "com.flurry.android.FlurryAgent",
+    )
+    private val knownAdsClasses = listOf(
+        "com.google.android.gms.ads.AdView",
+        "com.facebook.ads.AdView",
+        "com.bytedance.sdk.openadsdk.TTAdSdk",
+        "com.qq.e.comm.managers.GDTAdSdk",
+    )
+
     fun inspect(
         context: Context,
         libraryBooks: Int,
@@ -27,11 +42,14 @@ internal object PrivacyAudit {
     ): PrivacyAuditResult {
         val info = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
         val permissions = info.requestedPermissions?.toSet().orEmpty()
+        val networkPermissionAbsent = Manifest.permission.INTERNET !in permissions
         return PrivacyAuditResult(
-            networkPermissionAbsent = Manifest.permission.INTERNET !in permissions,
-            bookTextUploadCapability = false,
-            analyticsSdkPresent = false,
-            adsSdkPresent = false,
+            networkPermissionAbsent = networkPermissionAbsent,
+            // Conservative runtime interpretation: without INTERNET permission this APK has no
+            // direct network transport for uploading private book text.
+            bookTextUploadCapability = !networkPermissionAbsent,
+            analyticsSdkPresent = knownAnalyticsClasses.any { classPresent(context, it) },
+            adsSdkPresent = knownAdsClasses.any { classPresent(context, it) },
             folderRoots = folderRoots,
             libraryBooks = libraryBooks,
             feedbackKeep = feedback.keep,
@@ -60,4 +78,9 @@ internal object PrivacyAudit {
             .put("containsBookText", false)
             .toString(2)
     }
+
+    private fun classPresent(context: Context, className: String): Boolean = runCatching {
+        Class.forName(className, false, context.classLoader)
+        true
+    }.getOrDefault(false)
 }
