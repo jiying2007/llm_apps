@@ -8,6 +8,8 @@ required=(
   third_party/NOTICE.md
   third_party/licenses/OpenccJava-MIT.txt
   third_party/licenses/OpenCC-Apache-2.0.txt
+  scripts/publish-source-release.py
+  releases/source/v2.2.0.md
   core/native/tests/core_performance_gate_test.cpp
   apps/android/app/src/main/java/com/junchen/jingdu/CleanHistory.kt
   apps/android/app/src/main/java/com/junchen/jingdu/LibraryMetadataStore.kt
@@ -106,6 +108,26 @@ grep -q 'OpenCC-Apache-2.0.txt' THIRD_PARTY_NOTICES.md
 grep -q 'repository root has no `NOTICE` file' THIRD_PARTY_NOTICES.md
 grep -q 'This directory is packaged into the Android APK/AAB as application assets.' third_party/NOTICE.md
 
+# Source release governance is deliberately single-path: main CI is the sole publication authority.
+test ! -f .github/workflows/source-release.yml
+python3 -m py_compile scripts/publish-source-release.py
+grep -q '^  publish-source-release:$' .github/workflows/ci.yml
+grep -Fq 'needs: [native-core, android, harmony-contract, play-store-contract, terminal-contract]' .github/workflows/ci.yml
+grep -q 'contents: write' .github/workflows/ci.yml
+grep -q 'python3 ./scripts/publish-source-release.py' .github/workflows/ci.yml
+grep -q 'immutable tag' scripts/publish-source-release.py
+grep -q 'google_play_production: false' scripts/publish-source-release.py
+grep -q 'RELEASE_PREFIX = "release/source-v"' scripts/publish-source-release.py
+grep -q 'TEMP_PREFIXES = ("feat/", "fix/", "chore/", "ci/", "refactor/", "docs/", "test/", "perf/")' scripts/publish-source-release.py
+grep -q 'source provenance only' scripts/publish-source-release.py
+grep -q 'if existing is not None and release_status != 404:' scripts/publish-source-release.py
+grep -q 'source release already published at immutable' scripts/publish-source-release.py
+grep -q 'orphan immutable tag' scripts/publish-source-release.py
+grep -q 'tag + GitHub Release already exist' docs/RELEASE.md
+grep -q 'permanent no-op on all later `main` pushes' docs/RELEASE.md
+grep -q 'publish-source-release' docs/RELEASE.md
+grep -q 'There is no separate Source Release workflow' docs/RELEASE.md
+
 if grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml; then
   echo 'Smart Clean/OpenCC must not add Android INTERNET permission' >&2
   exit 1
@@ -129,4 +151,4 @@ grep -q 'profileinstaller:1.4.1' apps/android/app/build.gradle
 
 python3 ./scripts/verify-android-i18n.py
 
-echo 'Terminal long-form TXT / Smart Clean 3 / OpenCC quality contract OK'
+echo 'Terminal long-form TXT / Smart Clean 3 / OpenCC / source-release quality contract OK'
