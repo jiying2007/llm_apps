@@ -47,6 +47,7 @@ data class NoiseCandidateModel(
 ) {
     val risk: NoiseRisk
         get() = when {
+            reason == "inline_fragment" || reason == "garbled_line" -> NoiseRisk.MEDIUM
             reason == "promo_repeated" || score >= 82 -> NoiseRisk.HIGH
             reason == "promo" || reason == "url" || (score >= 68 && count >= 10) -> NoiseRisk.MEDIUM
             else -> NoiseRisk.LOW
@@ -56,7 +57,10 @@ data class NoiseCandidateModel(
         get() = text.codePointCount(0, text.length).toLong() * count.coerceAtLeast(0).toLong()
 
     val defaultSafeSelection: Boolean
-        get() = risk == NoiseRisk.HIGH || (risk == NoiseRisk.MEDIUM && count >= 20)
+        get() = when (reason) {
+            "inline_fragment", "garbled_line" -> false
+            else -> risk == NoiseRisk.HIGH || (risk == NoiseRisk.MEDIUM && count >= 20)
+        }
 }
 data class TtsVoiceModel(val name: String, val label: String)
 
