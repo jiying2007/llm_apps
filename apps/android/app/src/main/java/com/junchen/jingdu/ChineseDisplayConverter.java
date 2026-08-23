@@ -16,14 +16,23 @@ import java.util.UUID;
 final class ChineseDisplayConverter {
     private static final int MAX_OVERRIDES = 200;
     private static final int MAX_OVERRIDE_FIELD_CHARS = 64;
+    private static volatile ChineseDisplayMode currentMode = ChineseDisplayMode.ORIGINAL;
+    private static volatile String currentOverrides = "";
 
     private ChineseDisplayConverter() {}
 
-    static String convert(String text, ReaderSettings settings) {
-        if (text == null || text.isEmpty() || settings == null || settings.getChineseMode() == ChineseDisplayMode.ORIGINAL) {
-            return text == null ? "" : text;
+    static void configure(ReaderSettings settings) {
+        if (settings == null) {
+            currentMode = ChineseDisplayMode.ORIGINAL;
+            currentOverrides = "";
+            return;
         }
-        return convert(text, settings.getChineseMode(), settings.getChineseOverrides());
+        currentMode = settings.getChineseMode();
+        currentOverrides = settings.getChineseOverrides();
+    }
+
+    static String convert(String text) {
+        return convert(text, currentMode, currentOverrides);
     }
 
     static String convert(String text, ChineseDisplayMode mode, String overridesText) {
