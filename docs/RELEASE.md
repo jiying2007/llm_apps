@@ -17,9 +17,9 @@ Release infrastructure archives signed APK/AAB, R8 mapping, SHA-256 manifest and
 
 ## Source release automation
 
-GitHub source provenance is automated by `.github/workflows/source-release.yml`. It is deliberately separate from Google Play production rollout.
+GitHub source provenance has one authority: the `publish-source-release` tail job in `.github/workflows/ci.yml`. There is no separate Source Release workflow, ref-only trigger, `workflow_run` relay, PR-close release path, or polling protocol.
 
-A source release is requested through a same-repository pull request whose head branch is exactly `release/source-vX.Y.Z`, base is `main`, and only changed file is the permanent manifest `releases/source/vX.Y.Z.md`. The manifest must declare:
+A source release is represented by a permanent manifest `releases/source/vX.Y.Z.md`. The source-declared Android version must match `X.Y.Z`, and the manifest must contain:
 
 ```text
 version: vX.Y.Z
@@ -27,26 +27,30 @@ kind: source-release
 google_play_production: false
 ```
 
-The release request PR goes through ordinary hosted CI like any other change. After it is squash-merged, the `pull_request: closed` event drives Source Release. The workflow verifies that the merged PR commit is still the current `main`, verifies that only the expected immutable manifest was merged, verifies the requested SemVer against both Android version defaults, and refuses to move any existing tag.
+A release manifest is reviewed and merged through the normal pull-request process. Every push to `main` executes the same five required hosted gates:
 
-The workflow then independently runs release-candidate gates on that exact merged main SHA:
+1. shared native Core build/tests/static analysis;
+2. Android product build, lint, AndroidTest compilation, release bundle and benchmark assembly;
+3. Harmony source/terminal contract;
+4. Play metadata and lifetime-Pro contract;
+5. terminal source/product/localization/long-form quality contract.
 
-1. shared native Core build/tests/static analysis via `scripts/check-native.sh`;
-2. Android `androidCheck` plus the Android i18n contract;
-3. terminal/source/product/commercial contract and Play metadata/lifetime-Pro contract.
+`publish-source-release` has `needs` on all five jobs and runs only for `push` to `main`. Ordinary PR jobs remain read-only. Only the publication tail job receives job-scoped `contents: write` plus `pull-requests: read`.
 
-Only after every release-candidate job passes does publication run. This model does not depend on ref-only push delivery, GitHub actor identity, another workflow's timing, `workflow_run` propagation, or polling timeouts.
+`scripts/publish-source-release.py` then resolves the Android source version and matching permanent manifest. If no manifest exists for that version, source publication is skipped. If a manifest exists, the publisher:
 
-On success the workflow:
+1. validates the manifest contract and matching Android version defaults;
+2. refuses to move an existing tag or accept a tag that resolves to a different commit;
+3. creates or verifies Git tag `vX.Y.Z` at the exact already-gated `github.sha`;
+4. creates or completes an idempotent GitHub Source Release for that immutable tag;
+5. verifies the final tag resolves to the exact gated main commit;
+6. removes closed same-repository temporary PR branches under `feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`, plus `release/source-v*`, while preserving every currently open PR head.
 
-1. creates or verifies Git tag `vX.Y.Z` at the exact verified `main` commit;
-2. creates an idempotent GitHub Source Release that cites the permanent manifest and explicitly states that no signed APK/AAB or Play rollout evidence is implied;
-3. prunes only temporary development branches (`feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`) that belong to merged same-repository PRs and are not used by an open PR;
-4. removes the merged `release/source-vX.Y.Z` branch.
+This cleanup intentionally removes both merged and abandoned closed temporary PR branches. Long-lived branch names outside the explicit temporary prefixes are never pruned automatically.
 
-Long-lived branch names outside those explicit temporary prefixes are never pruned automatically merely because they once appeared as a merged PR head. Failed publication never moves an existing tag and leaves the permanent manifest in `main` as an auditable request record.
+A later ordinary `main` push is idempotent: if the version's immutable tag and Source Release already exist at the current release commit, publication does not create a second release. If an existing release tag points elsewhere, the job fails rather than moving it.
 
-The workflow has no signing key and cannot activate Play products or publish Play Console listings. A GitHub Source Release is provenance evidence, not production-store evidence.
+The publisher has no signing key and cannot activate Play products, upload production listings or perform a Google Play rollout. A GitHub Source Release is **source provenance only**. It is not evidence of a signed APK/AAB, Google Play production, or HarmonyOS device qualification.
 
 ## Android v2.2 commercial release
 
