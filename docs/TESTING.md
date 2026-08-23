@@ -2,90 +2,107 @@
 
 ## Shared native core
 
-Every change to `core/native` must pass a Release host build with `-Wall -Wextra -Wpedantic -Werror` and CTest.
+Every `core/native` change passes Release build with `-Wall -Wextra -Wpedantic -Werror`, CTest and clang-tidy analyzer/bugprone/performance/portability gates.
 
-Required automated coverage includes:
-
-- known SHA-256 vectors and file hashing;
-- encoding BOM/no-BOM detection, Big5/GB18030 and truncated sample boundaries;
-- invalid/overlong/truncated/surrogate UTF-8 rejection;
-- character/byte indexing and bounded reads;
-- cross-buffer literal search;
-- chapter extraction;
-- speech segmentation;
-- deterministic repair revisions and repair export;
-- persistent sparse-index sidecar creation;
-- corrupt/stale cache fallback and repair;
+Required automated coverage:
+- SHA/file hashing;
+- UTF-8/UTF-16/GB18030/Big5 detection and truncated sample boundaries;
+- malformed UTF-8 rejection;
+- character/byte indexing, bounded reads, search, chapters and speech segmentation;
+- deterministic repair revisions;
+- literal repair export;
+- Smart Clean candidate detection with exact occurrence counts;
+- safe whole-line wildcard export (`@g` packed rule) removing matching promotional lines while preserving ordinary正文;
+- persistent `.jdx` creation, corrupt/stale fallback and repair;
 - large-file stress, concurrent reads and handle lifecycle.
 
-No test may rely on C/C++ `assert` for correctness because Release builds define `NDEBUG`; test checks must execute in Release configurations.
+Tests never rely on C/C++ `assert` because Release builds define `NDEBUG`.
 
-## Platform storage/session contract
+## Smart Clean correctness
 
-Both platforms must test the same persistence invariants:
+Smart Clean is advisory until explicit apply. Tests verify:
+- high-confidence URL/promotion/repeated lines are discoverable;
+- ordinary low-frequency正文 is not automatically converted into a candidate solely because it exists;
+- candidate results contain score/count/reason/text and bounded result count;
+- whole-line `*` rules match the trimmed whole line, not arbitrary regex;
+- literal rules retain existing semantics;
+- invalid/oversized packed fields are ignored/rejected safely;
+- applying rules still writes an immutable derived file and never mutates normalized/source input.
 
-- normalized files are named `document-<normalizedSha256>.txt`;
-- clean files are named `clean-<repairRevision>.txt`;
-- no production reader uses mutable fixed `document.txt`/`clean.txt` paths or a `clean.revision` sidecar;
-- `.jdx` index files are disposable derived caches and never product identity;
-- re-importing identical source bytes reuses source identity;
-- changing the decode so `normalizedSha256` changes creates a new immutable normalized path and resets source-view progress;
-- a candidate reader session is opened before the previous session is closed;
-- failed/interrupted candidate creation leaves the previous session/files usable;
-- obsolete revisions are pruned only after the new session is published;
-- orphan `.jdx` / `.jdx.tmp` files are pruned after their document revision disappears;
-- clean-view offsets never overwrite normalized-source progress/bookmarks.
+## Android Free / Pro contract
 
-The hosted repository contract checks structural invariants; device tests exercise interruption/process-death behavior.
+Automated source/UI contracts verify:
+- Free retains import/re-decode, search, chapters, bookmarks, reading settings, base TTS, exact per-book rules and Smart Clean scan/preview;
+- `jingdu_pro_lifetime` is the only v2.2 Pro product id;
+- Billing Library stays on the approved pinned version in product contract;
+- `PURCHASED` is required for unlock and completed purchases are acknowledged;
+- restore uses `queryPurchasesAsync` and Billing failure does not block Free UI;
+- Smart Clean candidate text is visible before Pro CTA;
+- whole-line wildcard/global rule/backup/offline voice actions require Pro;
+- price text comes from Play product details rather than a hard-coded currency value.
 
-## Android product UI
+License-tester device validation additionally covers fresh purchase, cancellation, pending purchase, restore after reinstall, offline launch after verified ownership and authoritative no-ownership refresh.
 
-Android is Compose-first and has two top-level states: Library and Reader. CI compiles a Compose instrumentation-test source set in addition to Debug/Release lint/build.
+## User asset contract
 
-Minimum UI smoke coverage:
+- Global rule JSON has a versioned bounded schema and field/count limits.
+- Local backup contains ReaderSettings + global rules only; it never contains source/normalized/clean book text or book files.
+- Backup import validates version/types/ranges and reapplies TTS settings safely.
+- Selected TTS voice is persisted only by system voice name; unavailable voices fall back without breaking base TTS.
+- Only voices reporting `isNetworkConnectionRequired == false` are offered as Pro offline voices.
+- Batch import is SAF multi-select, bounded to the configured per-operation maximum and reports partial failures.
 
-- empty Library exposes product positioning and the primary import action;
-- Reader exposes back, search, chapters, progress and TTS semantics;
-- icon-only controls have content descriptions;
-- the old programmatic Views `MainActivity.java` and monolithic `JingduUi.kt` are absent;
-- adaptive grid / bounded wide-reader measure / bottom sheets are part of the architecture contract.
+## Review UX
 
-Device/UI validation additionally covers:
+Play In-App Review source/device tests verify:
+- no first-launch request;
+- no sentiment pre-screen;
+- only meaningful local milestones increase eligibility;
+- local cooldown prevents repeated requests;
+- review API failure is non-blocking.
 
-- edge-to-edge system bars and predictive back;
-- 200% font scale and large accessibility text;
-- TalkBack reading order and minimum touch targets;
-- phone portrait/landscape, split screen, tablet and foldable-size windows;
-- theme/type/line-height/margin changes without losing position;
-- progress slider seeks on gesture completion rather than every drag frame;
-- viewport-driven sequential paging and exact in-session previous-page history;
-- ACTION_VIEW and ACTION_SEND import;
-- re-decode without reopening the external source picker;
-- revision-safe bookmarks and Clean offset isolation;
-- configuration recreation restores Reader only when Reader was active;
-- restored position is rejected if normalized revision changed;
-- process recreation never restores raw native handles/TTS/audio-focus state;
-- pending export survives configuration recreation only if the private source file still exists;
-- TTS/audio focus, auto page and sleep timer.
+## Store / ASO contract
 
-UI tests should prefer semantics/user-observable behavior over implementation-node structure so Compose refactors do not create brittle tests.
+`./scripts/verify-play-store.sh` is a Hosted CI gate. It verifies:
+- default zh-CN/en-US metadata exists;
+- title/short/full descriptions stay within Play limits;
+- zh-CN title is `净读 - TXT 小说阅读器`;
+- prohibited title promotion/superlative patterns are absent;
+- four search-intent Custom Listing specs exist;
+- Billing/Review dependency versions and `jingdu_pro_lifetime` remain pinned/declared.
 
-## Android performance
+Store listing experiments and Custom Listing conversion are Play Console evidence, not simulated by source CI.
 
-10/100/300 MiB device runs verify that import, first open/index, search, chapter scan, Clean generation, re-decode and export never intentionally execute on the main thread. Library rendering must not open/index every book. Reader page navigation must remain bounded regardless of full document size.
+## Storage/session contract
 
-Specific large-file checks:
+Both platform shells keep:
+- immutable `document-<normalizedSha256>.txt` and `clean-<repairRevision>.txt`;
+- `.jdx` as disposable non-identity cache;
+- source identity stable across identical bytes;
+- decode revision changes isolated from old progress/bookmarks;
+- candidate session publication before old-session close/prune;
+- Clean offsets isolated from normalized progress/bookmarks.
 
-- Search/Chapters reuse the current immutable session rather than reopening the document;
-- first open generates a `.jdx` cache when the private directory is writable;
-- repeat open of the same revision loads validated cache metadata instead of rescanning the full document;
-- corrupt sidecar transparently rebuilds from source;
-- deleting/pruning revisions removes orphan cache files.
+## Android UI / performance
+
+Hosted Android gate compiles Debug/Release, lint, Debug APK, Release AAB, AndroidTest and JNI ABIs.
+
+Device review covers:
+- edge-to-edge/predictive back;
+- 200% font scale/TalkBack/48dp targets;
+- compact/landscape/split/tablet/foldable windows;
+- viewport paging and slider commit-on-release;
+- configuration/process restoration;
+- ACTION_VIEW/ACTION_SEND and multi-select import;
+- Smart Clean/Pro/settings/backup surfaces;
+- TTS/audio focus/voice selection, auto page and sleep timer.
+
+10/100/300 MiB qualification verifies no file-size-proportional work intentionally runs on the main thread, Search/Chapters reuse active session, repeat open uses valid `.jdx`, corrupt cache rebuilds and Clean/Smart Clean remain bounded-memory streaming operations.
 
 ## HarmonyOS
 
-Hosted CI verifies source/bridge/storage contracts. The `harmony-device.yml` workflow is the authoritative HAP build gate on a self-hosted runner with the official SDK. Device validation covers DocumentViewPicker, repeated import, TaskPool long operations, process/lifecycle recovery, Core Speech Kit and ArkUI accessibility.
+Hosted CI verifies source/bridge/storage contracts. Real HAP/device validation remains on the official `self-hosted,harmonyos` runner and is not an Android-only v2.2 merge blocker.
 
 ## Cross-platform parity
 
-Use the same golden source files on both platforms. For each file compare source SHA, normalized SHA, encoding selection, character count, fixed window reads, search offsets, chapter offsets, repair revision and clean-output SHA. The disposable `.jdx` cache is explicitly excluded from parity identity. A semantic mismatch is a release blocker before declaring the two-platform product jointly production-ready.
+Before declaring both platforms jointly production-ready, compare golden corpus source SHA, normalized SHA, encoding, character count, reads, search/chapter offsets, repair revision and clean-output SHA. Smart Clean candidate parity should also be added once Harmony exposes the v2.2 UI/API. `.jdx` is excluded from semantic identity.
