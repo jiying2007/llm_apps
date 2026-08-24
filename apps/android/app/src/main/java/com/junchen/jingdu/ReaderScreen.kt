@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -85,6 +86,7 @@ internal fun ReaderScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
     val book = state.currentBook ?: return
     val settings = state.settings
     val paceStore = remember { ReadingPaceStore(context) }
@@ -148,7 +150,7 @@ internal fun ReaderScreen(
     }
 
     DisposableEffect(activity, settings.autoScrollEnabled) {
-        val lifecycle = activity?.lifecycle
+        val lifecycle = lifecycleOwner?.lifecycle
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE && settings.autoScrollEnabled) {
                 actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
@@ -438,11 +440,11 @@ private fun PagedReaderPage(
     val displayText = remember(text, settings.chineseMode, settings.chineseOverrides) { ChineseDisplayConverter.convert(text, settings.chineseMode, settings.chineseOverrides) }
     val style = readerTextStyle(settings, textColor)
     var widthPx by remember { mutableIntStateOf(0) }
+    val surfaceDescription = stringResource(R.string.reader_surface)
     val gestureModifier = Modifier
         .fillMaxSize()
         .onSizeChanged { widthPx = it.width }
-        .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls)
-        .semantics { contentDescription = "reader-surface" }
+        .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls, surfaceDescription)
 
     BoxWithConstraints(gestureModifier) {
         val useTwoColumns = when (settings.wideColumns) {
@@ -645,12 +647,13 @@ private fun ContinuousReaderPage(
         }
     }
 
+    val surfaceDescription = stringResource(R.string.reader_surface)
     Box(
         Modifier.fillMaxSize()
             .onSizeChanged { viewportHeightPx = it.height; widthPx = it.width }
             .then(touchPauseModifier)
-            .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls)
-            .semantics { contentDescription = "reader-surface" },
+            .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls, surfaceDescription),
+        contentAlignment = Alignment.TopCenter,
     ) {
         SelectionContainer {
             Text(
@@ -658,8 +661,7 @@ private fun ContinuousReaderPage(
                 modifier = Modifier.fillMaxWidth()
                     .verticalScroll(scrollState)
                     .padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp)
-                    .widthIn(max = 760.dp)
-                    .align(Alignment.TopCenter),
+                    .widthIn(max = 760.dp),
                 style = style,
                 overflow = TextOverflow.Clip,
                 onTextLayout = { layoutResult = it },
@@ -675,6 +677,7 @@ private fun Modifier.readerGestures(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onToggleControls: () -> Unit,
+    surfaceDescription: String,
 ): Modifier = pointerInput(
     settings.tapPagingEnabled,
     settings.swipePagingEnabled,
@@ -710,7 +713,7 @@ private fun Modifier.readerGestures(
             }
         }
     }
-}
+}.semantics { contentDescription = surfaceDescription }
 
 @Composable
 private fun ReaderBottomBar(

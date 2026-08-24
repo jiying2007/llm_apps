@@ -70,6 +70,7 @@ final class ChineseDisplayConverter {
         if (source == null || source.isEmpty()) return 0;
         long sourcePoints = source.codePointCount(0, source.length());
         long displayedPoints = displayed == null ? 0 : displayed.codePointCount(0, displayed.length());
+        if (displayedCodePoints <= 0) return 0;
         if (displayedPoints <= 0) return Math.min(sourcePoints, Math.max(0, displayedCodePoints));
         double fraction = Math.min(1.0, Math.max(0.0, (double) displayedCodePoints / (double) displayedPoints));
         long mapped = Math.round(sourcePoints * fraction);

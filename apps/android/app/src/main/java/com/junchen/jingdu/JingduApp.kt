@@ -79,6 +79,10 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
         }
 
         val trackedActions = actions.copy(
+            onBackToLibrary = {
+                if (state.settings.autoScrollEnabled) actions.onSettingsChanged(state.settings.copy(autoScrollEnabled = false))
+                actions.onBackToLibrary()
+            },
             onJump = { target -> pushLocation(target); actions.onJump(target) },
             onSeekFraction = { fraction ->
                 val target = (state.length.toDouble() * fraction.coerceIn(0f, 1f)).toLong()
@@ -105,7 +109,7 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
             when {
                 state.panel != null -> actions.onClosePanel()
                 locationBack.isNotEmpty() -> locationBackAction()
-                else -> actions.onBackToLibrary()
+                else -> trackedActions.onBackToLibrary()
             }
         }
 
