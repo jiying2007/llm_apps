@@ -54,9 +54,8 @@ for path in (
 PY
 
 python3 ./scripts/verify-android-i18n.py
+python3 ./scripts/verify-release-version.py
 
-grep -q 'getOrElse(4)' apps/android/app/build.gradle
-grep -q 'getOrElse("2.2.0")' apps/android/app/build.gradle
 grep -q 'com.android.billingclient:billing:9.1.0' apps/android/app/build.gradle
 grep -q 'com.google.android.play:review:2.0.2' apps/android/app/build.gradle
 
