@@ -59,7 +59,7 @@ required=(
   store/play/CUSTOM_LISTINGS.zh-TW.md store/play/SCREENSHOT_BRIEF.zh-TW.md
   store/play/CUSTOM_LISTINGS.zh-HK.md store/play/SCREENSHOT_BRIEF.zh-HK.md
   store/play/CUSTOM_LISTINGS.en-US.md store/play/SCREENSHOT_BRIEF.en-US.md
-  scripts/verify-play-store.sh scripts/verify-android-i18n.py
+  scripts/verify-play-store.sh scripts/verify-android-i18n.py scripts/verify-release-version.py
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
   core/native/src/index_cache.h core/native/src/index_cache.cpp core/native/src/sha256.cpp
   apps/android/app/src/main/cpp/native_bridge.cpp
@@ -105,6 +105,7 @@ test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
 
 python3 ./scripts/verify-android-i18n.py
+python3 ./scripts/verify-release-version.py
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
 grep -q 'typedef int32_t jd_status' core/native/include/jingdu/core_api.h
@@ -146,7 +147,6 @@ grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
 grep -q 'com.android.billingclient:billing:9.1.0' apps/android/app/build.gradle
 grep -q 'com.google.android.play:review:2.0.2' apps/android/app/build.gradle
 grep -q 'compileSdk = 37' apps/android/app/build.gradle
-grep -q 'getOrElse("2.2.0")' apps/android/build.gradle
 grep -q 'generateLocaleConfig = true' apps/android/app/build.gradle
 grep -q 'android:label="@string/app_name"' apps/android/app/src/main/AndroidManifest.xml
 
