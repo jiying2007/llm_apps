@@ -172,7 +172,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: feat/reading-experience-v1
-      - name: Apply final reader audit fixes and self-clean
+      - name: Apply final reader audit fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -237,18 +237,10 @@ jobs:
           text = text.replace('Icons.Outlined.Undo', 'Icons.AutoMirrored.Outlined.Undo')
           text = text.replace('Icons.Outlined.Redo', 'Icons.AutoMirrored.Outlined.Redo')
           path.write_text(text, encoding='utf-8')
-
-          ci = Path('.github/workflows/ci.yml')
-          raw = ci.read_text(encoding='utf-8')
-          begin = '  # BEGIN TEMP_READER_FINALIZE\n'
-          end = '  # END TEMP_READER_FINALIZE\n'
-          left, rest = raw.split(begin, 1)
-          _, right = rest.split(end, 1)
-          ci.write_text(left + right, encoding='utf-8')
           PY
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt .github/workflows/ci.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
           git commit -m 'fix(reader): complete final reading interaction audit'
           git push origin HEAD:feat/reading-experience-v1
   # END TEMP_READER_FINALIZE
