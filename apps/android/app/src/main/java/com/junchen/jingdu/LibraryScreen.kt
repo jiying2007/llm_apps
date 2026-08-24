@@ -88,7 +88,10 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
                 }
             }
             previewBusy = false
-            imported.onSuccess { previewBookId = it.id }.onFailure { previewError = it.message }
+            imported.onSuccess {
+                previewBookId = it.id
+                actions.onBackToLibrary()
+            }.onFailure { previewError = it.message }
         }
     }
 
@@ -137,6 +140,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
             syncResult = runCatching { syncFolders() }
                 .getOrElse { FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1) }
             syncBusy = false
+            actions.onBackToLibrary()
         }
     }
 
@@ -150,6 +154,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
             syncResult = runCatching { syncFolders() }
                 .getOrElse { FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1) }
             syncBusy = false
+            actions.onBackToLibrary()
         }
     }
 
@@ -303,7 +308,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
             onDismissRequest = { syncResult = null },
             title = { Text(stringResource(R.string.folder_sync_complete)) },
             text = { Text(stringResource(R.string.folder_sync_result, result.roots, result.discovered, result.imported, result.skipped, result.failed)) },
-            confirmButton = { TextButton(onClick = { syncResult = null; (context as? Activity)?.recreate() }) { Text(stringResource(R.string.refresh_library)) } },
+            confirmButton = { TextButton(onClick = { syncResult = null }) { Text(stringResource(R.string.competitive_ok)) } },
         )
     }
 
