@@ -86,6 +86,10 @@ Volume-key paging is configurable. The default policy turns pages only when TTS 
 - Text-size changes remain within the existing supported range and settings continue to use localized strings across English, Simplified Chinese and Traditional Chinese.
 - Auto motion always has a visible or direct tap path to pause.
 
+## Validation contract
+
+Reading experience changes are accepted only when the same five hosted product gates used by ordinary product development are green. Android must compile debug/release, lint, AndroidTest and benchmark targets; the terminal gate additionally runs `scripts/verify-reading-experience.sh` to lock the bounded-window, gesture, auto-scroll, source-offset and TTS-aware volume-key invariants. Any fix that changes the PR head must re-run the full five-gate matrix before merge.
+
 ## Non-goals
 
 This reading-experience layer does not add EPUB/PDF support, cloud sync, accounts, analytics, ads, network access or whole-book ML. It does not rewrite Core ABI v2 and does not modify source TXT.
