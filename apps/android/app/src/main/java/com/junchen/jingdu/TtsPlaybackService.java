@@ -291,6 +291,8 @@ public final class TtsPlaybackService extends Service {
         if (repository != null && book != null) repository.saveProgress(book, Math.max(0, offset));
     }
 
+    /** MediaSession notifications are exempt from Android 13 POST_NOTIFICATIONS behavior. */
+    @android.annotation.SuppressLint("NotificationPermission")
     private void updatePlaybackState() {
         if (mediaSession == null) return;
         mediaSession.setPlaybackState(new PlaybackState.Builder()
