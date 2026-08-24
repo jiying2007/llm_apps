@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import kotlin.math.roundToInt
 
 @Composable
@@ -67,11 +68,7 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
             }
         }
         val filter = IntentFilter(TtsPlaybackService.ACTION_STATE)
-        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        else {
-            @Suppress("DEPRECATION")
-            context.registerReceiver(receiver, filter)
-        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STATE))
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
