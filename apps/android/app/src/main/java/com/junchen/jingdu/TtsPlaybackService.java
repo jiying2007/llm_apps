@@ -127,6 +127,7 @@ public final class TtsPlaybackService extends Service {
             setSleepTimer(intent.getIntExtra(EXTRA_MINUTES, 0));
         } else if (ACTION_STATE.equals(action)) {
             broadcast(null);
+            if (!playbackStarted) stopSelf(startId);
         }
         return START_NOT_STICKY;
     }
@@ -231,8 +232,6 @@ public final class TtsPlaybackService extends Service {
         persistProgress();
         updatePlaybackState();
         broadcast("paused");
-        if (playbackStarted) stopForeground(false);
-        if (playbackStarted) ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(NOTIFICATION_ID, notification());
     }
 
     private void skipNext() {
