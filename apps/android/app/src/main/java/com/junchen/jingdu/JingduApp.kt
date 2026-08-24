@@ -1,6 +1,5 @@
 package com.junchen.jingdu
 
-import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -25,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
@@ -36,7 +34,12 @@ data class JingduActions(
     val onBackToLibrary: () -> Unit, val onNavigatePrevious: () -> Unit, val onNavigateNext: () -> Unit, val onSeekFraction: (Float) -> Unit,
     val onVisibleCharsChanged: (Long) -> Unit, val onOpenPanel: (ReaderPanel) -> Unit, val onClosePanel: () -> Unit,
     val onSearchQueryChanged: (String) -> Unit, val onSearch: (String) -> Unit, val onJump: (Long) -> Unit, val onSyncTtsPosition: (Long) -> Unit,
-    val onAddBookmark: () -> Unit, val onDeleteBookmark: (Long) -> Unit, val onAddRule: (RepairRuleMode, String, String) -> Unit, val onDeleteRule: (Int) -> Unit,
+    val onEnsureChapters: () -> Unit,
+    val onAddBookmark: () -> Unit, val onDeleteBookmark: (Long) -> Unit,
+    val onAddAnnotation: (Long, Long, ReaderAnnotationKind, ReaderHighlightStyle, String, String) -> Unit,
+    val onDeleteAnnotation: (String) -> Unit,
+    val onImportFont: () -> Unit,
+    val onAddRule: (RepairRuleMode, String, String) -> Unit, val onDeleteRule: (Int) -> Unit,
     val onClearRules: () -> Unit, val onAnalyzeSmartClean: () -> Unit, val onToggleNoiseCandidate: (Int) -> Unit, val onApplySmartClean: () -> Unit,
     val onUndoSmartClean: () -> Unit,
     val onAddGlobalRule: (RepairRuleMode, String, String) -> Unit, val onDeleteGlobalRule: (Int) -> Unit, val onClearGlobalRules: () -> Unit,
@@ -49,15 +52,16 @@ data class JingduActions(
 )
 
 private val BrandLight = lightColorScheme(primary = Color(0xFF386A52), onPrimary = Color.White, primaryContainer = Color(0xFFB9F0D1), onPrimaryContainer = Color(0xFF002114), secondary = Color(0xFF4F6357), surface = Color(0xFFFFFBFE), background = Color(0xFFF8FAF6))
+private val BrandSepia = lightColorScheme(primary = Color(0xFF6D5C34), onPrimary = Color.White, primaryContainer = Color(0xFFF2E2B8), onPrimaryContainer = Color(0xFF241A00), secondary = Color(0xFF6A6048), surface = Color(0xFFFFF7E6), background = Color(0xFFFFF5DF))
 private val BrandDark = darkColorScheme(primary = Color(0xFF9DD5B6), onPrimary = Color(0xFF073823), primaryContainer = Color(0xFF20513A), onPrimaryContainer = Color(0xFFB9F0D1), secondary = Color(0xFFB6CCBD), surface = Color(0xFF111411), background = Color(0xFF0E110F))
 private val BrandOled = darkColorScheme(primary = Color(0xFF9DD5B6), onPrimary = Color(0xFF073823), primaryContainer = Color(0xFF173D2B), onPrimaryContainer = Color(0xFFB9F0D1), secondary = Color(0xFFB6CCBD), surface = Color.Black, background = Color.Black)
 
 @Composable
 fun JingduApp(state: AppUiState, actions: JingduActions) {
-    val context = LocalContext.current
     val scheme = when (state.settings.palette) {
         ReaderPalette.NIGHT -> BrandDark
         ReaderPalette.OLED -> BrandOled
+        ReaderPalette.SEPIA -> BrandSepia
         else -> BrandLight
     }
     MaterialTheme(colorScheme = scheme) {
@@ -72,10 +76,6 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
         }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
 
-        fun stopAutoScroll() {
-            if (state.settings.autoScrollEnabled) actions.onSettingsChanged(state.settings.copy(autoScrollEnabled = false))
-        }
-
         fun pushLocation(target: Long) {
             if (state.screen != AppScreen.READER || state.length <= 0) return
             val bounded = target.coerceIn(0L, (state.length - 1).coerceAtLeast(0L))
@@ -86,59 +86,16 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
         }
 
         val trackedActions = actions.copy(
-            onBackToLibrary = {
-                stopAutoScroll()
-                actions.onBackToLibrary()
-            },
-            onNavigatePrevious = {
-                stopAutoScroll()
-                actions.onNavigatePrevious()
-            },
-            onNavigateNext = {
-                stopAutoScroll()
-                actions.onNavigateNext()
-            },
-            onOpenPanel = { panel ->
-                stopAutoScroll()
-                actions.onOpenPanel(panel)
-            },
-            onJump = { target ->
-                stopAutoScroll()
-                pushLocation(target)
-                actions.onJump(target)
-            },
+            onJump = { target -> pushLocation(target); actions.onJump(target) },
             onSeekFraction = { fraction ->
-                stopAutoScroll()
                 val target = (state.length.toDouble() * fraction.coerceIn(0f, 1f)).toLong()
                 pushLocation(target)
                 actions.onSeekFraction(fraction)
-            },
-            onToggleTts = {
-                stopAutoScroll()
-                actions.onToggleTts()
-            },
-            onToggleAutoPaging = {
-                if (!state.autoPaging) stopAutoScroll()
-                actions.onToggleAutoPaging()
-            },
-            onSettingsChanged = { requested ->
-                var normalized = if (state.cleanMode && requested.autoScrollEnabled) requested.copy(autoScrollEnabled = false) else requested
-                if (normalized.autoScrollEnabled && !state.settings.autoScrollEnabled) {
-                    if (state.autoPaging) actions.onToggleAutoPaging()
-                    if (state.ttsPlaying) actions.onToggleTts()
-                    runCatching {
-                        context.startService(
-                            Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STOP),
-                        )
-                    }
-                }
-                actions.onSettingsChanged(normalized)
             },
         )
 
         fun locationBackAction() {
             if (locationBack.isEmpty()) return
-            stopAutoScroll()
             val target = locationBack.removeAt(locationBack.lastIndex)
             locationForward.add(state.position)
             actions.onJump(target)
@@ -146,7 +103,6 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
 
         fun locationForwardAction() {
             if (locationForward.isEmpty()) return
-            stopAutoScroll()
             val target = locationForward.removeAt(locationForward.lastIndex)
             locationBack.add(state.position)
             actions.onJump(target)
@@ -163,7 +119,7 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
-                AppScreen.READER -> ReaderScreen(
+                AppScreen.READER -> ReaderRoute(
                     state = state,
                     actions = trackedActions,
                     snackbar = snackbar,
@@ -176,9 +132,12 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
             state.busyLabel?.let { BusyOverlay(it) }
         }
         when (state.panel) {
+            ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(state, trackedActions)
             ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
             ReaderPanel.CHAPTERS -> SmartChaptersSheet(state, trackedActions)
             ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
+            ReaderPanel.ANNOTATIONS -> ReaderAnnotationsSheet(state, trackedActions)
+            ReaderPanel.READING_MAP -> ReaderReadingMapSheet(state, trackedActions)
             ReaderPanel.CLEAN -> CleanSheet(state, trackedActions)
             ReaderPanel.SETTINGS -> ProductSettingsSheet(state, trackedActions)
             ReaderPanel.ENCODING -> EncodingSheet(state, trackedActions)
@@ -187,6 +146,7 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
             ReaderPanel.PRIVACY -> PrivacySheet(state, trackedActions)
             null -> Unit
         }
+        if (state.screen == AppScreen.READER) ReaderGestureCoach(state.settings, trackedActions)
         if (state.deleteConfirmation) AlertDialog(
             onDismissRequest = actions.onDismissDelete,
             title = { Text(stringResource(R.string.delete_current_title)) }, text = { Text(stringResource(R.string.delete_current_body)) },
