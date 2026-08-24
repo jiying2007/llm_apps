@@ -6,8 +6,8 @@ plugins {
 def applicationIdValue = providers.gradleProperty("jingduApplicationId").getOrElse("com.junchen.jingdu")
 def versionCodeProperty = providers.gradleProperty("jingduVersionCode")
 def versionNameProperty = providers.gradleProperty("jingduVersionName")
-def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrElse(4)
-def versionNameValue = versionNameProperty.getOrElse("2.2.0")
+def versionCodeValue = versionCodeProperty.map { Integer.parseInt(it) }.getOrElse(5)
+def versionNameValue = versionNameProperty.getOrElse("2.2.1")
 def signingPropertiesFile = rootProject.file("keystore.properties")
 def signingProperties = new Properties()
 if (signingPropertiesFile.isFile()) {
