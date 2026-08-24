@@ -951,9 +951,13 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (uiState.screen == AppScreen.READER && uiState.busyLabel == null) {
-            if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) { navigateNext(userInitiated = true); return true }
-            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) { navigatePrevious(userInitiated = true); return true }
+        if (uiState.screen == AppScreen.READER && uiState.busyLabel == null &&
+            ReaderInteractionRuntime.shouldUseVolumeKeysForPaging(uiState.settings, uiState.ttsPlaying)
+        ) {
+            val nextKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
+            val previousKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_DOWN else KeyEvent.KEYCODE_VOLUME_UP
+            if (keyCode == nextKey) { navigateNext(userInitiated = true); return true }
+            if (keyCode == previousKey) { navigatePrevious(userInitiated = true); return true }
         }
         return super.onKeyDown(keyCode, event)
     }

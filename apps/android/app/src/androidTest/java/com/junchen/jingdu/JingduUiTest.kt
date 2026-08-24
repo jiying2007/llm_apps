@@ -31,7 +31,7 @@ class JingduUiTest {
     }
 
     @Test
-    fun readerKeepsPrimaryNavigationDiscoverableInActiveLocale() {
+    fun readerKeepsPrimaryNavigationAndImmersiveSurfaceDiscoverableInActiveLocale() {
         val book = sampleBook()
         composeRule.setContent {
             JingduApp(
@@ -47,11 +47,35 @@ class JingduUiTest {
         }
 
         composeRule.onNodeWithText("Long Novel").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.back_to_library)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.full_text_search)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.chapters)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reading_progress)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.start_read_aloud)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_start_auto_scroll)).assertIsDisplayed()
+    }
+
+    @Test
+    fun readingSettingsExposePagedContinuousGesturesAndAutoScrollInActiveLocale() {
+        composeRule.setContent {
+            JingduApp(
+                state = AppUiState(
+                    screen = AppScreen.READER,
+                    currentBook = sampleBook(),
+                    pageText = "Body",
+                    length = 10_000,
+                    panel = ReaderPanel.SETTINGS,
+                ),
+                actions = noOpActions(),
+            )
+        }
+
+        composeRule.onNodeWithText(context.getString(R.string.reader_mode)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_mode_paged)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_mode_continuous)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_interaction)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_auto_scroll)).assertIsDisplayed()
     }
 
     @Test
