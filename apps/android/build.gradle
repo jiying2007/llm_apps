@@ -4,7 +4,7 @@ plugins {
     id "org.jetbrains.kotlin.plugin.compose" version "2.4.10" apply false
 }
 
-def releaseVersion = providers.gradleProperty("jingduVersionName").getOrElse("2.2.0")
+def releaseVersion = providers.gradleProperty("jingduVersionName").getOrElse("2.2.1")
 
 tasks.register("androidCheck") {
     group = "verification"
