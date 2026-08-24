@@ -68,6 +68,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -812,8 +813,6 @@ private fun readerTextColor(palette: ReaderPalette): Color = when (palette) {
     ReaderPalette.OLED -> Color(0xFFE8E8E8)
     else -> Color(0xFF24241F)
 }
-
-private fun stripTxt(name: String): String = if (name.lowercase().endsWith(".txt")) name.dropLast(4) else name
 
 private const val CONTINUOUS_REPORT_CHARS = 64L
 private const val EXTERNAL_POSITION_REBASE_CHARS = 512L
