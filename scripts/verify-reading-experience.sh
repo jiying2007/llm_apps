@@ -4,6 +4,7 @@ set -euo pipefail
 required=(
   docs/READING_EXPERIENCE.md
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderFrameCompat.kt
   apps/android/app/src/main/res/values/strings_reader_experience.xml
   apps/android/app/src/main/res/values-b+zh+Hans/strings_reader_experience.xml
   apps/android/app/src/main/res/values-b+zh+Hant/strings_reader_experience.xml
@@ -15,6 +16,7 @@ done
 prefs=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
 screen=apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
 runtime=apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt
+frame=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFrameCompat.kt
 main=apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 app=apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
 converter=apps/android/app/src/main/java/com/junchen/jingdu/ChineseDisplayConverter.java
@@ -32,7 +34,12 @@ grep -q 'class ContinuousWindowReader' "$runtime"
 grep -q 'ReaderController.WINDOW_CHARS' "$runtime"
 grep -q 'readAt(start, ReaderController.WINDOW_CHARS)' "$runtime"
 grep -q 'shouldUseVolumeKeysForPaging' "$runtime"
+grep -q 'settings.autoScrollEnabled' "$runtime"
+grep -A1 '@Synchronized' "$runtime" | grep -q 'override fun close()'
 grep -q 'class ReadingPaceStore' "$runtime"
+
+grep -q 'suspend fun withFrameNanos' "$frame"
+grep -q 'composeWithFrameNanos' "$frame"
 
 grep -q 'ContinuousReaderPage' "$screen"
 grep -q 'PagedReaderPage' "$screen"
@@ -50,6 +57,13 @@ grep -q 'actions.onSyncTtsPosition(absolute)' "$screen"
 
 grep -q 'ReaderInteractionRuntime.shouldUseVolumeKeysForPaging' "$main"
 grep -q 'reverseVolumeKeys' "$main"
+grep -q 'fun stopAutoScroll()' "$app"
+grep -q 'onNavigatePrevious = {' "$app"
+grep -q 'onNavigateNext = {' "$app"
+grep -q 'onOpenPanel = { panel ->' "$app"
+grep -q 'onSettingsChanged = { requested ->' "$app"
+grep -q 'TtsPlaybackService.ACTION_STOP' "$app"
+grep -q 'state.cleanMode && requested.autoScrollEnabled' "$app"
 grep -q 'locationBack' "$app"
 grep -q 'locationForward' "$app"
 grep -q 'displayedCharsForSource' "$converter"
