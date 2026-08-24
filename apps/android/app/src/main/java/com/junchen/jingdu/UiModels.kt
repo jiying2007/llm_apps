@@ -1,7 +1,7 @@
 package com.junchen.jingdu
 
 enum class AppScreen { LIBRARY, READER }
-enum class ReaderPanel { SEARCH, CHAPTERS, BOOKMARKS, CLEAN, SETTINGS, ENCODING, DOCTOR, SMART_CLEAN_LAB, PRIVACY }
+enum class ReaderPanel { QUICK_SETTINGS, SEARCH, CHAPTERS, BOOKMARKS, ANNOTATIONS, READING_MAP, CLEAN, SETTINGS, ENCODING, DOCTOR, SMART_CLEAN_LAB, PRIVACY }
 enum class RepairRuleMode { LITERAL, LINE_GLOB }
 enum class LibraryBookStatus { UNREAD, READING, FINISHED }
 enum class LibrarySort { RECENT, NAME, PROGRESS }
@@ -75,7 +75,18 @@ data class NoiseCandidateModel(
             else -> risk == NoiseRisk.HIGH || (risk == NoiseRisk.MEDIUM && count >= 20)
         }
 }
+
 data class TtsVoiceModel(val name: String, val label: String)
+
+data class TtsPlaybackModel(
+    val active: Boolean = false,
+    val playing: Boolean = false,
+    val offset: Long = -1L,
+    val nextOffset: Long = -1L,
+    val rangeStart: Long = -1L,
+    val rangeEnd: Long = -1L,
+    val reason: String? = null,
+)
 
 data class AppUiState(
     val screen: AppScreen = AppScreen.LIBRARY,
@@ -93,6 +104,7 @@ data class AppUiState(
     val chapters: List<ChapterModel> = emptyList(),
     val chaptersLoaded: Boolean = false,
     val bookmarks: List<BookmarkModel> = emptyList(),
+    val annotations: List<ReaderAnnotation> = emptyList(),
     val repairRules: List<RepairRule> = emptyList(),
     val globalRules: List<RepairRule> = emptyList(),
     val noiseCandidates: List<NoiseCandidateModel> = emptyList(),
@@ -103,9 +115,13 @@ data class AppUiState(
     val proConnected: Boolean = false,
     val proPrice: String? = null,
     val ttsVoices: List<TtsVoiceModel> = emptyList(),
-    val ttsPlaying: Boolean = false,
-    val autoPaging: Boolean = false,
+    val motion: ReaderMotionState = ReaderMotionState.IDLE,
+    val tts: TtsPlaybackModel = TtsPlaybackModel(),
     val sleepMinutes: Int = 0,
     val settings: ReaderSettings = ReaderSettings(),
     val deleteConfirmation: Boolean = false,
-)
+) {
+    val ttsPlaying: Boolean get() = motion == ReaderMotionState.TTS && tts.playing
+    val autoPaging: Boolean get() = motion == ReaderMotionState.AUTO_PAGE
+    val autoScrolling: Boolean get() = motion == ReaderMotionState.AUTO_SCROLL
+}
