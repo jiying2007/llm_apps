@@ -29,6 +29,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.Redo
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -114,7 +116,9 @@ internal fun ReaderScreen(
                 attributes.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 window.attributes = attributes
             }
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            if (activity != null && !activity.isChangingConfigurations && !activity.isFinishing) {
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
         }
     }
 
@@ -204,6 +208,7 @@ internal fun ReaderScreen(
     }
 
     fun toggleAutoScroll() {
+        if (state.cleanMode) return
         if (settings.autoScrollEnabled) {
             actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
         } else {
@@ -289,6 +294,7 @@ internal fun ReaderScreen(
                 onPrevious = ::manualPrevious,
                 onNext = ::manualNext,
                 onToggleControls = { controlsVisible = !controlsVisible },
+                followExternalPosition = anyTtsPlaying,
                 onPauseAutoScroll = {
                     if (settings.autoScrollEnabled) {
                         actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
@@ -299,7 +305,7 @@ internal fun ReaderScreen(
             )
         } else {
             AnimatedContent(
-                targetState = state.position,
+                targetState = state.position to state.pageText,
                 transitionSpec = {
                     if (settings.pageAnimation == ReaderPageAnimation.SLIDE && pageDirection != 0) {
                         (slideInHorizontally { width -> pageDirection * width } + fadeIn()) togetherWith
@@ -308,16 +314,16 @@ internal fun ReaderScreen(
                 },
                 label = "reader-page",
                 modifier = Modifier.fillMaxSize(),
-            ) {
+            ) { (targetPosition, targetText) ->
                 PagedReaderPage(
-                    text = state.pageText,
+                    text = targetText,
                     settings = settings,
                     onVisibleCharsChanged = actions.onVisibleCharsChanged,
                     onPrevious = ::manualPrevious,
                     onNext = ::manualNext,
                     onToggleControls = { controlsVisible = !controlsVisible },
                     textColor = pageTextColor,
-                    ttsHighlight = servicePlaying && ttsOffset == state.position,
+                    ttsHighlight = servicePlaying && ttsOffset == targetPosition,
                     ttsChunkSourceChars = (ttsNextOffset - ttsOffset).coerceAtLeast(0),
                 )
             }
@@ -346,6 +352,7 @@ internal fun ReaderScreen(
                 ttsPlaying = anyTtsPlaying,
                 autoPaging = state.autoPaging,
                 autoScrolling = settings.autoScrollEnabled,
+                autoScrollAvailable = !state.cleanMode,
                 canLocationBack = canLocationBack,
                 canLocationForward = canLocationForward,
                 onLocationBack = { stopMotionForManualNavigation(); pageDirection = 0; onLocationBack() },
@@ -522,6 +529,7 @@ private fun ContinuousReaderPage(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onToggleControls: () -> Unit,
+    followExternalPosition: Boolean,
     onPauseAutoScroll: () -> Unit,
     textColor: Color,
 ) {
@@ -574,8 +582,10 @@ private fun ContinuousReaderPage(
         if (opened != null) loadAround(state.position)
     }
 
-    LaunchedEffect(state.position, session) {
-        if (session != null && abs(state.position - localPosition) > EXTERNAL_POSITION_REBASE_CHARS) loadAround(state.position)
+    LaunchedEffect(state.position, session, followExternalPosition) {
+        if (session != null && (followExternalPosition || abs(state.position - localPosition) > EXTERNAL_POSITION_REBASE_CHARS)) {
+            loadAround(state.position)
+        }
     }
 
     LaunchedEffect(windowStart, sourceText, layoutResult) {
@@ -722,6 +732,7 @@ private fun ReaderBottomBar(
     ttsPlaying: Boolean,
     autoPaging: Boolean,
     autoScrolling: Boolean,
+    autoScrollAvailable: Boolean,
     canLocationBack: Boolean,
     canLocationForward: Boolean,
     onLocationBack: () -> Unit,
@@ -737,12 +748,12 @@ private fun ReaderBottomBar(
     Surface(tonalElevation = 4.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onLocationBack, enabled = canLocationBack) { Icon(Icons.Outlined.Undo, contentDescription = stringResource(R.string.reader_location_back)) }
+                IconButton(onClick = onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = stringResource(R.string.reader_location_back)) }
                 IconButton(onClick = onPrevious) { Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.previous_page)) }
                 Slider(value = sliderValue, onValueChange = { sliderValue = it }, onValueChangeFinished = { onSeek(sliderValue) }, modifier = Modifier.weight(1f).semantics { contentDescription = progressDescription })
                 IconButton(onClick = onNext) { Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.next_page)) }
-                IconButton(onClick = onLocationForward, enabled = canLocationForward) { Icon(Icons.Outlined.Redo, contentDescription = stringResource(R.string.reader_location_forward)) }
-                IconButton(onClick = onAutoScroll) { Icon(if (autoScrolling) Icons.Default.Pause else Icons.Outlined.UnfoldMore, contentDescription = stringResource(if (autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll)) }
+                IconButton(onClick = onLocationForward, enabled = canLocationForward) { Icon(Icons.AutoMirrored.Outlined.Redo, contentDescription = stringResource(R.string.reader_location_forward)) }
+                IconButton(onClick = onAutoScroll, enabled = autoScrollAvailable) { Icon(if (autoScrolling) Icons.Default.Pause else Icons.Outlined.UnfoldMore, contentDescription = stringResource(if (autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll)) }
                 IconButton(onClick = onTts) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (ttsPlaying) stringResource(R.string.pause_read_aloud) else stringResource(R.string.start_read_aloud)) }
             }
             if (autoScrolling || autoPaging || ttsPlaying) {
