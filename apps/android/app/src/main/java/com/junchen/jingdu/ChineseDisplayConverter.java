@@ -76,6 +76,14 @@ final class ChineseDisplayConverter {
         return Math.max(1, Math.min(sourcePoints, mapped));
     }
 
+    static long displayedCharsForSource(String source, String displayed, long sourceCodePoints) {
+        long sourcePoints = source == null ? 0 : source.codePointCount(0, source.length());
+        long displayedPoints = displayed == null ? 0 : displayed.codePointCount(0, displayed.length());
+        if (displayedPoints <= 0 || sourcePoints <= 0) return 0;
+        double fraction = Math.min(1.0, Math.max(0.0, (double) sourceCodePoints / (double) sourcePoints));
+        return Math.max(0, Math.min(displayedPoints, Math.round(displayedPoints * fraction)));
+    }
+
     static int overrideCount(String overridesText) {
         return parseOverrides(overridesText).size();
     }
