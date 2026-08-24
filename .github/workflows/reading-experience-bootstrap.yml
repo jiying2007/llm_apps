@@ -1,0 +1,162 @@
+name: Reading Experience Bootstrap
+
+on:
+  push:
+    branches: [feat/reading-experience-v1]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reading-experience-bootstrap
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reading-experience-v1
+      - name: Apply focused source patches
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'missing expected patch anchor in {path}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          main = 'apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt'
+          replace(main,
+          '''    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+                  if (uiState.screen == AppScreen.READER && uiState.busyLabel == null) {
+                      if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) { navigateNext(userInitiated = true); return true }
+                      if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) { navigatePrevious(userInitiated = true); return true }
+                  }
+                  return super.onKeyDown(keyCode, event)
+              }
+          ''',
+          '''    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+                  if (uiState.screen == AppScreen.READER && uiState.busyLabel == null &&
+                      ReaderInteractionRuntime.shouldUseVolumeKeysForPaging(uiState.settings, uiState.ttsPlaying)
+                  ) {
+                      val nextKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
+                      val previousKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_DOWN else KeyEvent.KEYCODE_VOLUME_UP
+                      if (keyCode == nextKey) { navigateNext(userInitiated = true); return true }
+                      if (keyCode == previousKey) { navigatePrevious(userInitiated = true); return true }
+                  }
+                  return super.onKeyDown(keyCode, event)
+              }
+          ''')
+
+          app = 'apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt'
+          replace(app,
+          '''        val trackedActions = actions.copy(
+                      onJump = { target -> pushLocation(target); actions.onJump(target) },
+          ''',
+          '''        val trackedActions = actions.copy(
+                      onBackToLibrary = {
+                          if (state.settings.autoScrollEnabled) actions.onSettingsChanged(state.settings.copy(autoScrollEnabled = false))
+                          actions.onBackToLibrary()
+                      },
+                      onJump = { target -> pushLocation(target); actions.onJump(target) },
+          ''')
+          replace(app, '                else -> actions.onBackToLibrary()\n', '                else -> trackedActions.onBackToLibrary()\n')
+
+          screen = 'apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt'
+          replace(screen,
+              'import androidx.compose.runtime.*\n',
+              'import androidx.compose.runtime.*\nimport androidx.compose.runtime.saveable.rememberSaveable\n')
+          replace(screen,
+              '    val activity = context as? Activity\n',
+              '    val activity = context as? Activity\n    val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner\n')
+          replace(screen,
+              '        val lifecycle = activity?.lifecycle\n',
+              '        val lifecycle = lifecycleOwner?.lifecycle\n')
+          replace(screen,
+          '''    val gestureModifier = Modifier
+                  .fillMaxSize()
+                  .onSizeChanged { widthPx = it.width }
+                  .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls)
+                  .semantics { contentDescription = "reader-surface" }
+          ''',
+          '''    val surfaceDescription = stringResource(R.string.reader_surface)
+              val gestureModifier = Modifier
+                  .fillMaxSize()
+                  .onSizeChanged { widthPx = it.width }
+                  .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls, surfaceDescription)
+          ''')
+          replace(screen,
+          '''    Box(
+                  Modifier.fillMaxSize()
+                      .onSizeChanged { viewportHeightPx = it.height; widthPx = it.width }
+                      .then(touchPauseModifier)
+                      .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls)
+                      .semantics { contentDescription = "reader-surface" },
+              ) {
+          ''',
+          '''    val surfaceDescription = stringResource(R.string.reader_surface)
+              Box(
+                  Modifier.fillMaxSize()
+                      .onSizeChanged { viewportHeightPx = it.height; widthPx = it.width }
+                      .then(touchPauseModifier)
+                      .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls, surfaceDescription),
+                  contentAlignment = Alignment.TopCenter,
+              ) {
+          ''')
+          replace(screen,
+              '                    .widthIn(max = 760.dp)\n                    .align(Alignment.TopCenter),\n',
+              '                    .widthIn(max = 760.dp),\n')
+          replace(screen,
+          '''    onNext: () -> Unit,
+              onToggleControls: () -> Unit,
+          ): Modifier = pointerInput(
+          ''',
+          '''    onNext: () -> Unit,
+              onToggleControls: () -> Unit,
+              surfaceDescription: String,
+          ): Modifier = pointerInput(
+          ''')
+          replace(screen,
+          '''        }
+              }
+          }
+          
+          @Composable
+          private fun ReaderBottomBar(
+          ''',
+          '''        }
+              }
+          }.semantics { contentDescription = surfaceDescription }
+          
+          @Composable
+          private fun ReaderBottomBar(
+          ''')
+
+          converter = 'apps/android/app/src/main/java/com/junchen/jingdu/ChineseDisplayConverter.java'
+          replace(converter,
+          '''        long sourcePoints = source.codePointCount(0, source.length());
+                  long displayedPoints = displayed == null ? 0 : displayed.codePointCount(0, displayed.length());
+          ''',
+          '''        long sourcePoints = source.codePointCount(0, source.length());
+                  long displayedPoints = displayed == null ? 0 : displayed.codePointCount(0, displayed.length());
+                  if (displayedCodePoints <= 0) return 0;
+          ''')
+          PY
+
+      - name: Commit bootstrap patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/android/app/src/main/java/com/junchen/jingdu
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(reader): complete interaction runtime wiring'
+          git push origin HEAD:feat/reading-experience-v1
