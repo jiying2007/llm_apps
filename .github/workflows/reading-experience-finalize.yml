@@ -1,0 +1,255 @@
+name: Reading Experience Finalize
+
+on:
+  push:
+    branches: [feat/reading-experience-v1]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reading-experience-v1
+      - name: Centralize reader motion and finish continuous-mode contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'missing patch marker: {label}')
+              return text.replace(old, new, 1)
+
+          main = Path('apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt')
+          m = main.read_text(encoding='utf-8')
+          m = replace_once(m,
+              '        stopAutoPaging()\n        stopTts()\n        stopBackgroundTts()\n',
+              '        stopAutoPaging()\n        stopAutoScroll()\n        stopTts()\n        stopBackgroundTts()\n',
+              'openBook motion reset')
+          m = replace_once(m,
+              '        if (userInitiated) stopAutoPaging()\n        val current = reader.position()\n',
+              '        if (userInitiated) { stopAutoPaging(); stopAutoScroll() }\n        val current = reader.position()\n',
+              'navigateNext auto-scroll')
+          m = replace_once(m,
+              '        if (userInitiated) stopAutoPaging()\n        if (pageHistory.isNotEmpty()) reader.jump(pageHistory.removeLast())',
+              '        if (userInitiated) { stopAutoPaging(); stopAutoScroll() }\n        if (pageHistory.isNotEmpty()) reader.jump(pageHistory.removeLast())',
+              'navigatePrevious auto-scroll')
+          m = replace_once(m,
+              '        stopAutoPaging(); stopTts(); pageHistory.clear()\n        reader.jump((reader.length().toDouble()',
+              '        stopAutoPaging(); stopAutoScroll(); stopTts(); pageHistory.clear()\n        reader.jump((reader.length().toDouble()',
+              'seek auto-scroll')
+          m = replace_once(m,
+              '        stopAutoPaging(); stopTts(); pageHistory.clear(); reader.jump(offset)\n',
+              '        stopAutoPaging(); stopAutoScroll(); stopTts(); pageHistory.clear(); reader.jump(offset)\n',
+              'jump auto-scroll')
+          m = replace_once(m,
+              '        stopAutoPaging(); stopTts(); reader.close()\n',
+              '        stopAutoPaging(); stopAutoScroll(); stopTts(); reader.close()\n',
+              'library auto-scroll')
+          m = replace_once(m,
+              '    private fun openPanel(panel: ReaderPanel) {\n        if (uiState.busyLabel != null || currentBook == null) return\n        uiState = uiState.copy(panel = panel)\n',
+              '    private fun openPanel(panel: ReaderPanel) {\n        if (uiState.busyLabel != null || currentBook == null) return\n        stopAutoScroll()\n        uiState = uiState.copy(panel = panel)\n',
+              'panel auto-scroll')
+
+          old_settings = '''    private fun updateSettings(settings: ReaderSettings) {
+        if (settings.ttsVoiceName != uiState.settings.ttsVoiceName && !proUnlocked) { billing.purchase(); return }
+        val normalized = settings.copy(
+            fontSizeSp = settings.fontSizeSp.coerceIn(16f, 34f), lineHeightMultiplier = settings.lineHeightMultiplier.coerceIn(1.2f, 2.0f),
+            horizontalPaddingDp = settings.horizontalPaddingDp.coerceIn(12f, 48f), ttsRate = settings.ttsRate.coerceIn(0.6f, 1.8f),
+            ttsPitch = settings.ttsPitch.coerceIn(0.7f, 1.4f), ttsVoiceName = settings.ttsVoiceName.take(256),
+            autoPageDelayMs = settings.autoPageDelayMs.coerceIn(2500L, 15000L),
+        )
+        readerPreferences.save(normalized)
+        tts.setRate(normalized.ttsRate); tts.setPitch(normalized.ttsPitch); tts.setVoiceName(normalized.ttsVoiceName)
+        uiState = uiState.copy(settings = normalized)
+    }
+'''
+          new_settings = '''    private fun updateSettings(settings: ReaderSettings) {
+        if (settings.ttsVoiceName != uiState.settings.ttsVoiceName && !proUnlocked) { billing.purchase(); return }
+        val normalized = settings.copy(
+            fontSizeSp = settings.fontSizeSp.coerceIn(16f, 34f),
+            lineHeightMultiplier = settings.lineHeightMultiplier.coerceIn(1.2f, 2.0f),
+            horizontalPaddingDp = settings.horizontalPaddingDp.coerceIn(12f, 48f),
+            verticalPaddingDp = settings.verticalPaddingDp.coerceIn(8f, 48f),
+            firstLineIndentEm = settings.firstLineIndentEm.coerceIn(0f, 2f),
+            tapZoneEdgeFraction = settings.tapZoneEdgeFraction.coerceIn(0.20f, 0.35f),
+            controlsAutoHideMs = settings.controlsAutoHideMs.coerceIn(2000L, 10000L),
+            readerBrightness = settings.readerBrightness.coerceIn(0.05f, 1f),
+            focusRulerLines = if (settings.focusRulerLines == 3 || settings.focusRulerLines == 5) settings.focusRulerLines else 0,
+            autoScrollEnabled = settings.autoScrollEnabled && settings.readingMode == ReaderMode.CONTINUOUS && !cleanMode,
+            autoScrollSpeedDpPerSecond = settings.autoScrollSpeedDpPerSecond.coerceIn(20f, 240f),
+            ttsRate = settings.ttsRate.coerceIn(0.6f, 1.8f),
+            ttsPitch = settings.ttsPitch.coerceIn(0.7f, 1.4f),
+            ttsVoiceName = settings.ttsVoiceName.take(256),
+            autoPageDelayMs = settings.autoPageDelayMs.coerceIn(2500L, 15000L),
+        )
+        if (normalized.autoScrollEnabled) {
+            stopAutoPaging()
+            stopTts()
+            stopBackgroundTts()
+        }
+        readerPreferences.save(normalized)
+        tts.setRate(normalized.ttsRate); tts.setPitch(normalized.ttsPitch); tts.setVoiceName(normalized.ttsVoiceName)
+        uiState = uiState.copy(settings = normalized)
+    }
+'''
+          m = replace_once(m, old_settings, new_settings, 'updateSettings centralized normalization')
+          m = replace_once(m,
+              '        stopAutoPaging()\n        uiState = uiState.copy(ttsPlaying = true)\n',
+              '        stopAutoPaging()\n        stopAutoScroll()\n        uiState = uiState.copy(ttsPlaying = true)\n',
+              'tts auto-scroll')
+          m = replace_once(m,
+              '        if (uiState.autoPaging) stopAutoPaging() else {\n            stopTts(); stopBackgroundTts(); uiState = uiState.copy(autoPaging = true); main.postDelayed(autoStep, uiState.settings.autoPageDelayMs)\n',
+              '        if (uiState.autoPaging) stopAutoPaging() else {\n            stopTts(); stopBackgroundTts(); stopAutoScroll(); uiState = uiState.copy(autoPaging = true); main.postDelayed(autoStep, uiState.settings.autoPageDelayMs)\n',
+              'auto-page auto-scroll')
+          m = replace_once(m,
+              '    private fun stopAutoPaging() {\n        main.removeCallbacks(autoStep)\n        if (uiState.autoPaging) uiState = uiState.copy(autoPaging = false)\n    }\n',
+              '    private fun stopAutoPaging() {\n        main.removeCallbacks(autoStep)\n        if (uiState.autoPaging) uiState = uiState.copy(autoPaging = false)\n    }\n\n    private fun stopAutoScroll() {\n        if (uiState.settings.autoScrollEnabled) {\n            uiState = uiState.copy(settings = uiState.settings.copy(autoScrollEnabled = false))\n        }\n    }\n',
+              'stopAutoScroll helper')
+          m = replace_once(m,
+              '                stopAutoPaging(); tts.stop("sleep")\n',
+              '                stopAutoPaging(); stopAutoScroll(); tts.stop("sleep")\n',
+              'sleep auto-scroll')
+          m = replace_once(m,
+              '        stopAutoPaging(); stopTts(); stopBackgroundTts(); workGeneration.incrementAndGet(); reader.close()\n',
+              '        stopAutoPaging(); stopAutoScroll(); stopTts(); stopBackgroundTts(); workGeneration.incrementAndGet(); reader.close()\n',
+              'delete auto-scroll')
+          m = replace_once(m,
+              '    override fun onPause() {\n        super.onPause()\n        val book = currentBook\n',
+              '    override fun onPause() {\n        super.onPause()\n        stopAutoPaging()\n        stopAutoScroll()\n        val book = currentBook\n',
+              'pause motion')
+          main.write_text(m, encoding='utf-8')
+
+          screen = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt')
+          s = screen.read_text(encoding='utf-8')
+          s = s.replace('import androidx.lifecycle.Lifecycle\n', '')
+          s = s.replace('import androidx.lifecycle.LifecycleEventObserver\n', '')
+          s = replace_once(s,
+              '    val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner\n',
+              '',
+              'lifecycle owner removal')
+          s = replace_once(s,
+              '            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED\n',
+              '            if (activity != null && !activity.isChangingConfigurations && !activity.isFinishing) {\n                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED\n            }\n',
+              'orientation recreation guard')
+          lifecycle_block = '''    DisposableEffect(activity, settings.autoScrollEnabled) {
+        val lifecycle = lifecycleOwner?.lifecycle
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE && settings.autoScrollEnabled) {
+                actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
+            }
+        }
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
+
+    LaunchedEffect(state.sleepMinutes, settings.autoScrollEnabled) {
+        if (state.sleepMinutes > 0 && settings.autoScrollEnabled) {
+            delay(state.sleepMinutes * 60_000L)
+            actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
+        }
+    }
+
+'''
+          s = replace_once(s, lifecycle_block, '', 'redundant auto-scroll lifecycle/sleep')
+          s = replace_once(s,
+              '    fun toggleAutoScroll() {\n        if (settings.autoScrollEnabled) {\n',
+              '    fun toggleAutoScroll() {\n        if (state.cleanMode) return\n        if (settings.autoScrollEnabled) {\n',
+              'clean auto-scroll guard')
+          s = replace_once(s,
+              '                onPauseAutoScroll = {\n',
+              '                followExternalPosition = anyTtsPlaying,\n                onPauseAutoScroll = {\n',
+              'continuous TTS follow call')
+          s = replace_once(s,
+              '            AnimatedContent(\n                targetState = state.position,\n',
+              '            AnimatedContent(\n                targetState = state.position to state.pageText,\n',
+              'page animation target')
+          s = replace_once(s,
+              '            ) {\n                PagedReaderPage(\n                    text = state.pageText,\n',
+              '            ) { (targetPosition, targetText) ->\n                PagedReaderPage(\n                    text = targetText,\n',
+              'page animation content')
+          s = replace_once(s,
+              '                    ttsHighlight = servicePlaying && ttsOffset == state.position,\n',
+              '                    ttsHighlight = servicePlaying && ttsOffset == targetPosition,\n',
+              'page animation TTS target')
+          s = replace_once(s,
+              '    onPauseAutoScroll: () -> Unit,\n    textColor: Color,\n',
+              '    followExternalPosition: Boolean,\n    onPauseAutoScroll: () -> Unit,\n    textColor: Color,\n',
+              'continuous follow param')
+          s = replace_once(s,
+              '    LaunchedEffect(state.position, session) {\n        if (session != null && abs(state.position - localPosition) > EXTERNAL_POSITION_REBASE_CHARS) loadAround(state.position)\n    }\n',
+              '    LaunchedEffect(state.position, session, followExternalPosition) {\n        if (session != null && (followExternalPosition || abs(state.position - localPosition) > EXTERNAL_POSITION_REBASE_CHARS)) {\n            loadAround(state.position)\n        }\n    }\n',
+              'continuous external position follow')
+          old_frame = '''        while (isActive && settings.autoScrollEnabled) {
+            withFrameNanos { now ->
+                if (lastFrame != 0L) {
+                    val seconds = (now - lastFrame).toDouble() / 1_000_000_000.0
+                    val deltaPx = with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() }
+                    scrollState.scrollBy(deltaPx)
+                }
+                lastFrame = now
+            }
+'''
+          new_frame = '''        while (isActive && settings.autoScrollEnabled) {
+            val deltaPx = withFrameNanos { now ->
+                val delta = if (lastFrame != 0L) {
+                    val seconds = (now - lastFrame).toDouble() / 1_000_000_000.0
+                    with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() }
+                } else 0f
+                lastFrame = now
+                delta
+            }
+            if (deltaPx > 0f) scrollState.scrollBy(deltaPx)
+'''
+          s = replace_once(s, old_frame, new_frame, 'auto-scroll frame suspend boundary')
+          s = replace_once(s,
+              '            .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls, surfaceDescription),\n',
+              '            .readerGestures(settings.copy(tapPagingEnabled = false, swipePagingEnabled = false), widthPx, onPrevious, onNext, onToggleControls, surfaceDescription),\n',
+              'continuous gesture mode')
+          s = replace_once(s,
+              '                autoScrolling = settings.autoScrollEnabled,\n                canLocationBack = canLocationBack,\n',
+              '                autoScrolling = settings.autoScrollEnabled,\n                autoScrollAvailable = !state.cleanMode,\n                canLocationBack = canLocationBack,\n',
+              'auto-scroll availability call')
+          s = replace_once(s,
+              '    autoScrolling: Boolean,\n    canLocationBack: Boolean,\n',
+              '    autoScrolling: Boolean,\n    autoScrollAvailable: Boolean,\n    canLocationBack: Boolean,\n',
+              'auto-scroll availability param')
+          s = replace_once(s,
+              '                IconButton(onClick = onAutoScroll) { Icon(if (autoScrolling) Icons.Default.Pause else Icons.Outlined.UnfoldMore, contentDescription = stringResource(if (autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll)) }\n',
+              '                IconButton(onClick = onAutoScroll, enabled = autoScrollAvailable) { Icon(if (autoScrolling) Icons.Default.Pause else Icons.Outlined.UnfoldMore, contentDescription = stringResource(if (autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll)) }\n',
+              'auto-scroll button clean disable')
+          screen.write_text(s, encoding='utf-8')
+
+          runtime = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt')
+          r = runtime.read_text(encoding='utf-8')
+          r = replace_once(r,
+              '    override fun close() = reader.close()\n',
+              '    @Synchronized\n    override fun close() = reader.close()\n',
+              'synchronized continuous close')
+          runtime.write_text(r, encoding='utf-8')
+
+          app = Path('apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt')
+          a = app.read_text(encoding='utf-8')
+          a = replace_once(a,
+              '        val trackedActions = actions.copy(\n            onBackToLibrary = {\n                if (state.settings.autoScrollEnabled) actions.onSettingsChanged(state.settings.copy(autoScrollEnabled = false))\n                actions.onBackToLibrary()\n            },\n            onJump = { target -> pushLocation(target); actions.onJump(target) },\n',
+              '        val trackedActions = actions.copy(\n            onJump = { target -> pushLocation(target); actions.onJump(target) },\n',
+              'centralized back motion')
+          app.write_text(a, encoding='utf-8')
+          PY
+
+          git rm .github/workflows/reading-experience-finalize.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
+          git commit -m 'fix(reader): centralize motion and continuous-mode lifecycle'
+          git push origin HEAD:feat/reading-experience-v1
