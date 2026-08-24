@@ -1,0 +1,30 @@
+name: Reader V2 Bootstrap
+
+on:
+  push:
+    branches: [feat/reader-v2-prelaunch]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reader-v2-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  patch-main:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reader-v2-prelaunch
+      - name: Apply Reader V2 MainActivity hard cut
+        run: |
+          set -euo pipefail
+          python3 scripts/bootstrap-reader-v2-main.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          git commit -m 'refactor(reader): hard-cut MainActivity to Reader V2'
+          git push origin HEAD:feat/reader-v2-prelaunch
