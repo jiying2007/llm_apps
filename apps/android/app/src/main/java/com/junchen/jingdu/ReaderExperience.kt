@@ -11,10 +11,13 @@ import kotlin.math.roundToInt
 internal object ReaderInteractionRuntime {
     @Volatile var backgroundTtsPlaying: Boolean = false
 
-    fun shouldUseVolumeKeysForPaging(settings: ReaderSettings, foregroundTtsPlaying: Boolean): Boolean = when (settings.volumeKeyMode) {
-        ReaderVolumeKeyMode.SYSTEM_VOLUME -> false
-        ReaderVolumeKeyMode.ALWAYS_PAGE -> true
-        ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS -> !foregroundTtsPlaying && !backgroundTtsPlaying
+    fun shouldUseVolumeKeysForPaging(settings: ReaderSettings, foregroundTtsPlaying: Boolean): Boolean {
+        if (settings.autoScrollEnabled) return false
+        return when (settings.volumeKeyMode) {
+            ReaderVolumeKeyMode.SYSTEM_VOLUME -> false
+            ReaderVolumeKeyMode.ALWAYS_PAGE -> true
+            ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS -> !foregroundTtsPlaying && !backgroundTtsPlaying
+        }
     }
 }
 
@@ -52,6 +55,7 @@ internal class ContinuousWindowReader(context: Context, bookId: String) : Closea
         )
     }
 
+    @Synchronized
     override fun close() = reader.close()
 
     private companion object {
