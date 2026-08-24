@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="txt_doctor">TXT 体检</string>
+    <string name="txt_doctor_body">在修复前完全本地检查编码、文本质量、章节结构和干扰内容。</string>
+    <string name="txt_health_score">TXT 健康度 · %1$d/100</string>
+    <string name="doctor_encoding">编码健康</string>
+    <string name="doctor_toc">章节结构</string>
+    <string name="doctor_toc_detail">%1$d 个章节 · %2$d 处结构异常</string>
+    <string name="doctor_clean">文本洁净度</string>
+    <string name="doctor_clean_detail">检测到 %1$d 个净化候选</string>
+    <string name="doctor_text">文本完整性</string>
+    <string name="doctor_text_detail">%1$d 个可疑采样窗口 · %2$d 个替换字符</string>
+
+    <string name="smart_toc">智能目录</string>
+    <string name="smart_toc_quality">质量 %1$d/100 · %2$d 章 · %3$d 处异常</string>
+    <string name="smart_toc_anomalies">重复 %1$d · 跳号 %2$d · 可疑标题 %3$d</string>
+    <string name="toc_add_here">在当前位置添加章节</string>
+    <string name="toc_custom_title">自定义章节标题</string>
+    <string name="toc_add_action">添加</string>
+    <string name="toc_hide_heading">隐藏此标题</string>
+    <string name="toc_reset_repairs">重置本地目录修复</string>
+    <string name="toc_source_user_or_special">本地修复 / 特殊标题</string>
+
+    <string name="smart_clean4">智能净化 4</string>
+    <string name="smart_clean4_body">准确率优先的本地候选判断 · 轻量模型 v%1$d · 不扫描整本模型</string>
+    <string name="smart_clean4_signal">%1$s · %2$d 次 · 基础 %3$d · 语义 %4$s · 调整后 %5$d</string>
+    <string name="smart_clean4_memory">本地判断记忆 · %1$s</string>
+    <string name="keep_text">保留</string>
+    <string name="protect_text">永久保护</string>
+    <string name="delete_and_remember">删除并记住</string>
+    <string name="open_standard_clean">打开净化预览</string>
+
+    <string name="privacy_verification">隐私验证</string>
+    <string name="privacy_verification_body">从已安装应用本身验证离线承诺。导出的审计只包含配置和数量，不包含任何书籍正文。</string>
+    <string name="privacy_no_internet">没有 Android INTERNET 权限</string>
+    <string name="privacy_no_upload">没有正文上传能力</string>
+    <string name="privacy_no_analytics">没有运行时统计 SDK</string>
+    <string name="privacy_no_ads">没有广告 SDK</string>
+    <string name="privacy_local_counts">本地书库 %1$d · 文件夹 %2$d · 净化反馈 %3$d</string>
+    <string name="export_privacy_audit">导出隐私审计</string>
+    <string name="verified">已验证</string>
+    <string name="not_verified">未验证</string>
+
+    <string name="reading_aloud_background">后台朗读 · 支持锁屏和耳机控制</string>
+    <string name="tts_media_channel">朗读</string>
+    <string name="tts_media_channel_body">后台本地 TXT 朗读控制</string>
+    <string name="tts_media_artist">净读 · 本地 TXT</string>
+    <string name="tts_media_body">本地朗读</string>
+    <string name="tts_media_previous">上一段</string>
+    <string name="tts_media_play">播放</string>
+    <string name="tts_media_pause">暂停</string>
+    <string name="tts_media_next">下一段</string>
+    <string name="tts_media_stop">停止</string>
+
+    <string name="add_folder_library">添加 TXT 文件夹</string>
+    <string name="sync_folders">同步文件夹 · %1$d</string>
+    <string name="manage_folder_library">管理文件夹 · %1$d</string>
+    <string name="folder_library_roots">TXT 文件夹目录</string>
+    <string name="folder_library_empty">当前没有保留的文件夹目录。</string>
+    <string name="remove_folder_root">移除此文件夹目录</string>
+    <string name="folder_sync_complete">文件夹同步完成</string>
+    <string name="folder_sync_result">%1$d 个目录 · 发现 %2$d · 导入/更新 %3$d · 未变化 %4$d · 失败 %5$d</string>
+    <string name="refresh_library">刷新书库</string>
+
+    <string name="batch_optimize">批量优化 · Pro</string>
+    <string name="batch_optimize_report">批量 TXT 报告</string>
+    <string name="batch_report_summary">%1$d 本 · %2$d 个候选 · %3$d 个安全候选 · %4$d 处目录异常 · %5$d 本失败</string>
+    <string name="batch_report_applied">已应用 %1$d 条新的安全净化规则，并生成派生净化版本。</string>
+    <string name="apply_safe_batch">应用安全候选</string>
+    <string name="batch_book_preview">%1$s · 健康度 %2$d/100 · %3$d 个安全候选</string>
+
+    <string name="first_readable_title">先读预览</string>
+    <string name="first_readable_meta">%1$s · %2$s · 前 %3$d KiB</string>
+    <string name="full_import_background">现在即可阅读这段有界预览，完整私有导入和索引会继续在本地完成。</string>
+    <string name="open_full_book">打开完整书籍</string>
+
+    <string name="competitive_ok">确定</string>
+    <string name="competitive_close">关闭</string>
+</resources>

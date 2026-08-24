@@ -108,6 +108,7 @@ class JingduUiTest {
         onSearchQueryChanged = {},
         onSearch = {},
         onJump = {},
+        onSyncTtsPosition = {},
         onAddBookmark = {},
         onDeleteBookmark = {},
         onAddRule = { _, _, _ -> },

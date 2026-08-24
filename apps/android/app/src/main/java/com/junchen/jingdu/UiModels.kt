@@ -1,7 +1,7 @@
 package com.junchen.jingdu
 
 enum class AppScreen { LIBRARY, READER }
-enum class ReaderPanel { SEARCH, CHAPTERS, BOOKMARKS, CLEAN, SETTINGS, ENCODING }
+enum class ReaderPanel { SEARCH, CHAPTERS, BOOKMARKS, CLEAN, SETTINGS, ENCODING, DOCTOR, SMART_CLEAN_LAB, PRIVACY }
 enum class RepairRuleMode { LITERAL, LINE_GLOB }
 enum class LibraryBookStatus { UNREAD, READING, FINISHED }
 enum class LibrarySort { RECENT, NAME, PROGRESS }
@@ -31,7 +31,12 @@ data class BookCardModel(
 }
 
 data class SearchResultModel(val offset: Long, val context: String)
-data class ChapterModel(val offset: Long, val title: String)
+data class ChapterModel(
+    val offset: Long,
+    val title: String,
+    val source: String = "core",
+    val confidence: Int = 100,
+)
 data class BookmarkModel(val offset: Long, val progressFraction: Float)
 data class RepairRule(
     val find: String,
@@ -44,6 +49,10 @@ data class NoiseCandidateModel(
     val reason: String,
     val text: String,
     val selected: Boolean = false,
+    val semanticLabel: SemanticCandidateLabel = SemanticCandidateLabel.UNCERTAIN,
+    val semanticConfidence: Float = 0f,
+    val semanticScore: Int = 0,
+    val feedback: SmartCleanFeedback = SmartCleanFeedback.NONE,
 ) {
     val risk: NoiseRisk
         get() = when {
@@ -57,8 +66,12 @@ data class NoiseCandidateModel(
         get() = text.codePointCount(0, text.length).toLong() * count.coerceAtLeast(0).toLong()
 
     val defaultSafeSelection: Boolean
-        get() = when (reason) {
-            "inline_fragment", "garbled_line" -> false
+        get() = when {
+            feedback == SmartCleanFeedback.KEEP || feedback == SmartCleanFeedback.PROTECT -> false
+            feedback == SmartCleanFeedback.DELETE -> true
+            semanticLabel == SemanticCandidateLabel.BODY && semanticConfidence >= 0.65f -> false
+            reason == "inline_fragment" || reason == "garbled_line" -> false
+            semanticLabel == SemanticCandidateLabel.AD && semanticConfidence >= 0.75f && score >= 72 -> true
             else -> risk == NoiseRisk.HIGH || (risk == NoiseRisk.MEDIUM && count >= 20)
         }
 }

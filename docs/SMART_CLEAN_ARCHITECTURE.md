@@ -1,10 +1,10 @@
-# Smart Clean 3.0 and Chinese Conversion Architecture
+# Smart Clean 4 and Chinese Conversion Architecture
 
 ## Product intent
 
-Jingdu remains a TXT-only, offline, privacy-first reader optimized for long Chinese novels. Intelligence is used to remove repetitive work without turning the reader into a cloud service or a heavyweight full-document ML pipeline.
+Jingdu remains a TXT-only, offline, privacy-first reader optimized for Chinese long-form TXT. Intelligence removes repetitive cleanup work without turning the reader into a cloud service, a remote AI client, or a heavyweight whole-document ML pipeline.
 
-## Smart Clean pipeline
+## Smart Clean 4 pipeline
 
 ### L0 — Encoding guard
 
@@ -12,28 +12,55 @@ The shared Core remains authoritative for encoding detection/normalization. UTF/
 
 ### L1 — Versioned deterministic signatures
 
-`BuiltinCleanRules.PACK_VERSION` identifies the in-app signature pack. Rules are reviewed source assets with stable IDs, locale and confidence metadata. Updates ship with app source/releases; there is no remote rule download.
+`BuiltinCleanRules.PACK_VERSION` identifies the in-app signature pack. Rules are reviewed source assets with stable IDs, locale and confidence metadata. Updates ship with the app; there is no remote rule download.
 
 ### L2 — Native statistical scan
 
-The shared Core continues to detect URL/promotion/repetition candidates with bounded memory and stable reason codes.
+The shared Core detects URL/promotion/repetition candidates with bounded memory and stable reason codes. This remains the primary whole-document detector.
 
-### L3 — Streaming refinement
+### L3 — Bounded streaming refinement
 
-`SmartCleanRefiner` performs a second streaming pass over normalized UTF-8 and adds only two deliberately conservative candidate classes:
+`SmartCleanRefiner` performs a streaming second pass over normalized UTF-8 for deliberately conservative candidate classes:
 
-- inline promotional suffix/fragment candidates;
+- inline promotional suffix/fragments;
 - lines with a very high malformed/replacement/control-character ratio.
 
-The refiner never loads the whole book, caps candidate memory, and never mutates source text. These higher false-positive-risk candidates are never preselected.
+The refiner never owns the complete book in managed memory, caps candidate memory and never mutates source text. These higher false-positive-risk classes are not auto-selected merely because they were detected.
 
-### L4 — Candidate-only local semantic seam
+### L4 — Candidate-only local semantic classifier
 
-`SemanticCandidateClassifier` is the only future ML seam. Its contract accepts one already-filtered candidate string and returns BODY / AD / UNCERTAIN. A model implementation must not receive a complete TXT document. The current implementation is disabled; no placeholder model or remote inference is shipped.
+`TinyLocalSemanticCandidateClassifier` accepts one already-filtered candidate string, capped at 512 characters, and returns `BODY`, `AD` or `UNCERTAIN` plus a score/confidence. It uses a deterministic 64-bucket hashed character-bigram linear model with signed-int8-style weights and auditable structural features.
 
-## Apply/undo semantics
+It has no file, `ReaderController`, normalized-document or network access. A whole TXT document can never be passed into this layer. Chapter-like headings receive a strong BODY bias and the middle score region intentionally remains UNCERTAIN.
 
-Smart Clean still converts selected candidates into explicit local repair rules. Before applying suggestions, Jingdu stores one rule-only snapshot. Undo restores that rules snapshot; book text is never copied into history and the source TXT is never modified.
+Training/evaluation are reproducible repository assets:
+
+- `quality/smartclean/train-v1.tsv`;
+- `quality/smartclean/eval-v1.tsv`;
+- `scripts/train-smartclean-model.py`;
+- `scripts/verify-smartclean-model.py`.
+
+CI requires the runtime weights to reproduce exactly from the training corpus and requires zero held-out BODY false positives among auto-AD decisions, auto-AD precision >= 99.5%, minimum non-trivial recall and chapter-heading protection.
+
+### L5 — local correction memory
+
+Users can explicitly mark a candidate as `KEEP`, `DELETE` or `PROTECT`. `SmartCleanFeedbackStore` persists only SHA-256 candidate fingerprints, reason/decision metadata and aggregate counts; it never stores candidate/book text.
+
+A later decision replaces the earlier contribution instead of double-counting contradictory feedback. `KEEP`/`PROTECT` blocks automatic batch deletion; explicit `DELETE` is a strong user-owned signal.
+
+## Apply / undo / batch semantics
+
+Smart Clean converts selected whole-line candidates into explicit local repair rules. Before applying a set, Jingdu stores one rule-only snapshot so the latest apply remains reversible without retaining book text.
+
+Pro batch automation follows the same rules across at most 100 library books:
+
+1. dry-run diagnostics first;
+2. exclude inline/garbled, protected/kept and semantic-BODY candidates;
+3. apply only precision-first safe candidates after explicit user action;
+4. write local rule metadata and immutable derived Clean revisions only;
+5. never modify/delete source TXT.
+
+Batch reports contain identifiers/names/scores/counts only and explicitly declare `containsBookText=false`.
 
 ## Chinese conversion
 
@@ -48,22 +75,25 @@ Supported modes:
 - TAIWAN_PHRASES (`s2twp`)
 - HONG_KONG (`s2hk`)
 
-Android uses OpenccJava 1.4.2, a pure-Java OpenCC-compatible engine, to avoid a second JNI/C++ runtime and `libc++_shared.so` conflicts.
+Android uses OpenccJava 1.4.2, a pure-Java OpenCC-compatible engine, avoiding a second JNI/C++ runtime.
 
 ### Offset invariant
 
-The shared Core, bookmarks, search hits and persisted progress remain in normalized source code-point offsets. Reader page state stores the original Core window. Compose converts only the displayed window and maps the visible converted length proportionally back to source code points before navigation. Search result contexts, chapter titles and TTS chunks are converted after their source offsets have already been resolved.
+The shared Core, bookmarks, Smart TOC, search hits and persisted progress remain in normalized source code-point offsets. Reader page state stores the original Core window. Compose converts only bounded presentation strings and maps visible converted length back to source code points before navigation. Search contexts, chapter titles and TTS chunks are converted only after source offsets are resolved.
 
-No full converted book file is created.
+No full converted-book file is created.
 
 ### Local override dictionary
 
-Reader settings may contain up to 200 `source => target` phrase overrides. Overrides are protected before OpenCC conversion and restored afterward, so they have higher priority than the standard dictionary. They are included in the existing local settings backup and never uploaded.
+Reader settings may contain up to 200 `source => target` phrase overrides. Overrides are protected before OpenCC conversion and restored afterward so they take priority over the standard dictionary. They participate in local backup and are never uploaded.
 
 ## Performance and privacy constraints
 
-- No Android INTERNET permission is added.
-- No runtime analytics/ads/account dependency is added.
-- OpenCC is used only on bounded UI/TTS strings; the 6,000-character reader window remains the main display work set.
-- Smart Clean refinement streams the normalized document with bounded candidate memory.
-- Future semantic inference must be local, candidate-only and separately performance-gated before enabling.
+- No Android INTERNET permission.
+- No runtime analytics/ads/account dependency.
+- No remote inference or remote rule update.
+- OpenCC operates on bounded UI/TTS strings; the reader window remains 6,000 characters.
+- Smart Clean whole-document work is streaming/bounded.
+- Semantic inference is candidate-only and quality-gated.
+- Source TXT remains immutable.
+- Real-device 20/100/200 MiB performance evidence remains a separate release qualification gate.

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="txt_doctor">TXT Doctor</string>
+    <string name="txt_doctor_body">Diagnose encoding, text quality, chapter structure and distracting text locally before you repair anything.</string>
+    <string name="txt_health_score">TXT health · %1$d/100</string>
+    <string name="doctor_encoding">Encoding health</string>
+    <string name="doctor_toc">Chapter structure</string>
+    <string name="doctor_toc_detail">%1$d chapters · %2$d structural anomalies</string>
+    <string name="doctor_clean">Cleanliness</string>
+    <string name="doctor_clean_detail">%1$d cleanup candidates detected</string>
+    <string name="doctor_text">Text integrity</string>
+    <string name="doctor_text_detail">%1$d suspicious sample windows · %2$d replacement characters</string>
+
+    <string name="smart_toc">Smart TOC</string>
+    <string name="smart_toc_quality">Quality %1$d/100 · %2$d chapters · %3$d anomalies</string>
+    <string name="smart_toc_anomalies">Duplicates %1$d · numeric gaps %2$d · suspicious headings %3$d</string>
+    <string name="toc_add_here">Add chapter here</string>
+    <string name="toc_custom_title">Custom chapter title</string>
+    <string name="toc_add_action">Add</string>
+    <string name="toc_hide_heading">Hide this heading</string>
+    <string name="toc_reset_repairs">Reset local TOC repairs</string>
+    <string name="toc_source_user_or_special">Locally repaired / special heading</string>
+
+    <string name="smart_clean4">Smart Clean 4</string>
+    <string name="smart_clean4_body">Precision-first local candidate intelligence · tiny model v%1$d · no full-book model scan</string>
+    <string name="smart_clean4_signal">%1$s · %2$d× · base %3$d · semantic %4$s · adjusted %5$d</string>
+    <string name="smart_clean4_memory">Local decision memory · %1$s</string>
+    <string name="keep_text">Keep</string>
+    <string name="protect_text">Always protect</string>
+    <string name="delete_and_remember">Delete + remember</string>
+    <string name="open_standard_clean">Open Clean preview</string>
+
+    <string name="privacy_verification">Privacy verification</string>
+    <string name="privacy_verification_body">Verify the offline promise from the installed app itself. The exported audit contains configuration/counts only, never book text.</string>
+    <string name="privacy_no_internet">No Android INTERNET permission</string>
+    <string name="privacy_no_upload">No book-text upload capability</string>
+    <string name="privacy_no_analytics">No runtime analytics SDK</string>
+    <string name="privacy_no_ads">No advertising SDK</string>
+    <string name="privacy_local_counts">Local library %1$d · folder roots %2$d · Smart Clean feedback %3$d</string>
+    <string name="export_privacy_audit">Export privacy audit</string>
+    <string name="verified">Verified</string>
+    <string name="not_verified">Not verified</string>
+
+    <string name="reading_aloud_background">Background read-aloud · lock-screen/headset controls enabled</string>
+    <string name="tts_media_channel">Read aloud</string>
+    <string name="tts_media_channel_body">Background local TXT read-aloud controls</string>
+    <string name="tts_media_artist">Jingdu · Local TXT</string>
+    <string name="tts_media_body">Local read aloud</string>
+    <string name="tts_media_previous">Previous</string>
+    <string name="tts_media_play">Play</string>
+    <string name="tts_media_pause">Pause</string>
+    <string name="tts_media_next">Next</string>
+    <string name="tts_media_stop">Stop</string>
+
+    <string name="add_folder_library">Add TXT folder</string>
+    <string name="sync_folders">Sync folders · %1$d</string>
+    <string name="manage_folder_library">Manage folders · %1$d</string>
+    <string name="folder_library_roots">TXT folder roots</string>
+    <string name="folder_library_empty">No folder roots are retained.</string>
+    <string name="remove_folder_root">Remove folder root</string>
+    <string name="folder_sync_complete">Folder sync complete</string>
+    <string name="folder_sync_result">%1$d roots · %2$d discovered · %3$d imported/updated · %4$d unchanged · %5$d failed</string>
+    <string name="refresh_library">Refresh library</string>
+
+    <string name="batch_optimize">Batch optimize · Pro</string>
+    <string name="batch_optimize_report">Batch TXT report</string>
+    <string name="batch_report_summary">%1$d books · %2$d candidates · %3$d safe candidates · %4$d TOC anomalies · %5$d failed</string>
+    <string name="batch_report_applied">Applied %1$d new safe cleanup rules and generated derived Clean revisions.</string>
+    <string name="apply_safe_batch">Apply safe candidates</string>
+    <string name="batch_book_preview">%1$s · health %2$d/100 · %3$d safe candidates</string>
+
+    <string name="first_readable_title">First readable preview</string>
+    <string name="first_readable_meta">%1$s · %2$s · first %3$d KiB</string>
+    <string name="full_import_background">You can read this bounded preview now while the private full import and indexing finish locally.</string>
+    <string name="open_full_book">Open full book</string>
+
+    <string name="competitive_ok">OK</string>
+    <string name="competitive_close">Close</string>
+</resources>

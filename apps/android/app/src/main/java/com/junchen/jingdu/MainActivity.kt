@@ -26,6 +26,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
+import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
     private val main = Handler(Looper.getMainLooper())
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var billing: BillingManager
     private lateinit var cleanHistory: CleanHistory
     private lateinit var libraryMetadata: LibraryMetadataStore
+    private lateinit var smartCleanFeedback: SmartCleanFeedbackStore
     @Volatile private var proUnlocked = false
     private var reader = ReaderController()
     private var currentBook: BookRepository.Book? = null
@@ -84,6 +86,7 @@ class MainActivity : ComponentActivity() {
             onSearchQueryChanged = { uiState = uiState.copy(searchQuery = it) },
             onSearch = ::search,
             onJump = ::jumpTo,
+            onSyncTtsPosition = ::syncTtsPosition,
             onAddBookmark = ::addBookmark,
             onDeleteBookmark = ::deleteBookmark,
             onAddRule = ::addRule,
@@ -139,6 +142,7 @@ class MainActivity : ComponentActivity() {
         reviewPrompter = ReviewPrompter(this)
         cleanHistory = CleanHistory(this)
         libraryMetadata = LibraryMetadataStore(this)
+        smartCleanFeedback = SmartCleanFeedbackStore(this)
         tts = TtsController(this)
         val settings = readerPreferences.load()
         tts.setRate(settings.ttsRate)
@@ -281,6 +285,7 @@ class MainActivity : ComponentActivity() {
         if (uiState.busyLabel != null) return
         stopAutoPaging()
         stopTts()
+        stopBackgroundTts()
 
         val previousBook = currentBook
         val previousReader = reader
@@ -408,6 +413,14 @@ class MainActivity : ComponentActivity() {
         render()
     }
 
+    private fun syncTtsPosition(offset: Long) {
+        if (uiState.busyLabel != null || currentBook == null || cleanMode || reader.length() <= 0) return
+        val bounded = offset.coerceIn(0L, (reader.length() - 1).coerceAtLeast(0L))
+        if (bounded == reader.position()) return
+        reader.jump(bounded)
+        render()
+    }
+
     private fun backToLibrary() {
         uiState.panel?.let { uiState = uiState.copy(panel = null); return }
         val book = currentBook
@@ -427,7 +440,6 @@ class MainActivity : ComponentActivity() {
         if (uiState.busyLabel != null || currentBook == null) return
         uiState = uiState.copy(panel = panel)
         when (panel) {
-            ReaderPanel.CHAPTERS -> if (!uiState.chaptersLoaded) loadChapters()
             ReaderPanel.BOOKMARKS -> refreshBookmarks()
             ReaderPanel.CLEAN -> refreshRules()
             ReaderPanel.SETTINGS -> refreshTtsVoices()
@@ -449,22 +461,6 @@ class MainActivity : ComponentActivity() {
                 )
             },
             errorTitle = getString(R.string.error_search),
-        )
-    }
-
-    private fun loadChapters() {
-        runWork(
-            label = getString(R.string.busy_chapters),
-            task = reader::chapters,
-            success = { chapters ->
-                uiState = uiState.copy(
-                    panel = ReaderPanel.CHAPTERS,
-                    chapters = chapters.map { ChapterModel(it.offset(), it.title()) },
-                    chaptersLoaded = true,
-                    message = if (chapters.isEmpty()) getString(R.string.no_chapter_headings) else null,
-                )
-            },
-            errorTitle = getString(R.string.error_chapters),
         )
     }
 
@@ -551,15 +547,34 @@ class MainActivity : ComponentActivity() {
                     panel = ReaderPanel.CLEAN,
                     smartCleanAnalyzed = true,
                     smartCleanUndoAvailable = cleanHistory.has(book.id),
-                    noiseCandidates = candidates.map { candidate ->
-                        val model = NoiseCandidateModel(score = candidate.score(), count = candidate.count(), reason = candidate.reason(), text = candidate.text())
-                        model.copy(selected = model.defaultSafeSelection)
-                    },
+                    noiseCandidates = candidates.map { candidate -> smartCleanModel(book.id, candidate) },
                     message = if (candidates.isEmpty()) getString(R.string.smart_clean_empty) else null,
                 )
             },
             errorTitle = getString(R.string.error_smart_clean),
         )
+    }
+
+    private fun smartCleanModel(bookId: String, candidate: ReaderController.NoiseCandidate): NoiseCandidateModel {
+        val semantic = TinyLocalSemanticCandidateClassifier.classifyCandidate(candidate.text())
+        val feedback = smartCleanFeedback.decision(bookId, candidate.reason(), candidate.text())
+        val semanticDelta = when (semantic.label) {
+            SemanticCandidateLabel.AD -> if (semantic.confidence >= 0.65f) 8 else 0
+            SemanticCandidateLabel.BODY -> if (semantic.confidence >= 0.65f) -16 else 0
+            SemanticCandidateLabel.UNCERTAIN -> 0
+        }
+        val adjustedScore = (candidate.score() + smartCleanFeedback.modelDelta(candidate.reason(), candidate.text()) + semanticDelta).coerceIn(0, 100)
+        val model = NoiseCandidateModel(
+            score = adjustedScore,
+            count = candidate.count(),
+            reason = candidate.reason(),
+            text = candidate.text(),
+            semanticLabel = semantic.label,
+            semanticConfidence = semantic.confidence,
+            semanticScore = semantic.score,
+            feedback = feedback,
+        )
+        return model.copy(selected = model.defaultSafeSelection)
     }
 
     private fun toggleNoiseCandidate(index: Int) {
@@ -573,6 +588,7 @@ class MainActivity : ComponentActivity() {
         val selected = uiState.noiseCandidates.filter { it.selected }
         if (selected.isEmpty()) return showMessage(getString(R.string.select_clean_suggestion))
         cleanHistory.save(book.id, bookRulesPacked(book))
+        selected.forEach { candidate -> smartCleanFeedback.record(book.id, candidate.reason, candidate.text, SmartCleanFeedback.DELETE) }
         val additions = selected.map { RepairRule(it.text, "", RepairRuleMode.LITERAL) }
         val updated = (bookRules(book) + additions).distinctBy { Triple(it.mode, it.find, it.replacement) }.take(500)
         saveRules(updated, rebuildIfClean = false, preserveSmartCleanUndo = true)
@@ -751,18 +767,40 @@ class MainActivity : ComponentActivity() {
 
     private fun redecode(encoding: String) {
         val book = currentBook ?: return
-        val preservedProgress = reader.position()
+        val oldPosition = reader.position()
+        val oldLength = reader.length()
+        val oldBookmarks = bookmarkPositions(book).mapNotNull(String::toLongOrNull)
         uiState = uiState.copy(panel = null)
         runWork(
             label = if (encoding == BookRepository.AUTO) getString(R.string.busy_redecode_auto) else getString(R.string.busy_redecode, encoding),
-            task = { repository.redecode(book, encoding) },
-            success = { updated ->
-                repository.saveProgress(updated, preservedProgress)
+            task = {
+                val updated = repository.redecode(book, encoding)
+                val newLength = ReaderController().use { candidate ->
+                    candidate.open(repository.normalizedFile(updated), 0)
+                    candidate.length()
+                }
+                updated to newLength
+            },
+            success = { (updated, newLength) ->
+                val mappedProgress = mapOffset(oldPosition, oldLength, newLength)
+                val mappedBookmarks = oldBookmarks
+                    .map { offset -> mapOffset(offset, oldLength, newLength).toString() }
+                    .toSet()
+                getPreferences(MODE_PRIVATE).edit().putStringSet(bookmarkKey(updated), mappedBookmarks).apply()
+                repository.saveProgress(updated, mappedProgress)
+                repository.updateCharCount(updated, newLength)
                 reviewPrompter.recordEncodingRescue()
-                openBook(updated, clean = false, restoredOverride = preservedProgress)
+                openBook(updated, clean = false, restoredOverride = mappedProgress)
             },
             errorTitle = getString(R.string.error_redecode),
         )
+    }
+
+    private fun mapOffset(value: Long, oldLength: Long, newLength: Long): Long {
+        if (newLength <= 1) return 0
+        if (oldLength <= 1) return value.coerceIn(0, newLength - 1)
+        val fraction = value.coerceIn(0, oldLength - 1).toDouble() / (oldLength - 1).toDouble()
+        return (fraction * (newLength - 1).toDouble()).roundToLong().coerceIn(0, newLength - 1)
     }
 
     private fun refreshTtsVoices() { uiState = uiState.copy(ttsVoices = tts.offlineVoices().map { TtsVoiceModel(it.name(), it.label()) }) }
@@ -804,10 +842,14 @@ class MainActivity : ComponentActivity() {
         uiState = uiState.copy(ttsPlaying = false)
     }
 
+    private fun stopBackgroundTts() {
+        runCatching { startService(Intent(this, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STOP)) }
+    }
+
     private fun toggleAutoPaging() {
         if (currentBook == null || uiState.busyLabel != null) return
         if (uiState.autoPaging) stopAutoPaging() else {
-            stopTts(); uiState = uiState.copy(autoPaging = true); main.postDelayed(autoStep, uiState.settings.autoPageDelayMs)
+            stopTts(); stopBackgroundTts(); uiState = uiState.copy(autoPaging = true); main.postDelayed(autoStep, uiState.settings.autoPageDelayMs)
         }
     }
 
@@ -830,8 +872,13 @@ class MainActivity : ComponentActivity() {
     private fun deleteCurrentBook() {
         val book = currentBook ?: return
         uiState = uiState.copy(deleteConfirmation = false)
-        stopAutoPaging(); stopTts(); workGeneration.incrementAndGet(); reader.close()
-        repository.delete(book); clearBookPreferences(book); libraryMetadata.clear(book.id); cleanHistory.clearAllForBook(book.id)
+        stopAutoPaging(); stopTts(); stopBackgroundTts(); workGeneration.incrementAndGet(); reader.close()
+        repository.delete(book)
+        clearBookPreferences(book)
+        libraryMetadata.clear(book.id)
+        cleanHistory.clearAllForBook(book.id)
+        smartCleanFeedback.clearBook(book.id)
+        TocOverrideStore(this).reset(book.id)
         currentBook = null; cleanMode = false; pageHistory.clear(); refreshLibrary()
         uiState = uiState.copy(
             screen = AppScreen.LIBRARY, currentBook = null, pageText = "", position = 0, length = 0,
@@ -843,7 +890,14 @@ class MainActivity : ComponentActivity() {
     private fun deleteLibraryBook(id: String) {
         val book = findBook(id) ?: return
         if (currentBook?.id == id) { deleteCurrentBook(); return }
-        repository.delete(book); clearBookPreferences(book); libraryMetadata.clear(book.id); cleanHistory.clearAllForBook(book.id); refreshLibrary(); showMessage(getString(R.string.removed_from_library))
+        repository.delete(book)
+        clearBookPreferences(book)
+        libraryMetadata.clear(book.id)
+        cleanHistory.clearAllForBook(book.id)
+        smartCleanFeedback.clearBook(book.id)
+        TocOverrideStore(this).reset(book.id)
+        refreshLibrary()
+        showMessage(getString(R.string.removed_from_library))
     }
 
     private fun clearBookPreferences(book: BookRepository.Book) {
