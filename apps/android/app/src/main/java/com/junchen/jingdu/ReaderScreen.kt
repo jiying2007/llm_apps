@@ -63,7 +63,7 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
                 servicePlaying = playing
                 ttsOffset = offset
                 ttsNextOffset = intent.getLongExtra(TtsPlaybackService.EXTRA_NEXT_OFFSET, -1L)
-                if (playing && state.panel == null && offset >= 0 && offset != state.position) actions.onSyncTtsPosition(offset)
+                if (active && state.panel == null && offset >= 0 && offset != state.position) actions.onSyncTtsPosition(offset)
             }
         }
         val filter = IntentFilter(TtsPlaybackService.ACTION_STATE)
@@ -72,7 +72,7 @@ internal fun ReaderScreen(state: AppUiState, actions: JingduActions, snackbar: S
             @Suppress("DEPRECATION")
             context.registerReceiver(receiver, filter)
         }
-        if (serviceActive) context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STATE))
+        context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STATE))
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 
