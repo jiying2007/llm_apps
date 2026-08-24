@@ -210,3 +210,6 @@ grep -q 'profileinstaller:1.4.1' apps/android/app/build.gradle
 python3 ./scripts/verify-android-i18n.py
 
 echo 'Terminal long-form TXT / TXT Doctor / Smart TOC / Smart Clean 4 / local automation / source-release quality contract OK'
+
+# Reading surface remains a first-class terminal product gate.
+bash ./scripts/verify-reading-experience.sh
