@@ -129,11 +129,11 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
             }
         }
         base = computed
-        report = computed?.let { store.apply(it, store.load(book.id)) }
+        report = computed?.let { store.apply(it, store.load(book.id, state.length)) }
         loading = false
     }
 
-    LaunchedEffect(book?.id) { load() }
+    LaunchedEffect(book?.id, state.length) { load() }
 
     ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
@@ -159,8 +159,8 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
                             }
                             IconButton(onClick = {
                                 if (book != null) {
-                                    store.hide(book.id, chapter.offset)
-                                    report = base?.let { store.apply(it, store.load(book.id)) }
+                                    store.hide(book.id, chapter.offset, state.length)
+                                    report = base?.let { store.apply(it, store.load(book.id, state.length)) }
                                 }
                             }) { Icon(Icons.Default.Delete, stringResource(R.string.toc_hide_heading)) }
                         }
@@ -179,8 +179,8 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
         title = { Text(stringResource(R.string.toc_add_here)) },
         text = { OutlinedTextField(value = title, onValueChange = { title = it.take(80) }, label = { Text(stringResource(R.string.toc_custom_title)) }) },
         confirmButton = { TextButton(onClick = {
-            store.add(book.id, state.position, title)
-            report = base?.let { store.apply(it, store.load(book.id)) }
+            store.add(book.id, state.position, title, state.length)
+            report = base?.let { store.apply(it, store.load(book.id, state.length)) }
             title = ""; addDialog = false
         }, enabled = title.isNotBlank()) { Text(stringResource(R.string.toc_add_action)) } },
         dismissButton = { TextButton(onClick = { addDialog = false }) { Text(stringResource(R.string.cancel)) } },
