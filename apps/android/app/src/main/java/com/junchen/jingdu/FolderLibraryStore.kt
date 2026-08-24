@@ -114,9 +114,12 @@ internal class FolderLibraryStore(context: Context) {
         }
     }
 
-    private fun seenPrefix(uri: Uri): String = "seen.${fingerprint(uri.toString())}"
+    private fun seenPrefix(uri: Uri): String = seenPrefixForTree(uri) + fingerprint(uri.toString())
 
-    private fun seenPrefixForTree(uri: Uri): String = "tree.${fingerprint(uri.toString())}."
+    private fun seenPrefixForTree(uri: Uri): String {
+        val treeIdentity = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrElse { uri.toString() }
+        return "tree.${fingerprint(treeIdentity)}."
+    }
 
     private fun fingerprint(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
