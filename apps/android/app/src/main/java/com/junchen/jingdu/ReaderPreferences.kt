@@ -1,9 +1,24 @@
 package com.junchen.jingdu
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
-enum class ReaderPalette { PAPER, LIGHT, NIGHT, OLED }
-enum class ReaderTypeface { SYSTEM, SERIF }
+enum class ReaderPalette { PAPER, LIGHT, SEPIA, NIGHT, OLED }
+enum class ReaderTypeface { SYSTEM, SERIF, MONOSPACE, CUSTOM }
 enum class ChineseDisplayMode { ORIGINAL, SIMPLIFIED, TRADITIONAL, TAIWAN, TAIWAN_PHRASES, HONG_KONG }
 enum class ReaderMode { PAGED, CONTINUOUS }
 enum class ReaderPageAnimation { NONE, SLIDE }
@@ -13,24 +28,35 @@ enum class ReaderFontWeight { NORMAL, MEDIUM, SEMIBOLD }
 enum class ReaderPreset { STANDARD, COMFORT, LARGE, NIGHT, CUSTOM }
 enum class ReaderVolumeKeyMode { PAGE_WHEN_NOT_TTS, ALWAYS_PAGE, SYSTEM_VOLUME }
 enum class ReaderWideColumns { AUTO, SINGLE, DOUBLE }
+enum class ReaderTapZonePreset { BALANCED, RIGHT_HANDED, LEFT_HANDED, CUSTOM }
+enum class ReaderAutoPageMode { ADAPTIVE, FIXED }
 
 data class ReaderSettings(
     val palette: ReaderPalette = ReaderPalette.PAPER,
     val typeface: ReaderTypeface = ReaderTypeface.SYSTEM,
+    val customFontId: String = "",
     val fontSizeSp: Float = 20f,
     val lineHeightMultiplier: Float = 1.55f,
+    val letterSpacingEm: Float = 0f,
+    val paragraphSpacingEm: Float = 0.45f,
     val horizontalPaddingDp: Float = 24f,
     val verticalPaddingDp: Float = 18f,
     val firstLineIndentEm: Float = 0f,
     val textAlignment: ReaderTextAlignment = ReaderTextAlignment.JUSTIFY,
     val fontWeight: ReaderFontWeight = ReaderFontWeight.NORMAL,
+    val compressBlankLines: Boolean = true,
+    val emphasizeHeadings: Boolean = true,
     val preset: ReaderPreset = ReaderPreset.STANDARD,
     val readingMode: ReaderMode = ReaderMode.PAGED,
     val pageAnimation: ReaderPageAnimation = ReaderPageAnimation.SLIDE,
     val tapPagingEnabled: Boolean = true,
     val swipePagingEnabled: Boolean = true,
     val reversePagingGestures: Boolean = false,
+    val tapZonePreset: ReaderTapZonePreset = ReaderTapZonePreset.BALANCED,
     val tapZoneEdgeFraction: Float = 0.25f,
+    val brightnessGestureEnabled: Boolean = true,
+    val pinchFontEnabled: Boolean = true,
+    val doubleTapBookmarkEnabled: Boolean = false,
     val controlsAutoHideMs: Long = 3500L,
     val useSystemBrightness: Boolean = true,
     val readerBrightness: Float = 0.45f,
@@ -39,15 +65,21 @@ data class ReaderSettings(
     val reverseVolumeKeys: Boolean = false,
     val wideColumns: ReaderWideColumns = ReaderWideColumns.AUTO,
     val showReadingStatus: Boolean = true,
+    val showClock: Boolean = false,
+    val showBattery: Boolean = false,
     val focusRulerLines: Int = 0,
+    val hapticEnabled: Boolean = true,
+    val gestureCoachDismissed: Boolean = false,
     val autoScrollEnabled: Boolean = false,
     val autoScrollSpeedDpPerSecond: Float = 55f,
+    val autoPageMode: ReaderAutoPageMode = ReaderAutoPageMode.ADAPTIVE,
+    val autoPagePaceMultiplier: Float = 1.0f,
+    val autoPageDelayMs: Long = 6500L,
     val chineseMode: ChineseDisplayMode = ChineseDisplayMode.ORIGINAL,
     val chineseOverrides: String = "",
     val ttsRate: Float = 1.0f,
     val ttsPitch: Float = 1.0f,
     val ttsVoiceName: String = "",
-    val autoPageDelayMs: Long = 6500L,
 )
 
 internal fun ReaderSettings.applyPreset(value: ReaderPreset): ReaderSettings = when (value) {
@@ -57,6 +89,8 @@ internal fun ReaderSettings.applyPreset(value: ReaderPreset): ReaderSettings = w
         typeface = ReaderTypeface.SYSTEM,
         fontSizeSp = 20f,
         lineHeightMultiplier = 1.55f,
+        letterSpacingEm = 0f,
+        paragraphSpacingEm = 0.45f,
         horizontalPaddingDp = 24f,
         verticalPaddingDp = 18f,
         firstLineIndentEm = 0f,
@@ -69,6 +103,8 @@ internal fun ReaderSettings.applyPreset(value: ReaderPreset): ReaderSettings = w
         typeface = ReaderTypeface.SERIF,
         fontSizeSp = 21f,
         lineHeightMultiplier = 1.65f,
+        letterSpacingEm = 0.01f,
+        paragraphSpacingEm = 0.55f,
         horizontalPaddingDp = 28f,
         verticalPaddingDp = 22f,
         firstLineIndentEm = 2f,
@@ -81,6 +117,8 @@ internal fun ReaderSettings.applyPreset(value: ReaderPreset): ReaderSettings = w
         typeface = ReaderTypeface.SYSTEM,
         fontSizeSp = 28f,
         lineHeightMultiplier = 1.72f,
+        letterSpacingEm = 0.01f,
+        paragraphSpacingEm = 0.65f,
         horizontalPaddingDp = 30f,
         verticalPaddingDp = 24f,
         firstLineIndentEm = 1f,
@@ -93,6 +131,8 @@ internal fun ReaderSettings.applyPreset(value: ReaderPreset): ReaderSettings = w
         typeface = ReaderTypeface.SERIF,
         fontSizeSp = 21f,
         lineHeightMultiplier = 1.65f,
+        letterSpacingEm = 0.01f,
+        paragraphSpacingEm = 0.55f,
         horizontalPaddingDp = 26f,
         verticalPaddingDp = 20f,
         firstLineIndentEm = 2f,
@@ -102,197 +142,328 @@ internal fun ReaderSettings.applyPreset(value: ReaderPreset): ReaderSettings = w
     ReaderPreset.CUSTOM -> copy(preset = value)
 }
 
-class ReaderPreferences(context: Context) {
-    private val prefs = context.getSharedPreferences("jingdu.reader.settings.v1", Context.MODE_PRIVATE)
+private val Context.readerV2DataStore: DataStore<Preferences> by preferencesDataStore(name = "jingdu_reader_v2")
 
-    fun load(): ReaderSettings {
-        val value = ReaderSettings(
-            palette = enumOrDefault(prefs.getString("palette", null), ReaderPalette.PAPER),
-            typeface = enumOrDefault(prefs.getString("typeface", null), ReaderTypeface.SYSTEM),
-            fontSizeSp = prefs.getFloat("fontSizeSp", 20f).coerceIn(16f, 34f),
-            lineHeightMultiplier = prefs.getFloat("lineHeight", 1.55f).coerceIn(1.2f, 2.0f),
-            horizontalPaddingDp = prefs.getFloat("horizontalPadding", 24f).coerceIn(12f, 48f),
-            verticalPaddingDp = prefs.getFloat("verticalPadding", 18f).coerceIn(8f, 48f),
-            firstLineIndentEm = prefs.getFloat("firstLineIndentEm", 0f).coerceIn(0f, 2f),
-            textAlignment = enumOrDefault(prefs.getString("textAlignment", null), ReaderTextAlignment.JUSTIFY),
-            fontWeight = enumOrDefault(prefs.getString("fontWeight", null), ReaderFontWeight.NORMAL),
-            preset = enumOrDefault(prefs.getString("preset", null), ReaderPreset.STANDARD),
-            readingMode = enumOrDefault(prefs.getString("readingMode", null), ReaderMode.PAGED),
-            pageAnimation = enumOrDefault(prefs.getString("pageAnimation", null), ReaderPageAnimation.SLIDE),
-            tapPagingEnabled = prefs.getBoolean("tapPagingEnabled", true),
-            swipePagingEnabled = prefs.getBoolean("swipePagingEnabled", true),
-            reversePagingGestures = prefs.getBoolean("reversePagingGestures", false),
-            tapZoneEdgeFraction = prefs.getFloat("tapZoneEdgeFraction", 0.25f).coerceIn(0.20f, 0.35f),
-            controlsAutoHideMs = prefs.getLong("controlsAutoHideMs", 3500L).coerceIn(2000L, 10000L),
-            useSystemBrightness = prefs.getBoolean("useSystemBrightness", true),
-            readerBrightness = prefs.getFloat("readerBrightness", 0.45f).coerceIn(0.05f, 1f),
-            orientation = enumOrDefault(prefs.getString("orientation", null), ReaderOrientation.SYSTEM),
-            volumeKeyMode = enumOrDefault(prefs.getString("volumeKeyMode", null), ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS),
-            reverseVolumeKeys = prefs.getBoolean("reverseVolumeKeys", false),
-            wideColumns = enumOrDefault(prefs.getString("wideColumns", null), ReaderWideColumns.AUTO),
-            showReadingStatus = prefs.getBoolean("showReadingStatus", true),
-            focusRulerLines = prefs.getInt("focusRulerLines", 0).let { if (it == 3 || it == 5) it else 0 },
-            autoScrollEnabled = false,
-            autoScrollSpeedDpPerSecond = prefs.getFloat("autoScrollSpeed", 55f).coerceIn(20f, 240f),
-            chineseMode = enumOrDefault(prefs.getString("chineseMode", null), ChineseDisplayMode.ORIGINAL),
-            chineseOverrides = (prefs.getString("chineseOverrides", "") ?: "").take(MAX_OVERRIDE_TEXT_CHARS),
-            ttsRate = prefs.getFloat("ttsRate", 1.0f).coerceIn(0.6f, 1.8f),
-            ttsPitch = prefs.getFloat("ttsPitch", 1.0f).coerceIn(0.7f, 1.4f),
-            ttsVoiceName = prefs.getString("ttsVoiceName", "") ?: "",
-            autoPageDelayMs = prefs.getLong("autoPageDelayMs", 6500L).coerceIn(2500L, 15000L),
-        )
-        ChineseDisplayConverter.configure(value)
-        return value
-    }
+/**
+ * Reader V2 settings store. There is deliberately no SharedPreferences migration path: the first
+ * store version has not launched, so the old reader-settings schema is discarded instead of
+ * becoming permanent compatibility debt.
+ */
+class ReaderPreferences(context: Context) {
+    private val dataStore = context.applicationContext.readerV2DataStore
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun load(): ReaderSettings = runBlocking(Dispatchers.IO) { read(dataStore.data.first()) }
 
     fun save(value: ReaderSettings) {
         val safe = sanitize(value)
-        prefs.edit()
-            .putString("palette", safe.palette.name)
-            .putString("typeface", safe.typeface.name)
-            .putFloat("fontSizeSp", safe.fontSizeSp)
-            .putFloat("lineHeight", safe.lineHeightMultiplier)
-            .putFloat("horizontalPadding", safe.horizontalPaddingDp)
-            .putFloat("verticalPadding", safe.verticalPaddingDp)
-            .putFloat("firstLineIndentEm", safe.firstLineIndentEm)
-            .putString("textAlignment", safe.textAlignment.name)
-            .putString("fontWeight", safe.fontWeight.name)
-            .putString("preset", safe.preset.name)
-            .putString("readingMode", safe.readingMode.name)
-            .putString("pageAnimation", safe.pageAnimation.name)
-            .putBoolean("tapPagingEnabled", safe.tapPagingEnabled)
-            .putBoolean("swipePagingEnabled", safe.swipePagingEnabled)
-            .putBoolean("reversePagingGestures", safe.reversePagingGestures)
-            .putFloat("tapZoneEdgeFraction", safe.tapZoneEdgeFraction)
-            .putLong("controlsAutoHideMs", safe.controlsAutoHideMs)
-            .putBoolean("useSystemBrightness", safe.useSystemBrightness)
-            .putFloat("readerBrightness", safe.readerBrightness)
-            .putString("orientation", safe.orientation.name)
-            .putString("volumeKeyMode", safe.volumeKeyMode.name)
-            .putBoolean("reverseVolumeKeys", safe.reverseVolumeKeys)
-            .putString("wideColumns", safe.wideColumns.name)
-            .putBoolean("showReadingStatus", safe.showReadingStatus)
-            .putInt("focusRulerLines", safe.focusRulerLines)
-            .putFloat("autoScrollSpeed", safe.autoScrollSpeedDpPerSecond)
-            .putString("chineseMode", safe.chineseMode.name)
-            .putString("chineseOverrides", safe.chineseOverrides)
-            .putFloat("ttsRate", safe.ttsRate)
-            .putFloat("ttsPitch", safe.ttsPitch)
-            .putString("ttsVoiceName", safe.ttsVoiceName)
-            .putLong("autoPageDelayMs", safe.autoPageDelayMs)
-            .apply()
         ChineseDisplayConverter.configure(safe)
+        scope.launch { write(safe) }
     }
 
-    fun exportMap(): Map<String, Any> {
-        val value = load()
-        return mapOf(
-            "palette" to value.palette.name,
-            "typeface" to value.typeface.name,
-            "fontSizeSp" to value.fontSizeSp,
-            "lineHeightMultiplier" to value.lineHeightMultiplier,
-            "horizontalPaddingDp" to value.horizontalPaddingDp,
-            "verticalPaddingDp" to value.verticalPaddingDp,
-            "firstLineIndentEm" to value.firstLineIndentEm,
-            "textAlignment" to value.textAlignment.name,
-            "fontWeight" to value.fontWeight.name,
-            "preset" to value.preset.name,
-            "readingMode" to value.readingMode.name,
-            "pageAnimation" to value.pageAnimation.name,
-            "tapPagingEnabled" to value.tapPagingEnabled,
-            "swipePagingEnabled" to value.swipePagingEnabled,
-            "reversePagingGestures" to value.reversePagingGestures,
-            "tapZoneEdgeFraction" to value.tapZoneEdgeFraction,
-            "controlsAutoHideMs" to value.controlsAutoHideMs,
-            "useSystemBrightness" to value.useSystemBrightness,
-            "readerBrightness" to value.readerBrightness,
-            "orientation" to value.orientation.name,
-            "volumeKeyMode" to value.volumeKeyMode.name,
-            "reverseVolumeKeys" to value.reverseVolumeKeys,
-            "wideColumns" to value.wideColumns.name,
-            "showReadingStatus" to value.showReadingStatus,
-            "focusRulerLines" to value.focusRulerLines,
-            "autoScrollSpeedDpPerSecond" to value.autoScrollSpeedDpPerSecond,
-            "chineseMode" to value.chineseMode.name,
-            "chineseOverrides" to value.chineseOverrides,
-            "ttsRate" to value.ttsRate,
-            "ttsPitch" to value.ttsPitch,
-            "ttsVoiceName" to value.ttsVoiceName,
-            "autoPageDelayMs" to value.autoPageDelayMs,
-        )
-    }
+    fun exportMap(): Map<String, Any> = toMap(load())
 
     fun importMap(values: Map<String, Any?>): ReaderSettings {
         val fallback = load()
-        val imported = ReaderSettings(
-            palette = enumValue(values["palette"], fallback.palette),
-            typeface = enumValue(values["typeface"], fallback.typeface),
-            fontSizeSp = number(values["fontSizeSp"], fallback.fontSizeSp).coerceIn(16f, 34f),
-            lineHeightMultiplier = number(values["lineHeightMultiplier"], fallback.lineHeightMultiplier).coerceIn(1.2f, 2.0f),
-            horizontalPaddingDp = number(values["horizontalPaddingDp"], fallback.horizontalPaddingDp).coerceIn(12f, 48f),
-            verticalPaddingDp = number(values["verticalPaddingDp"], fallback.verticalPaddingDp).coerceIn(8f, 48f),
-            firstLineIndentEm = number(values["firstLineIndentEm"], fallback.firstLineIndentEm).coerceIn(0f, 2f),
-            textAlignment = enumValue(values["textAlignment"], fallback.textAlignment),
-            fontWeight = enumValue(values["fontWeight"], fallback.fontWeight),
-            preset = enumValue(values["preset"], fallback.preset),
-            readingMode = enumValue(values["readingMode"], fallback.readingMode),
-            pageAnimation = enumValue(values["pageAnimation"], fallback.pageAnimation),
-            tapPagingEnabled = values["tapPagingEnabled"] as? Boolean ?: fallback.tapPagingEnabled,
-            swipePagingEnabled = values["swipePagingEnabled"] as? Boolean ?: fallback.swipePagingEnabled,
-            reversePagingGestures = values["reversePagingGestures"] as? Boolean ?: fallback.reversePagingGestures,
-            tapZoneEdgeFraction = number(values["tapZoneEdgeFraction"], fallback.tapZoneEdgeFraction).coerceIn(0.20f, 0.35f),
-            controlsAutoHideMs = (values["controlsAutoHideMs"] as? Number)?.toLong()?.coerceIn(2000L, 10000L) ?: fallback.controlsAutoHideMs,
-            useSystemBrightness = values["useSystemBrightness"] as? Boolean ?: fallback.useSystemBrightness,
-            readerBrightness = number(values["readerBrightness"], fallback.readerBrightness).coerceIn(0.05f, 1f),
-            orientation = enumValue(values["orientation"], fallback.orientation),
-            volumeKeyMode = enumValue(values["volumeKeyMode"], fallback.volumeKeyMode),
-            reverseVolumeKeys = values["reverseVolumeKeys"] as? Boolean ?: fallback.reverseVolumeKeys,
-            wideColumns = enumValue(values["wideColumns"], fallback.wideColumns),
-            showReadingStatus = values["showReadingStatus"] as? Boolean ?: fallback.showReadingStatus,
-            focusRulerLines = (values["focusRulerLines"] as? Number)?.toInt()?.let { if (it == 3 || it == 5) it else 0 } ?: fallback.focusRulerLines,
-            autoScrollEnabled = false,
-            autoScrollSpeedDpPerSecond = number(values["autoScrollSpeedDpPerSecond"], fallback.autoScrollSpeedDpPerSecond).coerceIn(20f, 240f),
-            chineseMode = enumValue(values["chineseMode"], fallback.chineseMode),
-            chineseOverrides = (values["chineseOverrides"] as? String)?.take(MAX_OVERRIDE_TEXT_CHARS) ?: fallback.chineseOverrides,
-            ttsRate = number(values["ttsRate"], fallback.ttsRate).coerceIn(0.6f, 1.8f),
-            ttsPitch = number(values["ttsPitch"], fallback.ttsPitch).coerceIn(0.7f, 1.4f),
-            ttsVoiceName = (values["ttsVoiceName"] as? String)?.take(256) ?: fallback.ttsVoiceName,
-            autoPageDelayMs = (values["autoPageDelayMs"] as? Number)?.toLong()?.coerceIn(2500L, 15000L) ?: fallback.autoPageDelayMs,
+        val imported = sanitize(
+            ReaderSettings(
+                palette = enumValue(values["palette"], fallback.palette),
+                typeface = enumValue(values["typeface"], fallback.typeface),
+                customFontId = string(values["customFontId"], fallback.customFontId, 128),
+                fontSizeSp = number(values["fontSizeSp"], fallback.fontSizeSp),
+                lineHeightMultiplier = number(values["lineHeightMultiplier"], fallback.lineHeightMultiplier),
+                letterSpacingEm = number(values["letterSpacingEm"], fallback.letterSpacingEm),
+                paragraphSpacingEm = number(values["paragraphSpacingEm"], fallback.paragraphSpacingEm),
+                horizontalPaddingDp = number(values["horizontalPaddingDp"], fallback.horizontalPaddingDp),
+                verticalPaddingDp = number(values["verticalPaddingDp"], fallback.verticalPaddingDp),
+                firstLineIndentEm = number(values["firstLineIndentEm"], fallback.firstLineIndentEm),
+                textAlignment = enumValue(values["textAlignment"], fallback.textAlignment),
+                fontWeight = enumValue(values["fontWeight"], fallback.fontWeight),
+                compressBlankLines = boolean(values["compressBlankLines"], fallback.compressBlankLines),
+                emphasizeHeadings = boolean(values["emphasizeHeadings"], fallback.emphasizeHeadings),
+                preset = enumValue(values["preset"], fallback.preset),
+                readingMode = enumValue(values["readingMode"], fallback.readingMode),
+                pageAnimation = enumValue(values["pageAnimation"], fallback.pageAnimation),
+                tapPagingEnabled = boolean(values["tapPagingEnabled"], fallback.tapPagingEnabled),
+                swipePagingEnabled = boolean(values["swipePagingEnabled"], fallback.swipePagingEnabled),
+                reversePagingGestures = boolean(values["reversePagingGestures"], fallback.reversePagingGestures),
+                tapZonePreset = enumValue(values["tapZonePreset"], fallback.tapZonePreset),
+                tapZoneEdgeFraction = number(values["tapZoneEdgeFraction"], fallback.tapZoneEdgeFraction),
+                brightnessGestureEnabled = boolean(values["brightnessGestureEnabled"], fallback.brightnessGestureEnabled),
+                pinchFontEnabled = boolean(values["pinchFontEnabled"], fallback.pinchFontEnabled),
+                doubleTapBookmarkEnabled = boolean(values["doubleTapBookmarkEnabled"], fallback.doubleTapBookmarkEnabled),
+                controlsAutoHideMs = long(values["controlsAutoHideMs"], fallback.controlsAutoHideMs),
+                useSystemBrightness = boolean(values["useSystemBrightness"], fallback.useSystemBrightness),
+                readerBrightness = number(values["readerBrightness"], fallback.readerBrightness),
+                orientation = enumValue(values["orientation"], fallback.orientation),
+                volumeKeyMode = enumValue(values["volumeKeyMode"], fallback.volumeKeyMode),
+                reverseVolumeKeys = boolean(values["reverseVolumeKeys"], fallback.reverseVolumeKeys),
+                wideColumns = enumValue(values["wideColumns"], fallback.wideColumns),
+                showReadingStatus = boolean(values["showReadingStatus"], fallback.showReadingStatus),
+                showClock = boolean(values["showClock"], fallback.showClock),
+                showBattery = boolean(values["showBattery"], fallback.showBattery),
+                focusRulerLines = int(values["focusRulerLines"], fallback.focusRulerLines),
+                hapticEnabled = boolean(values["hapticEnabled"], fallback.hapticEnabled),
+                gestureCoachDismissed = boolean(values["gestureCoachDismissed"], fallback.gestureCoachDismissed),
+                autoScrollEnabled = false,
+                autoScrollSpeedDpPerSecond = number(values["autoScrollSpeedDpPerSecond"], fallback.autoScrollSpeedDpPerSecond),
+                autoPageMode = enumValue(values["autoPageMode"], fallback.autoPageMode),
+                autoPagePaceMultiplier = number(values["autoPagePaceMultiplier"], fallback.autoPagePaceMultiplier),
+                autoPageDelayMs = long(values["autoPageDelayMs"], fallback.autoPageDelayMs),
+                chineseMode = enumValue(values["chineseMode"], fallback.chineseMode),
+                chineseOverrides = string(values["chineseOverrides"], fallback.chineseOverrides, MAX_OVERRIDE_TEXT_CHARS),
+                ttsRate = number(values["ttsRate"], fallback.ttsRate),
+                ttsPitch = number(values["ttsPitch"], fallback.ttsPitch),
+                ttsVoiceName = string(values["ttsVoiceName"], fallback.ttsVoiceName, 256),
+            ),
         )
         save(imported)
         return imported
     }
 
-    private fun sanitize(value: ReaderSettings): ReaderSettings = value.copy(
-        fontSizeSp = value.fontSizeSp.coerceIn(16f, 34f),
-        lineHeightMultiplier = value.lineHeightMultiplier.coerceIn(1.2f, 2.0f),
-        horizontalPaddingDp = value.horizontalPaddingDp.coerceIn(12f, 48f),
-        verticalPaddingDp = value.verticalPaddingDp.coerceIn(8f, 48f),
-        firstLineIndentEm = value.firstLineIndentEm.coerceIn(0f, 2f),
-        tapZoneEdgeFraction = value.tapZoneEdgeFraction.coerceIn(0.20f, 0.35f),
-        controlsAutoHideMs = value.controlsAutoHideMs.coerceIn(2000L, 10000L),
-        readerBrightness = value.readerBrightness.coerceIn(0.05f, 1f),
-        focusRulerLines = if (value.focusRulerLines == 3 || value.focusRulerLines == 5) value.focusRulerLines else 0,
+    private suspend fun write(value: ReaderSettings) {
+        dataStore.edit { p ->
+            p[Keys.palette] = value.palette.name
+            p[Keys.typeface] = value.typeface.name
+            p[Keys.customFontId] = value.customFontId
+            p[Keys.fontSize] = value.fontSizeSp
+            p[Keys.lineHeight] = value.lineHeightMultiplier
+            p[Keys.letterSpacing] = value.letterSpacingEm
+            p[Keys.paragraphSpacing] = value.paragraphSpacingEm
+            p[Keys.horizontalPadding] = value.horizontalPaddingDp
+            p[Keys.verticalPadding] = value.verticalPaddingDp
+            p[Keys.firstLineIndent] = value.firstLineIndentEm
+            p[Keys.textAlignment] = value.textAlignment.name
+            p[Keys.fontWeight] = value.fontWeight.name
+            p[Keys.compressBlankLines] = value.compressBlankLines
+            p[Keys.emphasizeHeadings] = value.emphasizeHeadings
+            p[Keys.preset] = value.preset.name
+            p[Keys.readingMode] = value.readingMode.name
+            p[Keys.pageAnimation] = value.pageAnimation.name
+            p[Keys.tapPaging] = value.tapPagingEnabled
+            p[Keys.swipePaging] = value.swipePagingEnabled
+            p[Keys.reverseGestures] = value.reversePagingGestures
+            p[Keys.tapZonePreset] = value.tapZonePreset.name
+            p[Keys.tapZoneFraction] = value.tapZoneEdgeFraction
+            p[Keys.brightnessGesture] = value.brightnessGestureEnabled
+            p[Keys.pinchFont] = value.pinchFontEnabled
+            p[Keys.doubleTapBookmark] = value.doubleTapBookmarkEnabled
+            p[Keys.controlsAutoHide] = value.controlsAutoHideMs
+            p[Keys.systemBrightness] = value.useSystemBrightness
+            p[Keys.readerBrightness] = value.readerBrightness
+            p[Keys.orientation] = value.orientation.name
+            p[Keys.volumeKeyMode] = value.volumeKeyMode.name
+            p[Keys.reverseVolume] = value.reverseVolumeKeys
+            p[Keys.wideColumns] = value.wideColumns.name
+            p[Keys.showReadingStatus] = value.showReadingStatus
+            p[Keys.showClock] = value.showClock
+            p[Keys.showBattery] = value.showBattery
+            p[Keys.focusRuler] = value.focusRulerLines
+            p[Keys.haptic] = value.hapticEnabled
+            p[Keys.gestureCoachDismissed] = value.gestureCoachDismissed
+            p[Keys.autoScrollSpeed] = value.autoScrollSpeedDpPerSecond
+            p[Keys.autoPageMode] = value.autoPageMode.name
+            p[Keys.autoPagePaceMultiplier] = value.autoPagePaceMultiplier
+            p[Keys.autoPageDelay] = value.autoPageDelayMs
+            p[Keys.chineseMode] = value.chineseMode.name
+            p[Keys.chineseOverrides] = value.chineseOverrides
+            p[Keys.ttsRate] = value.ttsRate
+            p[Keys.ttsPitch] = value.ttsPitch
+            p[Keys.ttsVoice] = value.ttsVoiceName
+        }
+    }
+
+    private fun read(p: Preferences): ReaderSettings {
+        val value = sanitize(
+            ReaderSettings(
+                palette = enumOrDefault(p[Keys.palette], ReaderPalette.PAPER),
+                typeface = enumOrDefault(p[Keys.typeface], ReaderTypeface.SYSTEM),
+                customFontId = p[Keys.customFontId].orEmpty(),
+                fontSizeSp = p[Keys.fontSize] ?: 20f,
+                lineHeightMultiplier = p[Keys.lineHeight] ?: 1.55f,
+                letterSpacingEm = p[Keys.letterSpacing] ?: 0f,
+                paragraphSpacingEm = p[Keys.paragraphSpacing] ?: 0.45f,
+                horizontalPaddingDp = p[Keys.horizontalPadding] ?: 24f,
+                verticalPaddingDp = p[Keys.verticalPadding] ?: 18f,
+                firstLineIndentEm = p[Keys.firstLineIndent] ?: 0f,
+                textAlignment = enumOrDefault(p[Keys.textAlignment], ReaderTextAlignment.JUSTIFY),
+                fontWeight = enumOrDefault(p[Keys.fontWeight], ReaderFontWeight.NORMAL),
+                compressBlankLines = p[Keys.compressBlankLines] ?: true,
+                emphasizeHeadings = p[Keys.emphasizeHeadings] ?: true,
+                preset = enumOrDefault(p[Keys.preset], ReaderPreset.STANDARD),
+                readingMode = enumOrDefault(p[Keys.readingMode], ReaderMode.PAGED),
+                pageAnimation = enumOrDefault(p[Keys.pageAnimation], ReaderPageAnimation.SLIDE),
+                tapPagingEnabled = p[Keys.tapPaging] ?: true,
+                swipePagingEnabled = p[Keys.swipePaging] ?: true,
+                reversePagingGestures = p[Keys.reverseGestures] ?: false,
+                tapZonePreset = enumOrDefault(p[Keys.tapZonePreset], ReaderTapZonePreset.BALANCED),
+                tapZoneEdgeFraction = p[Keys.tapZoneFraction] ?: 0.25f,
+                brightnessGestureEnabled = p[Keys.brightnessGesture] ?: true,
+                pinchFontEnabled = p[Keys.pinchFont] ?: true,
+                doubleTapBookmarkEnabled = p[Keys.doubleTapBookmark] ?: false,
+                controlsAutoHideMs = p[Keys.controlsAutoHide] ?: 3500L,
+                useSystemBrightness = p[Keys.systemBrightness] ?: true,
+                readerBrightness = p[Keys.readerBrightness] ?: 0.45f,
+                orientation = enumOrDefault(p[Keys.orientation], ReaderOrientation.SYSTEM),
+                volumeKeyMode = enumOrDefault(p[Keys.volumeKeyMode], ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS),
+                reverseVolumeKeys = p[Keys.reverseVolume] ?: false,
+                wideColumns = enumOrDefault(p[Keys.wideColumns], ReaderWideColumns.AUTO),
+                showReadingStatus = p[Keys.showReadingStatus] ?: true,
+                showClock = p[Keys.showClock] ?: false,
+                showBattery = p[Keys.showBattery] ?: false,
+                focusRulerLines = p[Keys.focusRuler] ?: 0,
+                hapticEnabled = p[Keys.haptic] ?: true,
+                gestureCoachDismissed = p[Keys.gestureCoachDismissed] ?: false,
+                autoScrollEnabled = false,
+                autoScrollSpeedDpPerSecond = p[Keys.autoScrollSpeed] ?: 55f,
+                autoPageMode = enumOrDefault(p[Keys.autoPageMode], ReaderAutoPageMode.ADAPTIVE),
+                autoPagePaceMultiplier = p[Keys.autoPagePaceMultiplier] ?: 1f,
+                autoPageDelayMs = p[Keys.autoPageDelay] ?: 6500L,
+                chineseMode = enumOrDefault(p[Keys.chineseMode], ChineseDisplayMode.ORIGINAL),
+                chineseOverrides = p[Keys.chineseOverrides].orEmpty(),
+                ttsRate = p[Keys.ttsRate] ?: 1f,
+                ttsPitch = p[Keys.ttsPitch] ?: 1f,
+                ttsVoiceName = p[Keys.ttsVoice].orEmpty(),
+            ),
+        )
+        ChineseDisplayConverter.configure(value)
+        return value
+    }
+
+    private fun sanitize(v: ReaderSettings): ReaderSettings = v.copy(
+        customFontId = v.customFontId.take(128),
+        fontSizeSp = v.fontSizeSp.coerceIn(14f, 40f),
+        lineHeightMultiplier = v.lineHeightMultiplier.coerceIn(1.15f, 2.2f),
+        letterSpacingEm = v.letterSpacingEm.coerceIn(-0.02f, 0.12f),
+        paragraphSpacingEm = v.paragraphSpacingEm.coerceIn(0f, 1.5f),
+        horizontalPaddingDp = v.horizontalPaddingDp.coerceIn(8f, 56f),
+        verticalPaddingDp = v.verticalPaddingDp.coerceIn(4f, 56f),
+        firstLineIndentEm = v.firstLineIndentEm.coerceIn(0f, 3f),
+        tapZoneEdgeFraction = v.tapZoneEdgeFraction.coerceIn(0.15f, 0.40f),
+        controlsAutoHideMs = v.controlsAutoHideMs.coerceIn(1500L, 15000L),
+        readerBrightness = v.readerBrightness.coerceIn(0.03f, 1f),
+        focusRulerLines = if (v.focusRulerLines in listOf(0, 3, 5)) v.focusRulerLines else 0,
         autoScrollEnabled = false,
-        autoScrollSpeedDpPerSecond = value.autoScrollSpeedDpPerSecond.coerceIn(20f, 240f),
-        chineseOverrides = value.chineseOverrides.take(MAX_OVERRIDE_TEXT_CHARS),
-        ttsRate = value.ttsRate.coerceIn(0.6f, 1.8f),
-        ttsPitch = value.ttsPitch.coerceIn(0.7f, 1.4f),
-        ttsVoiceName = value.ttsVoiceName.take(256),
-        autoPageDelayMs = value.autoPageDelayMs.coerceIn(2500L, 15000L),
+        autoScrollSpeedDpPerSecond = v.autoScrollSpeedDpPerSecond.coerceIn(12f, 320f),
+        autoPagePaceMultiplier = v.autoPagePaceMultiplier.coerceIn(0.5f, 2.0f),
+        autoPageDelayMs = v.autoPageDelayMs.coerceIn(2000L, 120000L),
+        chineseOverrides = v.chineseOverrides.take(MAX_OVERRIDE_TEXT_CHARS),
+        ttsRate = v.ttsRate.coerceIn(0.5f, 2.0f),
+        ttsPitch = v.ttsPitch.coerceIn(0.6f, 1.6f),
+        ttsVoiceName = v.ttsVoiceName.take(256),
     )
 
-    private fun number(value: Any?, fallback: Float): Float = (value as? Number)?.toFloat() ?: fallback
+    private fun toMap(v: ReaderSettings): Map<String, Any> = linkedMapOf(
+        "palette" to v.palette.name,
+        "typeface" to v.typeface.name,
+        "customFontId" to v.customFontId,
+        "fontSizeSp" to v.fontSizeSp,
+        "lineHeightMultiplier" to v.lineHeightMultiplier,
+        "letterSpacingEm" to v.letterSpacingEm,
+        "paragraphSpacingEm" to v.paragraphSpacingEm,
+        "horizontalPaddingDp" to v.horizontalPaddingDp,
+        "verticalPaddingDp" to v.verticalPaddingDp,
+        "firstLineIndentEm" to v.firstLineIndentEm,
+        "textAlignment" to v.textAlignment.name,
+        "fontWeight" to v.fontWeight.name,
+        "compressBlankLines" to v.compressBlankLines,
+        "emphasizeHeadings" to v.emphasizeHeadings,
+        "preset" to v.preset.name,
+        "readingMode" to v.readingMode.name,
+        "pageAnimation" to v.pageAnimation.name,
+        "tapPagingEnabled" to v.tapPagingEnabled,
+        "swipePagingEnabled" to v.swipePagingEnabled,
+        "reversePagingGestures" to v.reversePagingGestures,
+        "tapZonePreset" to v.tapZonePreset.name,
+        "tapZoneEdgeFraction" to v.tapZoneEdgeFraction,
+        "brightnessGestureEnabled" to v.brightnessGestureEnabled,
+        "pinchFontEnabled" to v.pinchFontEnabled,
+        "doubleTapBookmarkEnabled" to v.doubleTapBookmarkEnabled,
+        "controlsAutoHideMs" to v.controlsAutoHideMs,
+        "useSystemBrightness" to v.useSystemBrightness,
+        "readerBrightness" to v.readerBrightness,
+        "orientation" to v.orientation.name,
+        "volumeKeyMode" to v.volumeKeyMode.name,
+        "reverseVolumeKeys" to v.reverseVolumeKeys,
+        "wideColumns" to v.wideColumns.name,
+        "showReadingStatus" to v.showReadingStatus,
+        "showClock" to v.showClock,
+        "showBattery" to v.showBattery,
+        "focusRulerLines" to v.focusRulerLines,
+        "hapticEnabled" to v.hapticEnabled,
+        "gestureCoachDismissed" to v.gestureCoachDismissed,
+        "autoScrollSpeedDpPerSecond" to v.autoScrollSpeedDpPerSecond,
+        "autoPageMode" to v.autoPageMode.name,
+        "autoPagePaceMultiplier" to v.autoPagePaceMultiplier,
+        "autoPageDelayMs" to v.autoPageDelayMs,
+        "chineseMode" to v.chineseMode.name,
+        "chineseOverrides" to v.chineseOverrides,
+        "ttsRate" to v.ttsRate,
+        "ttsPitch" to v.ttsPitch,
+        "ttsVoiceName" to v.ttsVoiceName,
+    )
 
-    private inline fun <reified T : Enum<T>> enumOrDefault(raw: String?, fallback: T): T {
-        if (raw == null) return fallback
-        return enumValues<T>().firstOrNull { it.name == raw } ?: fallback
-    }
+    private fun number(value: Any?, fallback: Float) = (value as? Number)?.toFloat() ?: fallback
+    private fun long(value: Any?, fallback: Long) = (value as? Number)?.toLong() ?: fallback
+    private fun int(value: Any?, fallback: Int) = (value as? Number)?.toInt() ?: fallback
+    private fun boolean(value: Any?, fallback: Boolean) = value as? Boolean ?: fallback
+    private fun string(value: Any?, fallback: String, max: Int) = (value as? String ?: fallback).take(max)
+
+    private inline fun <reified T : Enum<T>> enumOrDefault(raw: String?, fallback: T): T =
+        raw?.let { candidate -> enumValues<T>().firstOrNull { it.name == candidate } } ?: fallback
 
     private inline fun <reified T : Enum<T>> enumValue(value: Any?, fallback: T): T =
         runCatching { enumValueOf<T>(value as? String ?: fallback.name) }.getOrDefault(fallback)
 
-    private companion object {
-        const val MAX_OVERRIDE_TEXT_CHARS = 16 * 1024
+    private object Keys {
+        val palette = stringPreferencesKey("palette")
+        val typeface = stringPreferencesKey("typeface")
+        val customFontId = stringPreferencesKey("customFontId")
+        val fontSize = floatPreferencesKey("fontSizeSp")
+        val lineHeight = floatPreferencesKey("lineHeight")
+        val letterSpacing = floatPreferencesKey("letterSpacingEm")
+        val paragraphSpacing = floatPreferencesKey("paragraphSpacingEm")
+        val horizontalPadding = floatPreferencesKey("horizontalPadding")
+        val verticalPadding = floatPreferencesKey("verticalPadding")
+        val firstLineIndent = floatPreferencesKey("firstLineIndentEm")
+        val textAlignment = stringPreferencesKey("textAlignment")
+        val fontWeight = stringPreferencesKey("fontWeight")
+        val compressBlankLines = booleanPreferencesKey("compressBlankLines")
+        val emphasizeHeadings = booleanPreferencesKey("emphasizeHeadings")
+        val preset = stringPreferencesKey("preset")
+        val readingMode = stringPreferencesKey("readingMode")
+        val pageAnimation = stringPreferencesKey("pageAnimation")
+        val tapPaging = booleanPreferencesKey("tapPagingEnabled")
+        val swipePaging = booleanPreferencesKey("swipePagingEnabled")
+        val reverseGestures = booleanPreferencesKey("reversePagingGestures")
+        val tapZonePreset = stringPreferencesKey("tapZonePreset")
+        val tapZoneFraction = floatPreferencesKey("tapZoneEdgeFraction")
+        val brightnessGesture = booleanPreferencesKey("brightnessGestureEnabled")
+        val pinchFont = booleanPreferencesKey("pinchFontEnabled")
+        val doubleTapBookmark = booleanPreferencesKey("doubleTapBookmarkEnabled")
+        val controlsAutoHide = longPreferencesKey("controlsAutoHideMs")
+        val systemBrightness = booleanPreferencesKey("useSystemBrightness")
+        val readerBrightness = floatPreferencesKey("readerBrightness")
+        val orientation = stringPreferencesKey("orientation")
+        val volumeKeyMode = stringPreferencesKey("volumeKeyMode")
+        val reverseVolume = booleanPreferencesKey("reverseVolumeKeys")
+        val wideColumns = stringPreferencesKey("wideColumns")
+        val showReadingStatus = booleanPreferencesKey("showReadingStatus")
+        val showClock = booleanPreferencesKey("showClock")
+        val showBattery = booleanPreferencesKey("showBattery")
+        val focusRuler = intPreferencesKey("focusRulerLines")
+        val haptic = booleanPreferencesKey("hapticEnabled")
+        val gestureCoachDismissed = booleanPreferencesKey("gestureCoachDismissed")
+        val autoScrollSpeed = floatPreferencesKey("autoScrollSpeed")
+        val autoPageMode = stringPreferencesKey("autoPageMode")
+        val autoPagePaceMultiplier = floatPreferencesKey("autoPagePaceMultiplier")
+        val autoPageDelay = longPreferencesKey("autoPageDelayMs")
+        val chineseMode = stringPreferencesKey("chineseMode")
+        val chineseOverrides = stringPreferencesKey("chineseOverrides")
+        val ttsRate = floatPreferencesKey("ttsRate")
+        val ttsPitch = floatPreferencesKey("ttsPitch")
+        val ttsVoice = stringPreferencesKey("ttsVoiceName")
     }
+
+    private companion object { const val MAX_OVERRIDE_TEXT_CHARS = 16 * 1024 }
 }
