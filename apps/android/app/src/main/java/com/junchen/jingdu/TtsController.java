@@ -21,6 +21,7 @@ final class TtsController implements AutoCloseable {
     interface Listener {
         void onPosition(long offset);
         void onStopped(String reason);
+        default void onRange(long sourceStart, long sourceEnd) { }
         default void onPaused() { }
         default void onResumed() { }
     }
@@ -44,6 +45,8 @@ final class TtsController implements AutoCloseable {
     private Listener listener;
     private long offset;
     private long pendingNextOffset;
+    private long currentChunkOffset;
+    private String currentChunkText = "";
 
     TtsController(Context context) {
         audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
@@ -72,6 +75,18 @@ final class TtsController implements AutoCloseable {
         tts.setAudioAttributes(attributes);
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String utteranceId) { }
+
+            @Override public void onRangeStart(String utteranceId, int start, int end, int frame) {
+                long token = parseToken(utteranceId);
+                main.post(() -> {
+                    if (token != generation.get() || listener == null || currentChunkText.isEmpty()) return;
+                    int safeStart = Math.max(0, Math.min(start, currentChunkText.length()));
+                    int safeEnd = Math.max(safeStart, Math.min(end, currentChunkText.length()));
+                    long sourceStart = currentChunkOffset + currentChunkText.codePointCount(0, safeStart);
+                    long sourceEnd = currentChunkOffset + currentChunkText.codePointCount(0, safeEnd);
+                    listener.onRange(sourceStart, Math.max(sourceStart + 1, sourceEnd));
+                });
+            }
 
             @Override public void onDone(String utteranceId) {
                 long token = parseToken(utteranceId);
@@ -120,6 +135,8 @@ final class TtsController implements AutoCloseable {
         this.listener = listener;
         this.offset = Math.max(0, from);
         this.pendingNextOffset = this.offset;
+        this.currentChunkOffset = this.offset;
+        this.currentChunkText = "";
         this.pausedForFocus = false;
         this.resumeOnFocusGain = false;
         long token = generation.incrementAndGet();
@@ -131,6 +148,7 @@ final class TtsController implements AutoCloseable {
         resumeOnFocusGain = false;
         pausedForFocus = false;
         pendingNextOffset = offset;
+        currentChunkText = "";
         tts.stop();
         audio.abandonAudioFocusRequest(focus);
         Listener old = listener;
@@ -203,8 +221,13 @@ final class TtsController implements AutoCloseable {
                 stop("end");
                 return;
             }
+            currentChunkOffset = offset;
+            currentChunkText = chunk.text();
             pendingNextOffset = chunk.nextOffset();
-            if (listener != null) listener.onPosition(offset);
+            if (listener != null) {
+                listener.onPosition(offset);
+                listener.onRange(offset, Math.max(offset + 1, Math.min(chunk.nextOffset(), offset + currentChunkText.codePointCount(0, currentChunkText.length()))));
+            }
             tts.speak(chunk.text(), TextToSpeech.QUEUE_FLUSH, new Bundle(), Long.toString(token));
         } catch (Exception error) {
             stop(error.getMessage() == null ? "tts failure" : error.getMessage());
