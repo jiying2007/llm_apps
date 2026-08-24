@@ -70,7 +70,7 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                 )
                 Spacer(Modifier.weight(1f))
                 FilledTonalIconButton(onClick = { actions.onAddBookmark() }) {
-                    Icon(Icons.Outlined.BookmarkBorder, stringResource(R.string.add_bookmark))
+                    Icon(Icons.Outlined.BookmarkBorder, stringResource(R.string.reader_access_bookmark))
                 }
             }
 

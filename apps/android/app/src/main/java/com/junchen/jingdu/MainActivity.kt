@@ -539,7 +539,7 @@ class MainActivity : ComponentActivity() {
                     TocOverrideStore(this).apply(base, TocOverrideStore(this).load(book.id, source.length()))
                 }
             },
-            success = { report -> uiState = uiState.copy(chaptersLoaded = true, chapters = report.chapters) },
+            success = { report -> uiState = uiState.copy(chaptersLoaded = true, chapters = report.chapters.map { ChapterModel(it.offset, it.title, it.source, it.confidence) }) },
             errorTitle = getString(R.string.chapters),
         )
     }

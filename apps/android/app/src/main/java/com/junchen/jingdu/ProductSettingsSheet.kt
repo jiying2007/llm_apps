@@ -332,6 +332,7 @@ private fun readerPresetLabel(preset: ReaderPreset): String = stringResource(whe
 private fun readerPaletteLabel(palette: ReaderPalette): String = stringResource(when (palette) {
     ReaderPalette.PAPER -> R.string.paper
     ReaderPalette.LIGHT -> R.string.light
+    ReaderPalette.SEPIA -> R.string.reader_theme_sepia
     ReaderPalette.NIGHT -> R.string.night
     ReaderPalette.OLED -> R.string.reader_oled
 })

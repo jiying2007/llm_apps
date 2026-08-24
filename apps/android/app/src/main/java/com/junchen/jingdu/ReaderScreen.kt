@@ -82,6 +82,7 @@ internal fun ReaderScreen(
     state: AppUiState,
     actions: JingduActions,
     snackbar: SnackbarHostState,
+    adaptiveLayout: ReaderAdaptiveLayout = ReaderAdaptiveLayout(ReaderAdaptiveWidth.COMPACT, hasHinge = false, tabletop = false),
     canLocationBack: Boolean = false,
     canLocationForward: Boolean = false,
     onLocationBack: () -> Unit = {},
@@ -318,6 +319,7 @@ internal fun ReaderScreen(
                 PagedReaderPage(
                     text = targetText,
                     settings = settings,
+                    adaptiveLayout = adaptiveLayout,
                     onVisibleCharsChanged = actions.onVisibleCharsChanged,
                     onPrevious = ::manualPrevious,
                     onNext = ::manualNext,
@@ -437,6 +439,7 @@ private fun ReaderMoreMenu(state: AppUiState, actions: JingduActions, onDismiss:
 private fun PagedReaderPage(
     text: String,
     settings: ReaderSettings,
+    adaptiveLayout: ReaderAdaptiveLayout,
     onVisibleCharsChanged: (Long) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -457,8 +460,8 @@ private fun PagedReaderPage(
     BoxWithConstraints(gestureModifier) {
         val useTwoColumns = when (settings.wideColumns) {
             ReaderWideColumns.SINGLE -> false
-            ReaderWideColumns.DOUBLE -> maxWidth >= 600.dp
-            ReaderWideColumns.AUTO -> maxWidth >= 840.dp
+            ReaderWideColumns.DOUBLE -> adaptiveLayout.width >= ReaderAdaptiveWidth.MEDIUM && !adaptiveLayout.tabletop
+            ReaderWideColumns.AUTO -> adaptiveLayout.prefersTwoColumns
         }
         if (useTwoColumns) {
             TwoColumnPage(text, displayText, settings, style, onVisibleCharsChanged, ttsHighlight, ttsChunkSourceChars)
@@ -815,6 +818,7 @@ private fun utf16IndexForCodePoints(text: String, codePoints: Long): Int {
 private fun readerBackground(palette: ReaderPalette): Color = when (palette) {
     ReaderPalette.PAPER -> Color(0xFFF7F0DE)
     ReaderPalette.LIGHT -> Color(0xFFFFFBFF)
+    ReaderPalette.SEPIA -> Color(0xFFF3E5C8)
     ReaderPalette.NIGHT -> Color(0xFF151713)
     ReaderPalette.OLED -> Color.Black
 }

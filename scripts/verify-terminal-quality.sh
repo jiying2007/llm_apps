@@ -66,10 +66,13 @@ grep -q 'peakRssMiB' core/native/tests/core_performance_gate_test.cpp
 # Reading reliability: source-identity progress/bookmarks and proportional encoding rescue.
 grep -q 'PROGRESS_SAVE_INTERVAL_MS' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'PROGRESS_SAVE_CHAR_DELTA' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-grep -Fq '"bookmarks.${book.id}"' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-grep -q 'mapOffset(oldPosition, oldLength, newLength)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-grep -q 'mapOffset(offset, oldLength, newLength)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-grep -q 'putStringSet(bookmarkKey(updated), mappedBookmarks)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'ReaderAnnotationStore' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'annotationStore.remapBook(book.id, oldLength, newLength)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'dataStore' apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
+if grep -q 'getSharedPreferences("jingdu.reader.settings' apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt; then
+  echo 'Reader V2 settings must not retain the legacy SharedPreferences path' >&2
+  exit 1
+fi
 grep -q 'repository.updateCharCount(updated, newLength)' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'existing != null ? existing.progress : 0' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 grep -q 'book.progress >= charCount' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
