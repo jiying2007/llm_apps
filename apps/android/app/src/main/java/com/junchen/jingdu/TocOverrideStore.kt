@@ -3,8 +3,10 @@ package com.junchen.jingdu
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.roundToLong
 
 internal data class TocOverrides(
+    val sourceLength: Long = 0,
     val hiddenOffsets: Set<Long> = emptySet(),
     val custom: List<SmartChapter> = emptyList(),
 )
@@ -13,9 +15,9 @@ internal data class TocOverrides(
 internal class TocOverrideStore(context: Context) {
     private val prefs = context.getSharedPreferences("jingdu.toc.overrides.v1", Context.MODE_PRIVATE)
 
-    fun load(bookId: String): TocOverrides {
-        val raw = prefs.getString(bookId, null) ?: return TocOverrides()
-        return runCatching {
+    fun load(bookId: String, currentLength: Long = 0): TocOverrides {
+        val raw = prefs.getString(bookId, null) ?: return TocOverrides(sourceLength = currentLength.coerceAtLeast(0))
+        val loaded = runCatching {
             val root = JSONObject(raw)
             val hiddenArray = root.optJSONArray("hidden") ?: JSONArray()
             val hidden = buildSet {
@@ -30,20 +32,37 @@ internal class TocOverrideStore(context: Context) {
                     if (offset >= 0 && title.isNotEmpty()) add(SmartChapter(offset, title, "user", 100))
                 }
             }
-            TocOverrides(hidden, custom.distinctBy { it.offset })
+            TocOverrides(root.optLong("sourceLength", 0), hidden, custom.distinctBy { it.offset })
         }.getOrDefault(TocOverrides())
+
+        if (currentLength <= 1 || loaded.sourceLength <= 1 || loaded.sourceLength == currentLength) return loaded
+        val remapped = loaded.copy(
+            sourceLength = currentLength,
+            hiddenOffsets = loaded.hiddenOffsets.map { mapOffset(it, loaded.sourceLength, currentLength) }.toSet(),
+            custom = loaded.custom
+                .map { it.copy(offset = mapOffset(it.offset, loaded.sourceLength, currentLength)) }
+                .distinctBy { it.offset },
+        )
+        save(bookId, remapped)
+        return remapped
     }
 
-    fun hide(bookId: String, offset: Long) {
-        val current = load(bookId)
-        save(bookId, current.copy(hiddenOffsets = current.hiddenOffsets + offset))
+    fun hide(bookId: String, offset: Long, sourceLength: Long = 0) {
+        val current = load(bookId, sourceLength)
+        save(bookId, current.copy(
+            sourceLength = sourceLength.takeIf { it > 0 } ?: current.sourceLength,
+            hiddenOffsets = current.hiddenOffsets + offset,
+        ))
     }
 
-    fun add(bookId: String, offset: Long, title: String) {
+    fun add(bookId: String, offset: Long, title: String, sourceLength: Long = 0) {
         val value = title.trim().take(80)
         if (value.isEmpty() || offset < 0) return
-        val current = load(bookId)
-        save(bookId, current.copy(custom = (current.custom.filterNot { it.offset == offset } + SmartChapter(offset, value, "user", 100)).take(500)))
+        val current = load(bookId, sourceLength)
+        save(bookId, current.copy(
+            sourceLength = sourceLength.takeIf { it > 0 } ?: current.sourceLength,
+            custom = (current.custom.filterNot { it.offset == offset } + SmartChapter(offset, value, "user", 100)).take(500),
+        ))
     }
 
     fun reset(bookId: String) { prefs.edit().remove(bookId).apply() }
@@ -57,7 +76,7 @@ internal class TocOverrideStore(context: Context) {
     }
 
     private fun save(bookId: String, value: TocOverrides) {
-        val root = JSONObject()
+        val root = JSONObject().put("sourceLength", value.sourceLength.coerceAtLeast(0))
         val hidden = JSONArray()
         value.hiddenOffsets.sorted().take(500).forEach(hidden::put)
         root.put("hidden", hidden)
@@ -67,5 +86,12 @@ internal class TocOverrideStore(context: Context) {
         }
         root.put("custom", custom)
         prefs.edit().putString(bookId, root.toString()).apply()
+    }
+
+    private fun mapOffset(value: Long, oldLength: Long, newLength: Long): Long {
+        if (newLength <= 1) return 0
+        if (oldLength <= 1) return value.coerceIn(0, newLength - 1)
+        val fraction = value.coerceIn(0, oldLength - 1).toDouble() / (oldLength - 1).toDouble()
+        return (fraction * (newLength - 1).toDouble()).roundToLong().coerceIn(0, newLength - 1)
     }
 }
