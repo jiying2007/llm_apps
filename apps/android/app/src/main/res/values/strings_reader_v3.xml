@@ -22,7 +22,6 @@
     <string name="reader_selection_extend_next">Extend to next page</string>
     <string name="reader_lookup">Look up</string>
     <string name="reader_skim">Skim</string>
-    <string name="reader_skim_preview">Preview position</string>
     <string name="reader_skim_return">Return to reading position</string>
     <string name="reader_chapter_progress_value">Chapter %1$d%%</string>
     <string name="reader_book_progress_value">Book %1$d%%</string>
