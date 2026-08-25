@@ -111,7 +111,6 @@ class ReaderJourneyBenchmark {
             prepareBlock()
             startActivityAndWait()
             openFixture(fixtureMiB)
-            ensureReaderControls()
         },
         measureBlock = block,
     )
@@ -137,13 +136,6 @@ class ReaderJourneyBenchmark {
         val card = device.findObject(By.textContains(title)) ?: error("fixture card unavailable: $title")
         card.click()
         device.waitForIdle()
-    }
-
-    private fun androidx.benchmark.macro.MacrobenchmarkScope.ensureReaderControls() {
-        if (!device.wait(Until.hasObject(By.text("Aa")), 1_500)) {
-            device.click(device.displayWidth / 2, device.displayHeight / 2)
-        }
-        check(device.wait(Until.hasObject(By.text("Aa")), 3_000)) { "Reader V3 controls did not become visible" }
     }
 
     private fun androidx.benchmark.macro.MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
