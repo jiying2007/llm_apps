@@ -35,6 +35,7 @@ class BaselineProfileGenerator {
             device.waitForIdle()
         }
 
+        ensureTopControlsVisible()
         requireClick(By.text("Aa"), "quick reading settings control")
         device.waitForIdle()
         requireClick(By.textContains("Continuous"), "continuous reading mode")
@@ -54,6 +55,7 @@ class BaselineProfileGenerator {
         }
         device.waitForIdle()
 
+        ensureTopControlsVisible()
         requireChaptersClick()
         device.waitForIdle()
         device.pressBack()
@@ -80,6 +82,18 @@ class BaselineProfileGenerator {
         val target = device.findObject(By.textContains(title)) ?: error("Reader V3 baseline fixture unavailable")
         target.click()
         device.waitForIdle()
+    }
+
+    private fun MacrobenchmarkScope.ensureTopControlsVisible() {
+        if (device.wait(Until.hasObject(By.text("Aa")), 750)) return
+        val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
+        repeat(2) {
+            for ((x, y) in taps) {
+                device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())
+                if (device.wait(Until.hasObject(By.text("Aa")), 900)) return
+            }
+        }
+        error("Reader V3 baseline top reading controls did not become visible")
     }
 
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
