@@ -26,7 +26,7 @@ required=(
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
   apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
-  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderBaselineProfileGenerator.kt
+  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
   scripts/check-android-performance-slo.py
   scripts/run-android-macrobenchmark-ci.sh
   core/native/tests/core_performance_gate_test.cpp
@@ -48,7 +48,7 @@ proto=apps/android/readerproto/src/main/proto/reader_settings.proto
 foundations=apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
 motion=apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
 journey=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
-baseline=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderBaselineProfileGenerator.kt
+baseline=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
 fixture=apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
 
 # Typed settings; key/value V2 schema is not retained.
@@ -140,6 +140,7 @@ grep -q 'StartupTimingMetric' "$journey"
 grep -q 'FrameTimingMetric' "$journey"
 grep -q 'BaselineProfileRule' "$baseline"
 grep -q 'readerV3CriticalJourneys' "$baseline"
+! grep -q 'reader-v2' "$baseline"
 grep -q 'connectedCheck' scripts/run-android-macrobenchmark-ci.sh
 grep -q 'enabledRules=Macrobenchmark' scripts/run-android-macrobenchmark-ci.sh
 grep -q 'enabledRules=BaselineProfile' scripts/run-android-macrobenchmark-ci.sh
