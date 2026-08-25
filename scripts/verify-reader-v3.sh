@@ -172,6 +172,10 @@ for legacy in \
   scripts/verify-reader-v2.sh; do
   test ! -e "$legacy" || { echo "Reader V3 hard cut left legacy asset: $legacy" >&2; exit 1; }
 done
+if find apps/android/app/src/main/res -name 'strings_reader_v2.xml' -print -quit | grep -q .; then
+  echo 'Reader V3 hard cut left legacy reader_v2 resource container' >&2
+  exit 1
+fi
 
 if grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml; then echo 'Reader V3 forbids INTERNET' >&2; exit 1; fi
 if git grep -n -E 'readAt\([^,]+,[[:space:]]*(Long\.MAX_VALUE|[0-9]+[[:space:]]*\*[[:space:]]*1024[[:space:]]*\*[[:space:]]*1024)' -- "$engine" "$screen"; then
