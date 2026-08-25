@@ -67,8 +67,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -481,6 +483,7 @@ private fun Modifier.readerGesturesV2(
     val swipe = 52.dp.toPx(); val tapSlop = 14.dp.toPx()
     var lastCenterTapAt = 0L
     var pendingCenterTap: Job? = null
+    val gestureScope = CoroutineScope(currentCoroutineContext())
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false); onAnyTouch(); var last = down; var maxPointers = 1
         do { val event = awaitPointerEvent(PointerEventPass.Final); maxPointers = maxOf(maxPointers, event.changes.size); event.changes.firstOrNull { it.id == down.id }?.let { last = it } } while (last.pressed)
@@ -512,7 +515,7 @@ private fun Modifier.readerGesturesV2(
                         } else {
                             lastCenterTapAt = tapAt
                             pendingCenterTap?.cancel()
-                            pendingCenterTap = launch { delay(280L); onToggleControls() }
+                            pendingCenterTap = gestureScope.launch { delay(280L); onToggleControls() }
                         }
                     }
                 }
