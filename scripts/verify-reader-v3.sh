@@ -55,6 +55,7 @@ fixture=apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFi
 benchmark_manifest=apps/android/app/src/benchmark/AndroidManifest.xml
 macrobenchmark_gradle=apps/android/macrobenchmark/build.gradle
 benchmark_runner=scripts/run-android-macrobenchmark-ci.sh
+smart_toc=apps/android/app/src/main/java/com/junchen/jingdu/SmartToc.kt
 
 # Typed settings; key/value V2 schema is not retained.
 grep -q 'DataStore<ReaderSettingsProto>' "$prefs"
@@ -77,7 +78,10 @@ grep -q 'SourceDisplayMap.compose' "$pipeline"
 grep -q 'typographyFingerprint = spec.fingerprint' "$engine"
 grep -q 'androidLayoutText' "$engine"
 grep -q 'BREAK_STRATEGY_SIMPLE' "$engine"
-grep -q 'WINDOW_CHARS = 3072' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+grep -q 'WINDOW_CHARS = 1536' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+grep -q 'CONTINUOUS_WINDOW_CHARS = 6144L' "$engine"
+grep -q 'MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC = 20' "$smart_toc"
+grep -q 'if (merged.size < MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC)' "$smart_toc"
 grep -q 'PARAGRAPH_SPACER' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt
 
 # Room is the retained annotation/stat persistence backend.
