@@ -11,6 +11,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "Reader V2 asset missing: $path" >&2; exit 1; }; done
 
@@ -21,6 +22,7 @@ prefs=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
 main=apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 screen=apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
 app=apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
+advanced=apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
 service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java
 controller=apps/android/app/src/main/java/com/junchen/jingdu/TtsController.java
 
@@ -71,6 +73,20 @@ grep -q 'HapticFeedbackType' "$screen"
 grep -q 'FLAG_KEEP_SCREEN_ON' "$screen"
 grep -q 'AutoScrollLiveControl' "$screen"
 
+# Every retained advanced setting must remain user-configurable after the prelaunch hard cut.
+grep -q 'ReaderPageAnimation.entries' "$advanced"
+grep -q 'ReaderFontWeight.entries' "$advanced"
+grep -q 'firstLineIndentEm' "$advanced"
+grep -q 'ReaderTextAlignment.entries' "$advanced"
+grep -q 'tapZoneEdgeFraction' "$advanced"
+grep -q 'controlsAutoHideMs' "$advanced"
+grep -q 'ReaderVolumeKeyMode.entries' "$advanced"
+grep -q 'focusRulerLines' "$advanced"
+grep -q 'v2OrientationLabel' "$advanced"
+grep -q 'v2ColumnsLabel' "$advanced"
+grep -q 'v2ChineseModeLabel' "$advanced"
+! grep -qE '\.name\.lowercase\(\)|mode\.name\.replace' "$advanced"
+
 grep -q 'ReaderAnnotationKind.HIGHLIGHT' "$screen"
 grep -q 'ReaderAnnotationKind.NOTE' "$screen"
 grep -q 'ACTION_SEND' "$screen"
@@ -86,4 +102,4 @@ if git grep -n -E 'readAt\([^,]+,[[:space:]]*(Long\.MAX_VALUE|[0-9]+[[:space:]]*
   exit 1
 fi
 
-echo 'Reader V2 prelaunch contract OK: hard-cut storage/motion/TTS/viewport/adaptive/annotation/accessibility invariants aligned'
+echo 'Reader V2 prelaunch contract OK: hard-cut storage/motion/TTS/viewport/adaptive/annotation/accessibility/full-settings invariants aligned'
