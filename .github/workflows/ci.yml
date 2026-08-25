@@ -58,7 +58,7 @@ jobs:
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderFontStore.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewModel.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt \
@@ -78,6 +78,8 @@ jobs:
           done
           test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
           test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
+          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt
+          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
           test ! -f apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java
           test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
           ! grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml
@@ -88,6 +90,7 @@ jobs:
           grep -q 'ReaderScreenV3' apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
           grep -q 'rememberSelectionState' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
           grep -q 'ReaderSkimController' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
+          grep -q 'ReaderGestureAction' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
           grep -q 'MediaSessionService' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
           grep -q 'SimpleBasePlayer' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
           ! grep -q 'android.media.session.MediaSession' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
