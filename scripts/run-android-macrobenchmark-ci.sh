@@ -43,6 +43,14 @@ yes | "$SDKMANAGER" --licenses >/dev/null || true
 "$SDKMANAGER" "platform-tools" "emulator" "$IMAGE"
 require_executable "$ADB" adb
 require_executable "$EMULATOR" emulator
+
+# The current Android emulator binary links libpulse even when launched with -no-audio. The minimal
+# Ubuntu 24.04 hosted image can omit that runtime library, so provision only the evidenced host dep.
+if ! dpkg-query -W libpulse0 >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libpulse0
+fi
+
 "$ADB" version
 "$EMULATOR" -version
 
