@@ -131,6 +131,31 @@ jobs:
           ./scripts/verify-terminal.sh
           bash ./scripts/verify-terminal-quality.sh
 
+  reader-v2-finalize:
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]' && github.head_ref == 'feat/reader-v2-prelaunch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reader-v2-prelaunch
+      - name: Apply final Reader V2 convergence patch
+        run: |
+          set -euo pipefail
+          python3 scripts/patch-reader-v2-final.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderHeadingClassifier.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt \
+            apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt \
+            scripts/verify-android-i18n.py \
+            scripts/verify-play-store.sh
+          git commit -m 'fix(reader): close V2 UX and quality gaps'
+          git push origin HEAD:feat/reader-v2-prelaunch
+
   publish-source-release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [native-core, android, harmony-contract, play-store-contract, terminal-contract]
