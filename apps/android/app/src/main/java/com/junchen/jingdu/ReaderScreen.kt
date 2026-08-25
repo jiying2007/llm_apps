@@ -45,6 +45,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -67,14 +68,15 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -313,7 +315,12 @@ private fun PagedReaderPage(
         val snapshot = withContext(Dispatchers.Default) { ReaderPageLayoutCache.measure(sourceText, displayText, widthPx, heightPx, columns, settings, density) }
         if (snapshot.sourceCodePoints >= ReaderController.MIN_PAGE_CHARS) onVisibleCharsChanged(snapshot.sourceCodePoints)
     }
-    val semantics = Modifier.readerAccessibilityActions(onPrevious, onNext, onToggleControls, onBookmark)
+    val semantics = Modifier.readerAccessibilityActions(
+        onPrevious, onNext, onToggleControls, onBookmark,
+        stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous),
+        stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls),
+        stringResource(R.string.reader_access_bookmark),
+    )
     val gestures = if (touchExploration) Modifier else Modifier.readerGesturesV2(settings, widthPx, heightPx, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark,
         onLongPress = { point ->
             val layout = layoutResult ?: return@readerGesturesV2
@@ -434,7 +441,12 @@ private fun ContinuousReaderPage(
     }
     val display = window?.displayText.orEmpty(); val source = window?.sourceText.orEmpty(); val start = window?.start ?: state.position
     val style = readerTextStyle(settings, textColor, fontFamily)
-    val semantics = Modifier.readerAccessibilityActions(onPrevious, onNext, onToggleControls, onBookmark)
+    val semantics = Modifier.readerAccessibilityActions(
+        onPrevious, onNext, onToggleControls, onBookmark,
+        stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous),
+        stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls),
+        stringResource(R.string.reader_access_bookmark),
+    )
     val gestures = if (touchExploration) Modifier else Modifier.readerGesturesV2(settings, widthPx, viewportHeight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark,
         onLongPress = { point ->
             val layout = layoutResult ?: return@readerGesturesV2; val w = window ?: return@readerGesturesV2
@@ -467,6 +479,8 @@ private fun Modifier.readerGesturesV2(
     onAnyTouch: () -> Unit = {},
 ): Modifier = pointerInput(settings, widthPx, heightPx) {
     val swipe = 52.dp.toPx(); val tapSlop = 14.dp.toPx()
+    var lastCenterTapAt = 0L
+    var pendingCenterTap: Job? = null
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false); onAnyTouch(); var last = down; var maxPointers = 1
         do { val event = awaitPointerEvent(PointerEventPass.Final); maxPointers = maxOf(maxPointers, event.changes.size); event.changes.firstOrNull { it.id == down.id }?.let { last = it } } while (last.pressed)
@@ -488,17 +502,33 @@ private fun Modifier.readerGesturesV2(
             when {
                 down.position.x < edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onNext() else onPrevious()
                 down.position.x > widthPx - edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onPrevious() else onNext()
-                else -> if (settings.doubleTapBookmarkEnabled && duration < 180) onToggleControls() else onToggleControls()
+                else -> {
+                    if (!settings.doubleTapBookmarkEnabled) {
+                        onToggleControls()
+                    } else {
+                        val tapAt = last.uptimeMillis
+                        if (lastCenterTapAt > 0L && tapAt - lastCenterTapAt in 40L..320L) {
+                            pendingCenterTap?.cancel(); pendingCenterTap = null; lastCenterTapAt = 0L; onBookmark()
+                        } else {
+                            lastCenterTapAt = tapAt
+                            pendingCenterTap?.cancel()
+                            pendingCenterTap = launch { delay(280L); onToggleControls() }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-private fun Modifier.readerAccessibilityActions(previous: () -> Unit, next: () -> Unit, controls: () -> Unit, bookmark: () -> Unit): Modifier = semantics {
-    contentDescription = "Reader surface"
+private fun Modifier.readerAccessibilityActions(
+    previous: () -> Unit, next: () -> Unit, controls: () -> Unit, bookmark: () -> Unit,
+    surfaceLabel: String, previousLabel: String, nextLabel: String, controlsLabel: String, bookmarkLabel: String,
+): Modifier = semantics {
+    contentDescription = surfaceLabel
     customActions = listOf(
-        CustomAccessibilityAction("Previous page") { previous(); true }, CustomAccessibilityAction("Next page") { next(); true },
-        CustomAccessibilityAction("Show or hide reading controls") { controls(); true }, CustomAccessibilityAction("Add bookmark") { bookmark(); true },
+        CustomAccessibilityAction(previousLabel) { previous(); true }, CustomAccessibilityAction(nextLabel) { next(); true },
+        CustomAccessibilityAction(controlsLabel) { controls(); true }, CustomAccessibilityAction(bookmarkLabel) { bookmark(); true },
     )
 }
 
@@ -509,10 +539,11 @@ private fun ReaderBottomBar(
     onOpenQuick: () -> Unit, onTts: () -> Unit, onAutoPage: () -> Unit,
 ) {
     var value by remember(fraction) { mutableFloatStateOf(fraction) }
+    val progressDescription = stringResource(R.string.reading_progress)
     Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
             Text(chapter ?: "", Modifier.align(Alignment.CenterHorizontally), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
-            Slider(value, { value = it }, onValueChangeFinished = { onSeek(value) }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Reading progress" })
+            Slider(value, { value = it }, onValueChangeFinished = { onSeek(value) }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressDescription })
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
                 TextButton(onOpenQuick) { Text("Aa") }
@@ -540,7 +571,8 @@ private fun AutoScrollLiveControl(settings: ReaderSettings, actions: JingduActio
 private fun ReaderReadingStatus(state: AppUiState, progressPercent: Int, chapter: String?, color: Color, background: Color, modifier: Modifier = Modifier) {
     val context = LocalContext.current; var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) { while (true) { now = Date(); delay(60_000) } }
-    val clock = if (state.settings.showClock) SimpleDateFormat("HH:mm", Locale.getDefault()).format(now) else null
+    val locale = LocalConfiguration.current.locales[0]
+    val clock = if (state.settings.showClock) SimpleDateFormat("HH:mm", locale).format(now) else null
     val battery = if (state.settings.showBattery) (context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 }?.let { "$it%" } else null
     val pieces = listOfNotNull(chapter?.take(24), "$progressPercent%", clock, battery)
     Surface(modifier.navigationBarsPadding().padding(bottom = 6.dp), color = background.copy(alpha = 0.80f), shape = MaterialTheme.shapes.small) {
@@ -553,7 +585,17 @@ private fun ReaderSelectionBar(selection: ReaderSelection, onHighlight: (ReaderH
     Surface(modifier.padding(16.dp), shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, shadowElevation = 8.dp) {
         Column(Modifier.widthIn(max = 420.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(selection.excerpt, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { ReaderHighlightStyle.entries.forEach { style -> TextButton({ onHighlight(style) }) { Text(style.name.lowercase().replaceFirstChar(Char::uppercase)) } } }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ReaderHighlightStyle.entries.forEach { style ->
+                    val label = stringResource(when (style) {
+                        ReaderHighlightStyle.YELLOW -> R.string.reader_highlight_yellow
+                        ReaderHighlightStyle.GREEN -> R.string.reader_highlight_green
+                        ReaderHighlightStyle.BLUE -> R.string.reader_highlight_blue
+                        ReaderHighlightStyle.PINK -> R.string.reader_highlight_pink
+                    })
+                    TextButton({ onHighlight(style) }) { Text(label) }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onNote) { Text(stringResource(R.string.reader_note)) }; TextButton(onCopy) { Text(stringResource(R.string.reader_copy)) }
                 TextButton(onShare) { Text(stringResource(R.string.reader_share)) }; TextButton(onDismiss) { Text(stringResource(R.string.cancel)) }
@@ -588,7 +630,7 @@ private fun readerAnnotatedText(sourceStart: Long, sourceText: String, displayTe
         var cursor = 0
         displayText.lineSequence().forEach { line ->
             val end = (cursor + line.length).coerceAtMost(displayText.length); val trimmed = line.trim()
-            if (trimmed.length in 2..48 && (trimmed.startsWith("第") || trimmed.startsWith("Chapter", true))) addStyle(SpanStyle(fontWeight = FontWeight.SemiBold), cursor, end)
+            if (ReaderHeadingClassifier.isHeading(trimmed)) addStyle(SpanStyle(fontWeight = FontWeight.SemiBold), cursor, end)
             cursor = (end + 1).coerceAtMost(displayText.length)
         }
     }
