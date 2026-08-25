@@ -34,6 +34,7 @@ required=(
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
+  scripts/check-android-performance-slo.py scripts/run-android-macrobenchmark-ci.sh
   scripts/train-smartclean-model.py scripts/verify-smartclean-model.py scripts/verify-reader-v3.sh
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "terminal-quality asset missing: $path" >&2; exit 1; }; done
@@ -46,6 +47,7 @@ grep -q 'Precision is deliberately more important than recall' docs/COMPETITIVE_
 grep -q 'JINGDU_PERF_FIXTURE_MIB' core/native/tests/core_performance_gate_test.cpp
 grep -q '1000' core/native/tests/core_performance_gate_test.cpp
 grep -q 'peakRssMiB' core/native/tests/core_performance_gate_test.cpp
+grep -q 'JINGDU_PERF_FIXTURE_MIB=960' core/native/CMakeLists.txt
 
 grep -q 'SAMPLE_WINDOWS = 8' apps/android/app/src/main/java/com/junchen/jingdu/TxtDoctor.kt
 grep -q 'MAX_PREVIEW_BYTES = 512 \* 1024' apps/android/app/src/main/java/com/junchen/jingdu/ProgressiveImport.kt
@@ -63,8 +65,11 @@ grep -q 'repeat(100_000)' apps/android/app/src/test/java/com/junchen/jingdu/Read
 grep -q 'FrameTimingMetric' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
 grep -q 'pageTurn' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
 grep -q 'continuousScroll' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
+grep -q 'open100MiBTxt' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
 grep -q 'Benchmark Novel' apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
 grep -q 'device.executeShellCommand' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
+grep -q 'jingdu-reader-v3' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
+! grep -R -q 'Reader V2\|reader-v2' apps/android/app/src/benchmark apps/android/macrobenchmark
 
 grep -q 'MediaSessionService' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 grep -q 'SimpleBasePlayer' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
@@ -82,7 +87,7 @@ done
 
 test ! -f .github/workflows/source-release.yml
 python3 -m py_compile scripts/publish-source-release.py
-grep -Fq 'needs: [native-core, android, harmony-contract, play-store-contract, terminal-contract]' .github/workflows/ci.yml
+grep -Fq 'needs: [native-core, android, android-performance, harmony-contract, play-store-contract, terminal-contract]' .github/workflows/ci.yml
 grep -q 'if existing is not None and release_status != 404:' scripts/publish-source-release.py
 
 echo 'Terminal long-form / moat / Reader V3 quality contract OK'
