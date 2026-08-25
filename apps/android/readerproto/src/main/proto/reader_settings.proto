@@ -80,6 +80,8 @@ message ReaderSettingsProto {
   bool dictionary_process_text_enabled = 52;
   repeated ReaderThemeProto named_themes = 53;
   string active_theme_id = 54;
+  ReaderGestureActionProto center_tap_action = 55;
+  ReaderGestureActionProto double_tap_action = 56;
 }
 
 enum ReaderPaletteProto {
@@ -164,4 +166,12 @@ enum ReaderTapZonePresetProto {
 enum ReaderAutoPageModeProto {
   READER_AUTO_PAGE_ADAPTIVE = 0;
   READER_AUTO_PAGE_FIXED = 1;
+}
+
+enum ReaderGestureActionProto {
+  READER_GESTURE_CONTROLS = 0;
+  READER_GESTURE_BOOKMARK = 1;
+  READER_GESTURE_NEXT = 2;
+  READER_GESTURE_PREVIOUS = 3;
+  READER_GESTURE_NONE = 4;
 }
