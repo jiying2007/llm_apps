@@ -1,5 +1,6 @@
 package com.junchen.jingdu.macrobenchmark
 
+import android.view.KeyEvent
 import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
@@ -14,6 +15,7 @@ import androidx.test.uiautomator.Until
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class ReaderJourneyBenchmark {
@@ -31,13 +33,7 @@ class ReaderJourneyBenchmark {
         prepareBlock = { setReaderMode("paged") },
     ) {
         repeat(6) {
-            check(device.swipe(
-                (device.displayWidth * 0.78).toInt(),
-                (device.displayHeight * 0.52).toInt(),
-                (device.displayWidth * 0.22).toInt(),
-                (device.displayHeight * 0.52).toInt(),
-                24,
-            )) { "Reader V3 page-turn swipe was not injected" }
+            check(device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)) { "Reader V3 volume-key page turn was not injected" }
             device.waitForIdle()
         }
     }
@@ -65,7 +61,7 @@ class ReaderJourneyBenchmark {
         prepareBlock = { setReaderMode("paged") },
     ) {
         repeat(2) {
-            requireClick(By.descContains("Chapter"), "chapters control")
+            requireChaptersClick()
             device.waitForIdle()
             device.pressBack()
             device.waitForIdle()
@@ -142,6 +138,25 @@ class ReaderJourneyBenchmark {
         check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 $label missing" }
         val target = device.findObject(selector) ?: error("Reader V3 $label unavailable")
         target.click()
+    }
+
+    private fun androidx.benchmark.macro.MacrobenchmarkScope.requireChaptersClick() {
+        device.findObject(By.desc("Chapters"))?.let { target -> target.click(); return }
+        device.findObject(By.descContains("Chapter"))?.let { target -> target.click(); return }
+
+        val aa = device.findObjects(By.text("Aa")).minByOrNull { it.visibleBounds.centerY() }
+            ?: error("Reader V3 top reading controls missing")
+        val anchor = aa.visibleBounds
+        val candidate = device.findObjects(By.clickable(true))
+            .asSequence()
+            .filter { node ->
+                val bounds = node.visibleBounds
+                bounds.centerX() > anchor.centerX() &&
+                    abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
+            }
+            .minByOrNull { node -> node.visibleBounds.centerX() - anchor.centerX() }
+            ?: error("Reader V3 chapters control missing beside Aa")
+        candidate.click()
     }
 
     private fun frameMetrics(): List<Metric> = listOf(FrameTimingMetric())

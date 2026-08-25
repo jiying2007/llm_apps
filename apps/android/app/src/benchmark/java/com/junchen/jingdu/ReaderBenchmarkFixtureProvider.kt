@@ -43,6 +43,9 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                         autoScrollEnabled = false,
                         controlsAutoHideMs = 60_000L,
                         gestureCoachDismissed = true,
+                        volumeKeyMode = ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS,
+                        reverseVolumeKeys = false,
+                        hapticEnabled = false,
                     ),
                 )
                 Bundle().apply { putString("mode", mode.name) }
