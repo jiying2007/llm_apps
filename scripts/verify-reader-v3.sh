@@ -135,7 +135,8 @@ grep -q 'ReaderMotionState.AUTO_PAGE' "$motion"
 grep -q 'ReaderMotionState.TTS' "$motion"
 
 # Real Android performance contract: benchmark-only fixture/profileability, 10/100MiB journeys,
-# hosted execution, machine-readable P95/P99 SLO and a real Baseline Profile critical-user journey.
+# hosted execution, explicit target installation, machine-readable P95/P99 SLO and a real
+# Baseline Profile critical-user journey.
 grep -q '<profileable android:shell="true"' "$benchmark_manifest"
 grep -q 'Benchmark-build only' "$fixture"
 grep -q 'Reader V3' "$fixture"
@@ -147,6 +148,8 @@ grep -q 'FrameTimingMetric' "$journey"
 grep -q 'BaselineProfileRule' "$baseline"
 grep -q 'readerV3CriticalJourneys' "$baseline"
 ! grep -q 'reader-v2' "$baseline"
+grep -q ':app:assembleBenchmark' scripts/run-android-macrobenchmark-ci.sh
+grep -q 'pm path.*TARGET_PACKAGE' scripts/run-android-macrobenchmark-ci.sh
 grep -q 'connectedCheck' scripts/run-android-macrobenchmark-ci.sh
 grep -q 'enabledRules=Macrobenchmark' scripts/run-android-macrobenchmark-ci.sh
 grep -q 'enabledRules=BaselineProfile' scripts/run-android-macrobenchmark-ci.sh
