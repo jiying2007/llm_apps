@@ -42,6 +42,19 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
                 }
             }
             item {
+                V2Section(stringResource(R.string.reader_page_animation)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(ReaderPageAnimation.entries) { animation ->
+                            FilterChip(
+                                selected = s.pageAnimation == animation,
+                                onClick = { actions.onSettingsChanged(s.copy(pageAnimation = animation)) },
+                                label = { Text(stringResource(if (animation == ReaderPageAnimation.NONE) R.string.reader_animation_none else R.string.reader_animation_slide)) },
+                            )
+                        }
+                    }
+                }
+            }
+            item {
                 V2Section(stringResource(R.string.page_tone)) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(ReaderPalette.entries) { palette -> FilterChip(s.palette == palette, { visual(s.copy(palette = palette)) }, label = { Text(v2PaletteLabel(palette)) }) }
@@ -53,6 +66,9 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(ReaderTypeface.entries) { typeface -> FilterChip(s.typeface == typeface, { visual(s.copy(typeface = typeface)) }, label = { Text(v2TypefaceLabel(typeface)) }) }
                     }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(ReaderFontWeight.entries) { weight -> FilterChip(s.fontWeight == weight, { visual(s.copy(fontWeight = weight)) }, label = { Text(v2WeightLabel(weight)) }) }
+                    }
                     OutlinedButton(actions.onImportFont, Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FontDownload, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.reader_import_font)) }
                 }
             }
@@ -62,6 +78,16 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
             item { V2Slider(stringResource(R.string.reader_paragraph_spacing), s.paragraphSpacingEm, 0f..1.5f, "%.2fem".format(s.paragraphSpacingEm)) { visual(s.copy(paragraphSpacingEm = it)) } }
             item { V2Slider(stringResource(R.string.side_margins), s.horizontalPaddingDp, 8f..56f, "${s.horizontalPaddingDp.roundToInt()}dp") { visual(s.copy(horizontalPaddingDp = it)) } }
             item { V2Slider(stringResource(R.string.reader_vertical_margins), s.verticalPaddingDp, 4f..56f, "${s.verticalPaddingDp.roundToInt()}dp") { visual(s.copy(verticalPaddingDp = it)) } }
+            item { V2Slider(stringResource(R.string.reader_first_line_indent), s.firstLineIndentEm, 0f..3f, stringResource(R.string.reader_indent_value, s.firstLineIndentEm)) { visual(s.copy(firstLineIndentEm = it)) } }
+            item {
+                V2Section(stringResource(R.string.reader_text_alignment)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(ReaderTextAlignment.entries) { alignment ->
+                            FilterChip(s.textAlignment == alignment, { visual(s.copy(textAlignment = alignment)) }, label = { Text(stringResource(if (alignment == ReaderTextAlignment.START) R.string.reader_align_start else R.string.reader_align_justify)) })
+                        }
+                    }
+                }
+            }
             item { V2Switch(stringResource(R.string.reader_compress_blank_lines), s.compressBlankLines) { visual(s.copy(compressBlankLines = it)) } }
             item { V2Switch(stringResource(R.string.reader_emphasize_headings), s.emphasizeHeadings) { visual(s.copy(emphasizeHeadings = it)) } }
 
@@ -73,6 +99,12 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
                             FilterChip(s.tapZonePreset == preset, { actions.onSettingsChanged(s.copy(tapZonePreset = preset)) }, label = { Text(v2TapZoneLabel(preset)) })
                         }
                     }
+                    V2Slider(
+                        stringResource(R.string.reader_tap_zone),
+                        s.tapZoneEdgeFraction,
+                        0.20f..0.35f,
+                        stringResource(R.string.reader_tap_zone_value, (s.tapZoneEdgeFraction * 100).roundToInt()),
+                    ) { actions.onSettingsChanged(s.copy(tapZonePreset = ReaderTapZonePreset.CUSTOM, tapZoneEdgeFraction = it)) }
                     V2Switch(stringResource(R.string.reader_tap_paging), s.tapPagingEnabled) { actions.onSettingsChanged(s.copy(tapPagingEnabled = it)) }
                     V2Switch(stringResource(R.string.reader_swipe_paging), s.swipePagingEnabled) { actions.onSettingsChanged(s.copy(swipePagingEnabled = it)) }
                     V2Switch(stringResource(R.string.reader_reverse_gestures), s.reversePagingGestures) { actions.onSettingsChanged(s.copy(reversePagingGestures = it)) }
@@ -80,6 +112,22 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
                     V2Switch(stringResource(R.string.reader_pinch_font), s.pinchFontEnabled) { actions.onSettingsChanged(s.copy(pinchFontEnabled = it)) }
                     V2Switch(stringResource(R.string.reader_double_tap_bookmark), s.doubleTapBookmarkEnabled) { actions.onSettingsChanged(s.copy(doubleTapBookmarkEnabled = it)) }
                     V2Switch(stringResource(R.string.reader_haptics), s.hapticEnabled) { actions.onSettingsChanged(s.copy(hapticEnabled = it)) }
+                    V2Slider(
+                        stringResource(R.string.reader_controls_auto_hide),
+                        s.controlsAutoHideMs.toFloat(),
+                        2_000f..10_000f,
+                        stringResource(R.string.seconds_value, s.controlsAutoHideMs / 1000f),
+                    ) { actions.onSettingsChanged(s.copy(controlsAutoHideMs = it.toLong())) }
+                }
+            }
+            item {
+                V2Section(stringResource(R.string.reader_volume_keys)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(ReaderVolumeKeyMode.entries) { mode ->
+                            FilterChip(s.volumeKeyMode == mode, { actions.onSettingsChanged(s.copy(volumeKeyMode = mode)) }, label = { Text(v2VolumeLabel(mode)) })
+                        }
+                    }
+                    V2Switch(stringResource(R.string.reader_reverse_volume), s.reverseVolumeKeys) { actions.onSettingsChanged(s.copy(reverseVolumeKeys = it)) }
                 }
             }
 
@@ -96,6 +144,15 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
                     }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(ReaderWideColumns.entries) { value -> FilterChip(s.wideColumns == value, { actions.onSettingsChanged(s.copy(wideColumns = value)) }, label = { Text(v2ColumnsLabel(value)) }) }
+                    }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(listOf(0, 3, 5)) { lines ->
+                            FilterChip(
+                                selected = s.focusRulerLines == lines,
+                                onClick = { actions.onSettingsChanged(s.copy(focusRulerLines = lines)) },
+                                label = { Text(stringResource(when (lines) { 3 -> R.string.reader_focus_three; 5 -> R.string.reader_focus_five; else -> R.string.reader_focus_off })) },
+                            )
+                        }
                     }
                 }
             }
@@ -186,6 +243,16 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
     ReaderWideColumns.AUTO -> R.string.reader_columns_auto
     ReaderWideColumns.SINGLE -> R.string.reader_columns_single
     ReaderWideColumns.DOUBLE -> R.string.reader_columns_double
+})
+@Composable private fun v2VolumeLabel(value: ReaderVolumeKeyMode): String = stringResource(when (value) {
+    ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS -> R.string.reader_volume_except_tts
+    ReaderVolumeKeyMode.ALWAYS_PAGE -> R.string.reader_volume_always
+    ReaderVolumeKeyMode.SYSTEM_VOLUME -> R.string.reader_volume_system
+})
+@Composable private fun v2WeightLabel(value: ReaderFontWeight): String = stringResource(when (value) {
+    ReaderFontWeight.NORMAL -> R.string.reader_weight_normal
+    ReaderFontWeight.MEDIUM -> R.string.reader_weight_medium
+    ReaderFontWeight.SEMIBOLD -> R.string.reader_weight_semibold
 })
 @Composable private fun v2ChineseModeLabel(value: ChineseDisplayMode): String = stringResource(when (value) {
     ChineseDisplayMode.ORIGINAL -> R.string.chinese_original
