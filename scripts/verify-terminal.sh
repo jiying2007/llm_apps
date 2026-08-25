@@ -24,7 +24,7 @@ required=(
   apps/android/readerproto/src/main/proto/reader_settings.proto
   apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
   apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderMotionController.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSession.kt
@@ -32,16 +32,28 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "required terminal asset missing: $path" >&2; exit 1; }; done
 
-test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
-test ! -f apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt
-test ! -f .github/workflows/reader-v2-bootstrap.yml
-test ! -f scripts/bootstrap-reader-v2-main.py
+for legacy in \
+  apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java \
+  apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt \
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt \
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt \
+  apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java \
+  scripts/verify-reader-v2.sh \
+  .github/workflows/reader-v2-bootstrap.yml \
+  scripts/bootstrap-reader-v2-main.py; do
+  test ! -e "$legacy" || { echo "superseded Reader asset remains: $legacy" >&2; exit 1; }
+done
 
 python3 ./scripts/verify-android-i18n.py
 python3 ./scripts/verify-release-version.py
@@ -52,6 +64,7 @@ grep -q 'jd_noise_candidates' core/native/include/jingdu/core_api.h
 grep -q 'load_index_cache' core/native/src/core_api_cached.cpp
 
 grep -q 'ReaderSession' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+grep -q 'ReaderViewModel by viewModels' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'ReaderAnnotationStore' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'repository.redecode' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'NativeIndexCache.pruneOrphans' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
@@ -61,6 +74,7 @@ grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
 grep -q 'compileSdk = 37' apps/android/app/build.gradle
 grep -q 'generateLocaleConfig = true' apps/android/app/build.gradle
 grep -q 'project(":readerproto")' apps/android/app/build.gradle
+grep -q 'media3-session:1.11.0' apps/android/app/build.gradle
 
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'DocumentViewPicker' apps/harmony/entry/src/main/ets/pages/Index.ets
