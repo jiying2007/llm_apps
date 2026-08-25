@@ -1,5 +1,7 @@
 package com.junchen.jingdu
 
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
 import java.text.BreakIterator
 import java.util.Locale
 
@@ -13,6 +15,49 @@ data class ReaderSelectionRange(
 
 /** Pure bounded selection logic. UI handles only provide display offsets. */
 internal object ReaderSelectionController {
+    private const val SOURCE_TAG = "jingdu.source.range"
+
+    fun annotatedForSelection(
+        sourceBase: Long,
+        displayText: AnnotatedString,
+        map: SourceDisplayMap,
+    ): AnnotatedString = buildAnnotatedString {
+        append(displayText)
+        if (displayText.isEmpty()) return@buildAnnotatedString
+        var utfStart = 0
+        var displayCp = 0L
+        while (utfStart < displayText.length) {
+            val cp = Character.codePointAt(displayText.text, utfStart)
+            val utfEnd = utfStart + Character.charCount(cp)
+            val sourceStart = sourceBase + map.sourceForDisplay(displayCp)
+            val sourceEnd = sourceBase + map.sourceForDisplay(displayCp + 1).coerceAtLeast(map.sourceForDisplay(displayCp) + 1)
+            addStringAnnotation(SOURCE_TAG, "$sourceStart:$sourceEnd", utfStart, utfEnd)
+            utfStart = utfEnd
+            displayCp++
+        }
+    }
+
+    fun fromSelectedTexts(selectedTexts: List<AnnotatedString>): ReaderSelectionRange? {
+        if (selectedTexts.isEmpty()) return null
+        var start = Long.MAX_VALUE
+        var end = -1L
+        val excerpt = StringBuilder()
+        selectedTexts.forEach { selected ->
+            if (selected.isEmpty()) return@forEach
+            if (excerpt.isNotEmpty()) excerpt.append('\n')
+            excerpt.append(selected.text.replace(ReaderTypographySpec.PARAGRAPH_SPACER.toString(), ""))
+            selected.getStringAnnotations(SOURCE_TAG, 0, selected.length).forEach { annotation ->
+                val parts = annotation.item.split(':', limit = 2)
+                val a = parts.getOrNull(0)?.toLongOrNull() ?: return@forEach
+                val b = parts.getOrNull(1)?.toLongOrNull() ?: return@forEach
+                start = minOf(start, a)
+                end = maxOf(end, b)
+            }
+        }
+        if (start == Long.MAX_VALUE || end <= start) return null
+        return ReaderSelectionRange(start, end, excerpt.toString().trim().take(MAX_EXCERPT))
+    }
+
     fun wordAt(
         sourceBase: Long,
         displayText: String,
