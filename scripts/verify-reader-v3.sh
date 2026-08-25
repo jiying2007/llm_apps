@@ -23,6 +23,13 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
   apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
+  apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
+  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
+  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderBaselineProfileGenerator.kt
+  scripts/check-android-performance-slo.py
+  scripts/run-android-macrobenchmark-ci.sh
+  core/native/tests/core_performance_gate_test.cpp
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "Reader V3 asset missing: $path" >&2; exit 1; }; done
 
@@ -38,6 +45,11 @@ service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 player=apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
 navigator=apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
 proto=apps/android/readerproto/src/main/proto/reader_settings.proto
+foundations=apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
+motion=apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
+journey=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
+baseline=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderBaselineProfileGenerator.kt
+fixture=apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
 
 # Typed settings; key/value V2 schema is not retained.
 grep -q 'DataStore<ReaderSettingsProto>' "$prefs"
@@ -107,9 +119,40 @@ grep -q 'nextParagraph' "$navigator"
 grep -q 'androidx.media3.session.MediaSessionService' apps/android/app/src/main/AndroidManifest.xml
 ! grep -q 'android.media.session.MediaSession' "$service"
 
-# Exact projection/typography tests are mandatory.
-grep -q 'localizedDeletionDoesNotScaleUnchangedSuffix' apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
-grep -q 'typographyFingerprintCoversPaginationInputs' apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
+# Correctness and long-run soak contracts are mandatory, deterministic and executable in hosted CI.
+grep -q 'localizedDeletionDoesNotScaleUnchangedSuffix' "$foundations"
+grep -q 'typographyFingerprintCoversPaginationInputs' "$foundations"
+grep -q 'randomizedProjectionSoakRemainsBoundedAndMonotonic' "$foundations"
+grep -q 'semanticTtsNavigationPureCoreSoakIsBounded' "$foundations"
+grep -q 'repeat(100_000)' "$motion"
+grep -q 'ReaderMotionState.AUTO_SCROLL' "$motion"
+grep -q 'ReaderMotionState.AUTO_PAGE' "$motion"
+grep -q 'ReaderMotionState.TTS' "$motion"
+
+# Real Android performance contract: benchmark-only fixture, 10/100MiB journeys, hosted execution,
+# machine-readable P95/P99 SLO and a real Baseline Profile critical-user journey.
+grep -q 'Benchmark-build only' "$fixture"
+grep -q 'Reader V3' "$fixture"
+! grep -q 'Reader V2' "$fixture"
+grep -q 'open10MiBTxt' "$journey"
+grep -q 'open100MiBTxt' "$journey"
+grep -q 'StartupTimingMetric' "$journey"
+grep -q 'FrameTimingMetric' "$journey"
+grep -q 'BaselineProfileRule' "$baseline"
+grep -q 'readerV3CriticalJourneys' "$baseline"
+grep -q 'connectedCheck' scripts/run-android-macrobenchmark-ci.sh
+grep -q 'enabledRules=Macrobenchmark' scripts/run-android-macrobenchmark-ci.sh
+grep -q 'enabledRules=BaselineProfile' scripts/run-android-macrobenchmark-ci.sh
+grep -q 'frameDurationCpuMs' scripts/check-android-performance-slo.py
+grep -q 'JINGDU_FRAME_P95_MS' scripts/check-android-performance-slo.py
+grep -q 'JINGDU_FRAME_P99_MS' scripts/check-android-performance-slo.py
+python3 -m py_compile scripts/check-android-performance-slo.py
+bash -n scripts/run-android-macrobenchmark-ci.sh
+
+# Near-1GiB native RSS must remain a real CTest, not only prose.
+grep -q 'JINGDU_PERF_FIXTURE_MIB=960' core/native/CMakeLists.txt
+grep -q 'jingdu_core_near_1gib_rss_gate_test' core/native/CMakeLists.txt
+grep -q 'rssMiB < 640L' core/native/tests/core_performance_gate_test.cpp
 
 # Hard cut: no old runtime/service/gate implementation may survive.
 for legacy in \
@@ -126,4 +169,4 @@ if git grep -n -E 'readAt\([^,]+,[[:space:]]*(Long\.MAX_VALUE|[0-9]+[[:space:]]*
   echo 'Reader V3 must keep bounded document windows' >&2; exit 1
 fi
 
-echo 'Reader V3 prelaunch contract OK: exact projection/typography/Room/Proto/UDF/selection/skim/gesture/Media3 invariants aligned'
+echo 'Reader V3 prelaunch contract OK: correctness/Media3/Room/Proto/UDF/soak/Macrobenchmark/BaselineProfile/RSS gates aligned'
