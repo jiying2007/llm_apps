@@ -75,7 +75,7 @@ grep -q 'ReaderAnnotationKind.NOTE' "$screen"
 grep -q 'ReaderQuickSettingsSheet' "$panels"
 grep -q 'ReaderAnnotationsSheet' "$panels"
 grep -q 'ReaderReadingMapSheet' "$panels"
-grep -q 'autoScrollEnabled = !settings.autoScrollEnabled' "$panels"
+grep -q 'autoScrollEnabled = !state.autoScrolling' "$panels"
 grep -q 'ReaderAdvancedSettingsSheet' "$advanced"
 test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
 
