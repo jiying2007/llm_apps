@@ -34,6 +34,24 @@ jobs:
           cache: gradle
       - name: Android product verification
         run: ./gradlew --no-daemon --warning-mode all androidCheck
+      - name: Print complete Android lint failures
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          reports=(
+            app/build/intermediates/lint_intermediate_text_report/*/*/lint-results-*.txt
+            app/build/reports/lint-results-*.txt
+          )
+          if ((${#reports[@]})); then
+            for report in "${reports[@]}"; do
+              echo "===== ${report} ====="
+              cat "$report"
+            done
+          else
+            echo "No lint text report was produced; failure occurred before lint reporting."
+          fi
       - name: Android Reader V3, localization and monetization contract
         working-directory: .
         shell: bash
