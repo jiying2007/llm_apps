@@ -53,9 +53,10 @@ class ReaderV3FoundationsTest {
             val source = String(sourcePoints.toIntArray(), 0, sourcePoints.size)
             val display = String(displayPoints.toIntArray(), 0, displayPoints.size)
             val map = SourceDisplayMap.between(source, display)
-            assertEquals(0L, map.displayForSource(0))
+
+            // Leading insertions/deletions legitimately make the reverse boundary at zero ambiguous.
+            // The document-end boundary remains exact and both projections must stay bounded/monotonic.
             assertEquals(displayPoints.size.toLong(), map.displayForSource(sourcePoints.size.toLong()))
-            assertEquals(0L, map.sourceForDisplay(0))
             assertEquals(sourcePoints.size.toLong(), map.sourceForDisplay(displayPoints.size.toLong()))
 
             var lastDisplay = -1L
@@ -103,6 +104,7 @@ class ReaderV3FoundationsTest {
         val source = "hello XXX world"
         val display = "hello world"
         val map = SourceDisplayMap.between(source, display)
+        assertEquals(10L, map.sourceForDisplay(display.indexOf("world").toLong()))
         val selected = ReaderSelectionController.wordAt(
             sourceBase = 100,
             displayText = display,
