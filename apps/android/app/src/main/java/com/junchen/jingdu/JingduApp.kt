@@ -69,65 +69,29 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
         val locationBack = remember { mutableStateListOf<Long>() }
         val locationForward = remember { mutableStateListOf<Long>() }
         val bookId = state.currentBook?.id
-
-        LaunchedEffect(bookId) {
-            locationBack.clear()
-            locationForward.clear()
-        }
+        LaunchedEffect(bookId) { locationBack.clear(); locationForward.clear() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
 
         fun pushLocation(target: Long) {
             if (state.screen != AppScreen.READER || state.length <= 0) return
             val bounded = target.coerceIn(0L, (state.length - 1).coerceAtLeast(0L))
             if (abs(bounded - state.position) < 2L) return
-            locationBack.add(state.position)
-            while (locationBack.size > 100) locationBack.removeAt(0)
-            locationForward.clear()
+            locationBack.add(state.position); while (locationBack.size > 100) locationBack.removeAt(0); locationForward.clear()
         }
-
         val trackedActions = actions.copy(
             onJump = { target -> pushLocation(target); actions.onJump(target) },
-            onSeekFraction = { fraction ->
-                val target = (state.length.toDouble() * fraction.coerceIn(0f, 1f)).toLong()
-                pushLocation(target)
-                actions.onSeekFraction(fraction)
-            },
+            onSeekFraction = { fraction -> pushLocation((state.length.toDouble() * fraction.coerceIn(0f, 1f)).toLong()); actions.onSeekFraction(fraction) },
         )
-
-        fun locationBackAction() {
-            if (locationBack.isEmpty()) return
-            val target = locationBack.removeAt(locationBack.lastIndex)
-            locationForward.add(state.position)
-            actions.onJump(target)
-        }
-
-        fun locationForwardAction() {
-            if (locationForward.isEmpty()) return
-            val target = locationForward.removeAt(locationForward.lastIndex)
-            locationBack.add(state.position)
-            actions.onJump(target)
-        }
+        fun locationBackAction() { if (locationBack.isNotEmpty()) { val target = locationBack.removeAt(locationBack.lastIndex); locationForward.add(state.position); actions.onJump(target) } }
+        fun locationForwardAction() { if (locationForward.isNotEmpty()) { val target = locationForward.removeAt(locationForward.lastIndex); locationBack.add(state.position); actions.onJump(target) } }
 
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
-            when {
-                state.panel != null -> actions.onClosePanel()
-                locationBack.isNotEmpty() -> locationBackAction()
-                else -> trackedActions.onBackToLibrary()
-            }
+            when { state.panel != null -> actions.onClosePanel(); locationBack.isNotEmpty() -> locationBackAction(); else -> trackedActions.onBackToLibrary() }
         }
-
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
-                AppScreen.READER -> ReaderRoute(
-                    state = state,
-                    actions = trackedActions,
-                    snackbar = snackbar,
-                    canLocationBack = locationBack.isNotEmpty(),
-                    canLocationForward = locationForward.isNotEmpty(),
-                    onLocationBack = ::locationBackAction,
-                    onLocationForward = ::locationForwardAction,
-                )
+                AppScreen.READER -> ReaderRoute(state, trackedActions, snackbar, locationBack.isNotEmpty(), locationForward.isNotEmpty(), ::locationBackAction, ::locationForwardAction)
             }
             state.busyLabel?.let { BusyOverlay(it) }
         }
@@ -139,7 +103,7 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
             ReaderPanel.ANNOTATIONS -> ReaderAnnotationsSheet(state, trackedActions)
             ReaderPanel.READING_MAP -> ReaderReadingMapSheet(state, trackedActions)
             ReaderPanel.CLEAN -> CleanSheet(state, trackedActions)
-            ReaderPanel.SETTINGS -> ProductSettingsSheet(state, trackedActions)
+            ReaderPanel.SETTINGS -> ReaderAdvancedSettingsSheet(state, trackedActions)
             ReaderPanel.ENCODING -> EncodingSheet(state, trackedActions)
             ReaderPanel.DOCTOR -> DoctorSheet(state, trackedActions)
             ReaderPanel.SMART_CLEAN_LAB -> SmartCleanLabSheet(state, trackedActions)
@@ -156,14 +120,11 @@ fun JingduApp(state: AppUiState, actions: JingduActions) {
     }
 }
 
-@Composable
-private fun BusyOverlay(label: String) {
+@Composable private fun BusyOverlay(label: String) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.24f)), contentAlignment = Alignment.Center) {
         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 6.dp) {
             Row(Modifier.padding(horizontal = 22.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
-                androidx.compose.foundation.layout.Spacer(Modifier.width(14.dp))
-                Text(label, style = MaterialTheme.typography.bodyLarge)
+                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp); androidx.compose.foundation.layout.Spacer(Modifier.width(14.dp)); Text(label, style = MaterialTheme.typography.bodyLarge)
             }
         }
     }
