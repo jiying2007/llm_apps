@@ -30,6 +30,16 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                     putInt("mib", mib)
                 }
             }
+            "mode" -> {
+                val mode = when (arg?.lowercase()) {
+                    "paged" -> ReaderMode.PAGED
+                    "continuous" -> ReaderMode.CONTINUOUS
+                    else -> error("Unsupported Reader V3 benchmark mode: $arg")
+                }
+                val preferences = ReaderPreferences(context)
+                preferences.flush(preferences.load().copy(readingMode = mode, autoScrollEnabled = false))
+                Bundle().apply { putString("mode", mode.name) }
+            }
             "clear" -> {
                 val repository = BookRepository(context)
                 repository.list().filter { it.name.startsWith("Benchmark Novel ") }.forEach(repository::delete)
@@ -59,6 +69,6 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
     override fun getType(uri: Uri): String? = null
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    override fun update(uri: Uri, values: ContentValues?): Int = 0
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? = null
 }
