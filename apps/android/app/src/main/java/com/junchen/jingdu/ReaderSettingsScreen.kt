@@ -138,6 +138,18 @@ private fun GestureSettings(state: AppUiState, actions: JingduActions) = Setting
     SettingSwitch(stringResource(R.string.reader_double_tap_bookmark), s.doubleTapBookmarkEnabled) { actions.onSettingsChanged(s.copy(doubleTapBookmarkEnabled = it)) }
     SettingSwitch(stringResource(R.string.reader_two_stage_selection), s.twoStageSelectionEnabled) { actions.onSettingsChanged(s.copy(twoStageSelectionEnabled = it)) }
     SettingSwitch(stringResource(R.string.reader_advanced_gestures), s.advancedGestureCustomizationEnabled) { actions.onSettingsChanged(s.copy(advancedGestureCustomizationEnabled = it)) }
+    if (s.advancedGestureCustomizationEnabled) {
+        Section(stringResource(R.string.reader_gesture_center_action)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(ReaderGestureAction.entries) { value -> FilterChip(s.centerTapAction == value, { actions.onSettingsChanged(s.copy(centerTapAction = value)) }, label = { Text(gestureActionLabel(value)) }) }
+            }
+        }
+        Section(stringResource(R.string.reader_gesture_double_action)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(ReaderGestureAction.entries) { value -> FilterChip(s.doubleTapAction == value, { actions.onSettingsChanged(s.copy(doubleTapAction = value)) }, label = { Text(gestureActionLabel(value)) }) }
+            }
+        }
+    }
     SettingSwitch(stringResource(R.string.reader_dictionary_actions), s.dictionaryProcessTextEnabled) { actions.onSettingsChanged(s.copy(dictionaryProcessTextEnabled = it)) }
     SettingSwitch(stringResource(R.string.reader_haptics), s.hapticEnabled) { actions.onSettingsChanged(s.copy(hapticEnabled = it)) }
     SettingSlider(stringResource(R.string.reader_controls_auto_hide), s.controlsAutoHideMs.toFloat(), 1_500f..12_000f, stringResource(R.string.seconds_value, s.controlsAutoHideMs / 1000f)) { actions.onSettingsChanged(s.copy(controlsAutoHideMs = it.toLong())) }
@@ -223,3 +235,5 @@ private fun DataSettings(state: AppUiState, actions: JingduActions) = SettingsLi
 @Composable private fun orientationLabel(value: ReaderOrientation): String = stringResource(when (value) { ReaderOrientation.SYSTEM -> R.string.reader_orientation_system; ReaderOrientation.PORTRAIT -> R.string.reader_orientation_portrait; ReaderOrientation.LANDSCAPE -> R.string.reader_orientation_landscape })
 @Composable private fun columnsLabel(value: ReaderWideColumns): String = stringResource(when (value) { ReaderWideColumns.AUTO -> R.string.reader_columns_auto; ReaderWideColumns.SINGLE -> R.string.reader_columns_single; ReaderWideColumns.DOUBLE -> R.string.reader_columns_double })
 @Composable private fun chineseModeLabel(value: ChineseDisplayMode): String = stringResource(when (value) { ChineseDisplayMode.ORIGINAL -> R.string.chinese_original; ChineseDisplayMode.SIMPLIFIED -> R.string.chinese_simplified; ChineseDisplayMode.TRADITIONAL -> R.string.chinese_traditional; ChineseDisplayMode.TAIWAN -> R.string.chinese_taiwan; ChineseDisplayMode.TAIWAN_PHRASES -> R.string.chinese_taiwan_phrases; ChineseDisplayMode.HONG_KONG -> R.string.chinese_hong_kong })
+
+@Composable private fun gestureActionLabel(value: ReaderGestureAction): String = stringResource(when (value) { ReaderGestureAction.CONTROLS -> R.string.reader_gesture_controls; ReaderGestureAction.BOOKMARK -> R.string.reader_gesture_bookmark; ReaderGestureAction.NEXT -> R.string.reader_gesture_next; ReaderGestureAction.PREVIOUS -> R.string.reader_gesture_previous; ReaderGestureAction.NONE -> R.string.reader_gesture_none })

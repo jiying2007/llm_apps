@@ -630,11 +630,24 @@ private fun Modifier.readerGesturesV3(
                 down.position.x < edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onNext() else onPrevious()
                 down.position.x > widthPx - edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onPrevious() else onNext()
                 else -> {
+                    fun dispatch(action: ReaderGestureAction) {
+                        when (action) {
+                            ReaderGestureAction.CONTROLS -> onToggleControls()
+                            ReaderGestureAction.BOOKMARK -> onBookmark()
+                            ReaderGestureAction.NEXT -> onNext()
+                            ReaderGestureAction.PREVIOUS -> onPrevious()
+                            ReaderGestureAction.NONE -> Unit
+                        }
+                    }
+                    val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS
+                    val doubleAction = if (settings.advancedGestureCustomizationEnabled) settings.doubleTapAction else if (settings.doubleTapBookmarkEnabled) ReaderGestureAction.BOOKMARK else ReaderGestureAction.NONE
                     val tapAt = last.uptimeMillis
-                    if (settings.doubleTapBookmarkEnabled && lastCenterTapAt > 0L && tapAt - lastCenterTapAt in 40L..320L) {
-                        lastCenterTapAt = 0L; onBookmark()
+                    if (doubleAction != ReaderGestureAction.NONE && lastCenterTapAt > 0L && tapAt - lastCenterTapAt in 40L..320L) {
+                        lastCenterTapAt = 0L
+                        dispatch(doubleAction)
                     } else {
-                        lastCenterTapAt = tapAt; onToggleControls()
+                        lastCenterTapAt = tapAt
+                        dispatch(centerAction)
                     }
                 }
             }
