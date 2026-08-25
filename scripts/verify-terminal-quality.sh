@@ -14,7 +14,9 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/PrivacyAudit.kt
   apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt
   apps/android/app/src/main/java/com/junchen/jingdu/SmartCleanFeedbackStore.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java
+  apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderMotionController.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt
@@ -22,7 +24,9 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderFontStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt
   apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt
@@ -34,18 +38,15 @@ required=(
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "terminal-quality asset missing: $path" >&2; exit 1; }; done
 
-# Product scope / local moat.
 grep -q 'Long TXT · Smart Clean · Fully local' docs/PRODUCT.md
 grep -q 'TXT Doctor' docs/PRODUCT.md
 grep -q 'Smart TOC' docs/PRODUCT.md
 grep -q 'Precision is deliberately more important than recall' docs/COMPETITIVE_MOAT.md
 
-# Long-form native gate includes the near-1GiB fixture and RSS observation.
 grep -q 'JINGDU_PERF_FIXTURE_MIB' core/native/tests/core_performance_gate_test.cpp
 grep -q '1000' core/native/tests/core_performance_gate_test.cpp
 grep -q 'peakRssMiB' core/native/tests/core_performance_gate_test.cpp
 
-# Existing differentiated product gates stay intact.
 grep -q 'SAMPLE_WINDOWS = 8' apps/android/app/src/main/java/com/junchen/jingdu/TxtDoctor.kt
 grep -q 'MAX_PREVIEW_BYTES = 512 \* 1024' apps/android/app/src/main/java/com/junchen/jingdu/ProgressiveImport.kt
 grep -q 'ActivityResultContracts.OpenDocumentTree' apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt
@@ -56,7 +57,6 @@ grep -q 'TinyLocalSemanticCandidateClassifier' apps/android/app/src/main/java/co
 python3 scripts/train-smartclean-model.py --verify-source apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt
 python3 scripts/verify-smartclean-model.py
 
-# Reader V3 owns the final prelaunch correctness/performance contracts.
 bash ./scripts/verify-reader-v3.sh
 grep -q ':app:testDebugUnitTest' apps/android/build.gradle
 grep -q 'repeat(100_000)' apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
@@ -66,12 +66,20 @@ grep -q 'continuousScroll' apps/android/macrobenchmark/src/main/java/com/junchen
 grep -q 'Benchmark Novel' apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
 grep -q 'device.executeShellCommand' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
 
-# Offline/privacy/no-whole-document regressions.
+grep -q 'MediaSessionService' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
+grep -q 'SimpleBasePlayer' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
+grep -q 'previousSentence' apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
+grep -q 'previousParagraph' apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
+! grep -q 'android.media.session.MediaSession' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
+
 if grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml; then echo 'offline/privacy contract forbids INTERNET' >&2; exit 1; fi
 if git grep -n -E 'converted(File|Path)|converted-[^ ]+\.txt|opencc.*\.txt' -- apps/android/app/src/main/java; then echo 'full-book converted artifact found' >&2; exit 1; fi
 if grep -qE 'normalizedFile|documentFile|ReaderController|File\(' apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt; then echo 'semantic classifier must remain file-blind' >&2; exit 1; fi
 
-# Source-release governance remains single-path and immutable.
+for legacy in apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java scripts/verify-reader-v2.sh; do
+  test ! -e "$legacy" || { echo "legacy Reader V2 asset remains: $legacy" >&2; exit 1; }
+done
+
 test ! -f .github/workflows/source-release.yml
 python3 -m py_compile scripts/publish-source-release.py
 grep -Fq 'needs: [native-core, android, harmony-contract, play-store-contract, terminal-contract]' .github/workflows/ci.yml
