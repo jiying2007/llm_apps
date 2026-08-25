@@ -24,7 +24,7 @@ internal data class SourceDisplayMap(private val projection: TextProjection) {
     }
 }
 
-data class ReaderDisplayWindow(
+internal data class ReaderDisplayWindow(
     val start: Long,
     val sourceText: String,
     val displayText: String,
@@ -55,21 +55,22 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         cache[key]?.let { return it }
         val source = reader.readAt(aligned, ReaderController.WINDOW_CHARS)
         val presented = ReaderPresentationPipeline.present(source, settings)
-        return ReaderDisplayWindow(
+        val result = ReaderDisplayWindow(
             start = aligned,
             sourceText = source,
             displayText = presented.displayText,
             documentLength = length,
             map = presented.map,
-        ).also { cache[key] = it }
+        )
+        cache[key] = result
+        return result
     }
 
     @Synchronized
     fun prefetch(position: Long, settings: ReaderSettings) {
-        val length = reader.length()
-        if (length <= 0) return
+        if (reader.length() <= 0) return
         readAround(position, settings)
-        readAround((position + ReaderController.WINDOW_CHARS / 2).coerceAtMost(length - 1), settings)
+        readAround((position + ReaderController.WINDOW_CHARS / 2).coerceAtMost(reader.length() - 1), settings)
         readAround((position - ReaderController.WINDOW_CHARS / 2).coerceAtLeast(0), settings)
     }
 
@@ -112,6 +113,7 @@ data class PageLayoutSnapshot(
     val firstColumnEndUtf16: Int,
 )
 
+/** Small LRU used to keep exact page measurement out of repeated Compose layout churn. */
 internal object ReaderPageLayoutCache {
     private val cache = object : LinkedHashMap<PageLayoutKey, PageLayoutSnapshot>(20, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PageLayoutKey, PageLayoutSnapshot>?): Boolean = size > 16
