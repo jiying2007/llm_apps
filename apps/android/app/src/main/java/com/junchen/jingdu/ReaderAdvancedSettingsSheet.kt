@@ -92,10 +92,10 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
                     V2Switch(stringResource(R.string.reader_show_battery), s.showBattery) { actions.onSettingsChanged(s.copy(showBattery = it)) }
                     V2Switch(stringResource(R.string.reader_reading_status), s.showReadingStatus) { actions.onSettingsChanged(s.copy(showReadingStatus = it)) }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(ReaderOrientation.entries) { value -> FilterChip(s.orientation == value, { actions.onSettingsChanged(s.copy(orientation = value)) }, label = { Text(value.name.lowercase()) }) }
+                        items(ReaderOrientation.entries) { value -> FilterChip(s.orientation == value, { actions.onSettingsChanged(s.copy(orientation = value)) }, label = { Text(v2OrientationLabel(value)) }) }
                     }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(ReaderWideColumns.entries) { value -> FilterChip(s.wideColumns == value, { actions.onSettingsChanged(s.copy(wideColumns = value)) }, label = { Text(value.name.lowercase()) }) }
+                        items(ReaderWideColumns.entries) { value -> FilterChip(s.wideColumns == value, { actions.onSettingsChanged(s.copy(wideColumns = value)) }, label = { Text(v2ColumnsLabel(value)) }) }
                     }
                 }
             }
@@ -118,7 +118,7 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
             item {
                 V2Section(stringResource(R.string.chinese_conversion)) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(ChineseDisplayMode.entries) { mode -> FilterChip(s.chineseMode == mode, { actions.onSettingsChanged(s.copy(chineseMode = mode)) }, label = { Text(mode.name.replace('_', ' ').lowercase()) }) }
+                        items(ChineseDisplayMode.entries) { mode -> FilterChip(s.chineseMode == mode, { actions.onSettingsChanged(s.copy(chineseMode = mode)) }, label = { Text(v2ChineseModeLabel(mode)) }) }
                     }
                     OutlinedTextField(overrides, { overrides = it.take(16 * 1024) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.chinese_overrides)) }, minLines = 3, maxLines = 6)
                     Button({ actions.onSettingsChanged(s.copy(chineseOverrides = overrides)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.save_dictionary)) }
@@ -176,4 +176,22 @@ internal fun ReaderAdvancedSettingsSheet(state: AppUiState, actions: JingduActio
 @Composable private fun v2TapZoneLabel(value: ReaderTapZonePreset): String = stringResource(when (value) {
     ReaderTapZonePreset.BALANCED -> R.string.reader_tap_zone_balanced; ReaderTapZonePreset.RIGHT_HANDED -> R.string.reader_tap_zone_right
     ReaderTapZonePreset.LEFT_HANDED -> R.string.reader_tap_zone_left; ReaderTapZonePreset.CUSTOM -> R.string.reader_tap_zone_balanced
+})
+@Composable private fun v2OrientationLabel(value: ReaderOrientation): String = stringResource(when (value) {
+    ReaderOrientation.SYSTEM -> R.string.reader_orientation_system
+    ReaderOrientation.PORTRAIT -> R.string.reader_orientation_portrait
+    ReaderOrientation.LANDSCAPE -> R.string.reader_orientation_landscape
+})
+@Composable private fun v2ColumnsLabel(value: ReaderWideColumns): String = stringResource(when (value) {
+    ReaderWideColumns.AUTO -> R.string.reader_columns_auto
+    ReaderWideColumns.SINGLE -> R.string.reader_columns_single
+    ReaderWideColumns.DOUBLE -> R.string.reader_columns_double
+})
+@Composable private fun v2ChineseModeLabel(value: ChineseDisplayMode): String = stringResource(when (value) {
+    ChineseDisplayMode.ORIGINAL -> R.string.chinese_original
+    ChineseDisplayMode.SIMPLIFIED -> R.string.chinese_simplified
+    ChineseDisplayMode.TRADITIONAL -> R.string.chinese_traditional
+    ChineseDisplayMode.TAIWAN -> R.string.chinese_taiwan
+    ChineseDisplayMode.TAIWAN_PHRASES -> R.string.chinese_taiwan_phrases
+    ChineseDisplayMode.HONG_KONG -> R.string.chinese_hong_kong
 })
