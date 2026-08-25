@@ -1,8 +1,11 @@
 package com.junchen.jingdu.macrobenchmark
 
+import android.os.SystemClock
+import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.Until
 import org.junit.Rule
 import org.junit.Test
@@ -20,35 +23,72 @@ class BaselineProfileGenerator {
         outputFilePrefix = "jingdu-reader-v3",
     ) {
         pressHome()
-        val seed = device.executeShellCommand(
-            "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 10",
-        )
-        check(seed.contains("bytes=")) { "Reader V3 baseline fixture seed failed: $seed" }
+        seedFixture()
+        setReaderMode("paged")
         startActivityAndWait()
-        val title = "Benchmark Novel 10 MiB"
-        check(device.wait(Until.hasObject(By.textContains(title)), 8_000)) { "baseline fixture missing" }
-        device.findObject(By.textContains(title))?.click()
-        device.waitForIdle()
+        openFixture()
+
         repeat(10) {
-            device.click((device.displayWidth * 0.86).toInt(), device.displayHeight / 2)
+            check(device.swipe(
+                (device.displayWidth * 0.78).toInt(),
+                device.displayHeight / 2,
+                (device.displayWidth * 0.22).toInt(),
+                device.displayHeight / 2,
+                24,
+            )) { "Reader V3 baseline page-turn swipe was not injected" }
             device.waitForIdle()
         }
-        device.findObject(By.text("Aa"))?.click()
+
+        requireClick(By.text("Aa"), "quick reading settings control")
         device.waitForIdle()
-        device.findObject(By.textContains("Continuous"))?.click()
         device.pressBack()
+        device.waitForIdle()
+
+        setReaderMode("continuous")
+        SystemClock.sleep(500)
         repeat(4) {
-            device.swipe(
+            check(device.swipe(
                 device.displayWidth / 2,
                 (device.displayHeight * 0.80).toInt(),
                 device.displayWidth / 2,
                 (device.displayHeight * 0.25).toInt(),
-                20,
-            )
+                24,
+            )) { "Reader V3 baseline continuous-scroll swipe was not injected" }
         }
-        device.findObject(By.descContains("chapter"))?.click()
+        device.waitForIdle()
+
+        requireClick(By.descContains("Chapter"), "chapters control")
         device.waitForIdle()
         device.pressBack()
+    }
+
+    private fun MacrobenchmarkScope.seedFixture() {
+        val result = device.executeShellCommand(
+            "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 10",
+        )
+        check(result.contains("bytes=")) { "Reader V3 baseline fixture seed failed: $result" }
+    }
+
+    private fun MacrobenchmarkScope.setReaderMode(mode: String) {
+        val expected = mode.uppercase()
+        val result = device.executeShellCommand(
+            "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
+        )
+        check(result.contains("mode=$expected")) { "Reader V3 baseline mode setup failed: $result" }
+    }
+
+    private fun MacrobenchmarkScope.openFixture() {
+        val title = "Benchmark Novel 10 MiB"
+        check(device.wait(Until.hasObject(By.textContains(title)), 8_000)) { "Reader V3 baseline fixture missing" }
+        val target = device.findObject(By.textContains(title)) ?: error("Reader V3 baseline fixture unavailable")
+        target.click()
+        device.waitForIdle()
+    }
+
+    private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
+        check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 baseline $label missing" }
+        val target = device.findObject(selector) ?: error("Reader V3 baseline $label unavailable")
+        target.click()
     }
 
     private companion object { const val PACKAGE_NAME = "com.junchen.jingdu" }
