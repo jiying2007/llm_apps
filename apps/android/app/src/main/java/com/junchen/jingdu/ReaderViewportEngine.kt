@@ -51,10 +51,14 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         val length = reader.length()
         if (length <= 0) return ReaderDisplayWindow(0, "", "", 0, SourceDisplayMap.between("", ""))
         val bounded = position.coerceIn(0, length - 1)
-        val aligned = ((bounded - BACK_BUFFER_CHARS).coerceAtLeast(0) / ALIGN_CHARS) * ALIGN_CHARS
-        val key = WindowKey(aligned, presentationKey(settings))
+        val continuous = settings.readingMode == ReaderMode.CONTINUOUS
+        val windowChars = if (continuous) CONTINUOUS_WINDOW_CHARS else ReaderController.WINDOW_CHARS
+        val alignChars = if (continuous) CONTINUOUS_ALIGN_CHARS else PAGE_ALIGN_CHARS
+        val backBufferChars = if (continuous) CONTINUOUS_BACK_BUFFER_CHARS else PAGE_BACK_BUFFER_CHARS
+        val aligned = ((bounded - backBufferChars).coerceAtLeast(0) / alignChars) * alignChars
+        val key = WindowKey(aligned, presentationKey(settings), windowChars)
         cache[key]?.let { return it }
-        val source = reader.readAt(aligned, ReaderController.WINDOW_CHARS)
+        val source = reader.readAt(aligned, windowChars)
         val presented = ReaderPresentationPipeline.present(source, settings)
         val result = ReaderDisplayWindow(
             start = aligned,
@@ -70,9 +74,10 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
     @Synchronized
     fun prefetch(position: Long, settings: ReaderSettings) {
         if (reader.length() <= 0) return
+        val windowChars = if (settings.readingMode == ReaderMode.CONTINUOUS) CONTINUOUS_WINDOW_CHARS else ReaderController.WINDOW_CHARS
         readAround(position, settings)
-        readAround((position + ReaderController.WINDOW_CHARS / 2).coerceAtMost(reader.length() - 1), settings)
-        readAround((position - ReaderController.WINDOW_CHARS / 2).coerceAtLeast(0), settings)
+        readAround((position + windowChars / 2).coerceAtMost(reader.length() - 1), settings)
+        readAround((position - windowChars / 2).coerceAtLeast(0), settings)
     }
 
     @Synchronized fun clear() = cache.clear()
@@ -90,12 +95,15 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         settings.paragraphSpacingEm,
     ).hashCode()
 
-    private data class WindowKey(val start: Long, val presentationKey: Int)
+    private data class WindowKey(val start: Long, val presentationKey: Int, val windowChars: Long)
 
     private companion object {
         const val MAX_WINDOWS = 8
-        const val ALIGN_CHARS = 1024L
-        const val BACK_BUFFER_CHARS = 768L
+        const val PAGE_ALIGN_CHARS = 512L
+        const val PAGE_BACK_BUFFER_CHARS = 384L
+        const val CONTINUOUS_WINDOW_CHARS = 6144L
+        const val CONTINUOUS_ALIGN_CHARS = 2048L
+        const val CONTINUOUS_BACK_BUFFER_CHARS = 2048L
     }
 }
 
