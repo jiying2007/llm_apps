@@ -22,7 +22,6 @@
     <string name="reader_selection_extend_next">延伸到下一頁</string>
     <string name="reader_lookup">查詞</string>
     <string name="reader_skim">快速瀏覽</string>
-    <string name="reader_skim_preview">預覽位置</string>
     <string name="reader_skim_return">返回原閱讀位置</string>
     <string name="reader_chapter_progress_value">本章 %1$d%%</string>
     <string name="reader_book_progress_value">全書 %1$d%%</string>
