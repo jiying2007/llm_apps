@@ -37,7 +37,14 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                     else -> error("Unsupported Reader V3 benchmark mode: $arg")
                 }
                 val preferences = ReaderPreferences(context)
-                preferences.flush(preferences.load().copy(readingMode = mode, autoScrollEnabled = false))
+                preferences.flush(
+                    preferences.load().copy(
+                        readingMode = mode,
+                        autoScrollEnabled = false,
+                        controlsAutoHideMs = 60_000L,
+                        gestureCoachDismissed = true,
+                    ),
+                )
                 Bundle().apply { putString("mode", mode.name) }
             }
             "clear" -> {
