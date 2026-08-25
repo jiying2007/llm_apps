@@ -76,8 +76,9 @@ internal fun ReaderAnnotationsSheet(state: AppUiState, actions: JingduActions) {
             if (annotations.isEmpty()) Text(stringResource(R.string.reader_annotation_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
             else LazyColumn(Modifier.heightIn(max = 620.dp)) {
                 items(annotations, key = { it.id }) { item ->
+                    val fallback = stringResource(if (item.kind == ReaderAnnotationKind.NOTE) R.string.reader_note else R.string.reader_highlight)
                     ListItem(
-                        headlineContent = { Text(item.excerpt.ifBlank { item.note }.ifBlank { if (item.kind == ReaderAnnotationKind.NOTE) "Note" else "Highlight" }, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                        headlineContent = { Text(item.excerpt.ifBlank { item.note }.ifBlank { fallback }, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                         supportingContent = { if (item.note.isNotBlank()) Text(item.note, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                         leadingContent = { Icon(if (item.kind == ReaderAnnotationKind.NOTE) Icons.Default.EditNote else Icons.Default.FormatColorFill, null) },
                         trailingContent = { IconButton({ actions.onDeleteAnnotation(item.id) }) { Icon(Icons.Default.Delete, stringResource(R.string.reader_delete_annotation)) } },
@@ -148,5 +149,5 @@ internal fun ReaderGestureCoach(settings: ReaderSettings, actions: JingduActions
 
 @Composable private fun quickPaletteLabel(palette: ReaderPalette): String = when (palette) {
     ReaderPalette.PAPER -> stringResource(R.string.paper); ReaderPalette.SEPIA -> stringResource(R.string.reader_theme_sepia)
-    ReaderPalette.LIGHT -> stringResource(R.string.light); ReaderPalette.NIGHT -> stringResource(R.string.night); ReaderPalette.OLED -> "OLED"
+    ReaderPalette.LIGHT -> stringResource(R.string.light); ReaderPalette.NIGHT -> stringResource(R.string.night); ReaderPalette.OLED -> stringResource(R.string.reader_oled)
 }
