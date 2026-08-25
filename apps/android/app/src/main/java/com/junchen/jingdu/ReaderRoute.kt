@@ -39,7 +39,7 @@ internal fun ReaderRoute(
         hasHinge = adaptive.windowPosture.hingeList.isNotEmpty(),
         tabletop = adaptive.windowPosture.isTabletop,
     )
-    ReaderScreen(
+    ReaderScreenV3(
         state = state,
         actions = actions,
         snackbar = snackbar,
