@@ -80,13 +80,17 @@ internal class TextProjection private constructor(
                 val maxI = minOf(source.size, sourceAt + limit)
                 val maxJ = minOf(display.size, displayAt + limit)
                 for (i in sourceAt until maxI) {
-                    val maxDelta = bestCost - (i - sourceAt)
-                    if (maxDelta <= 0) break
-                    val jLimit = minOf(maxJ, displayAt + maxDelta)
+                    val sourceDelta = i - sourceAt
+                    if (bestCost != Int.MAX_VALUE && sourceDelta >= bestCost) break
+                    val jLimit = if (bestCost == Int.MAX_VALUE) {
+                        maxJ
+                    } else {
+                        minOf(maxJ, displayAt + (bestCost - sourceDelta))
+                    }
                     for (j in displayAt until jLimit) {
                         if (source[i] != display[j]) continue
                         if (!anchorLooksStable(source, display, i, j)) continue
-                        val cost = (i - sourceAt) + (j - displayAt)
+                        val cost = sourceDelta + (j - displayAt)
                         if (cost < bestCost) {
                             bestCost = cost; bestI = i; bestJ = j
                             if (cost <= 2) return bestI to bestJ
