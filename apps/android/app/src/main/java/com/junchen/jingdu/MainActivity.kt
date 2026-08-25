@@ -12,12 +12,12 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -31,6 +31,7 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
+    private val readerViewModel: ReaderViewModel by viewModels()
     private val main = Handler(Looper.getMainLooper())
     private val workers: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "jingdu-worker").apply { isDaemon = true }
@@ -69,7 +70,9 @@ class MainActivity : ComponentActivity() {
     private var pendingExport: File? = null
     private var lastProgressPersistAt = 0L
     private var lastProgressPersistPosition = -1L
-    private var uiState by mutableStateOf(AppUiState())
+    private var uiState: AppUiState
+        get() = readerViewModel.state.value
+        set(value) { readerViewModel.replace(value) }
 
     private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importUri(it) } }
     private val batchImportLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> if (uris.isNotEmpty()) batchImportUris(uris) }
@@ -221,7 +224,16 @@ class MainActivity : ComponentActivity() {
             onMessage = ::showMessage,
         )
         billing.start()
-        setContent { JingduApp(uiState, actions) }
+        setContent {
+            val state by readerViewModel.state.collectAsStateWithLifecycle()
+            val location by readerViewModel.location.collectAsStateWithLifecycle()
+            JingduApp(
+                state = state, actions = actions, location = location,
+                onTrackLocation = { current, target, length -> readerViewModel.trackLocation(current, target, length) },
+                onLocationBack = { readerViewModel.backTarget(readerViewModel.state.value.position)?.let(::jumpTo) },
+                onLocationForward = { readerViewModel.forwardTarget(readerViewModel.state.value.position)?.let(::jumpTo) },
+            )
+        }
         workers.execute {
             val settings = readerPreferences.load()
             main.post {
@@ -1107,6 +1119,7 @@ class MainActivity : ComponentActivity() {
         if (::billing.isInitialized) billing.close()
         if (::ttsCatalog.isInitialized) ttsCatalog.close()
         if (::statsStore.isInitialized) statsStore.finish()
+        if (::readerPreferences.isInitialized) readerPreferences.flush(uiState.settings)
         reader.close(); super.onDestroy()
     }
 
