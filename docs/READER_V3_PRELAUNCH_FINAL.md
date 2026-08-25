@@ -21,7 +21,7 @@ Reader V3 is the final hard cut before the first store launch. No reader-schema 
 - Proto DataStore for typed reader settings; no Preferences DataStore compatibility path.
 - Room persistence for annotations, reading sessions and reading pace; no JSON full-file rewrite stores.
 - ReaderViewModel + StateFlow/UDF owns screen state/events; Activity remains host/integration boundary.
-- Real device Macrobenchmark baselines for open/page/scroll/auto-scroll/chapter/settings/conversion; benchmark assembly alone is not considered a performance gate.
+- Hosted Emulator Macrobenchmark is a required regression gate for open/page/scroll/chapter/settings journeys; benchmark assembly alone is not a performance gate. Release-device Macrobenchmark remains the authority for user-facing performance qualification.
 
 ## P1 product quality
 
@@ -41,14 +41,16 @@ Reader V3 is the final hard cut before the first store launch. No reader-schema 
 - Local reading history/calendar heatmap.
 - Local dictionary / ACTION_PROCESS_TEXT integration without network dependency.
 - Advanced gesture customization while preserving simple defaults.
-- Long-run soak contracts for 10MiB/100MiB/1GiB TXT, auto-scroll and TTS.
+- Deterministic long-run contracts include 10MiB/100MiB Android journeys, a 960MiB near-1GiB native RSS gate, randomized TextProjection soak, semantic TTS navigation soak and accelerated Auto Scroll / Auto Page / TTS state soak.
+- The Reader V3 Baseline Profile critical-user journey is executed in hosted CI and its generated profile output is retained with benchmark evidence.
 
 ## Merge gate
 
 The branch must not merge until:
 
-1. Android product build, unit tests, AndroidTest compile, lint, R8 and release AAB pass.
+1. Android product build, Kotlin/Room KSP, unit tests, AndroidTest compile, all three native ABIs, lint, R8 and release AAB pass on the exact head.
 2. Native/Harmony/Play/Terminal contracts pass.
-3. Reader V3 correctness/performance contracts pass.
-4. Final diff/review audit has no blocker and no temporary workflow/patcher residue.
-5. The final exact head is green before squash merge.
+3. Hosted Macrobenchmark actually runs, returns machine-readable benchmark results, passes P95/P99 frame SLO thresholds and completes the Baseline Profile journey.
+4. Reader V3 correctness/soak/performance post-contracts pass, including the 960MiB native RSS gate.
+5. Final diff/review audit has no blocker and no temporary workflow/patcher residue.
+6. The final exact head is green before squash merge.
