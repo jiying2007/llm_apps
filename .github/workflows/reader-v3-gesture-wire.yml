@@ -1,0 +1,34 @@
+name: Reader V3 one-shot gesture wiring
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.head_ref == 'feat/reader-v3-prelaunch-final'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reader-v3-prelaunch-final
+          fetch-depth: 0
+      - name: Apply advanced gesture wiring
+        run: |
+          set -euo pipefail
+          python3 scripts/patch-reader-v3-gestures.py
+          if git diff --quiet; then
+            echo 'Reader V3 gesture wiring already applied'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
+          git commit -m 'feat(reader): wire configurable gesture actions'
+          git push origin HEAD:feat/reader-v3-prelaunch-final
