@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService

@@ -3,6 +3,7 @@ package com.junchen.jingdu
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -27,7 +28,7 @@ internal data class ReaderTtsState(
  * Media3 Player facade for Android TextToSpeech. It intentionally exposes no fake audio timeline:
  * source offsets remain Jingdu/Core coordinates while Media3 owns transport/session semantics.
  */
-@UnstableApi
+@OptIn(UnstableApi::class)
 internal class ReaderTtsPlayer(
     context: Context,
     private val onState: (ReaderTtsState) -> Unit,
