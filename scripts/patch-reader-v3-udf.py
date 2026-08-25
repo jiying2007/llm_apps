@@ -4,6 +4,10 @@ from pathlib import Path
 path = Path("apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt")
 text = path.read_text(encoding="utf-8")
 
+if "private val readerViewModel: ReaderViewModel by viewModels()" in text and "collectAsStateWithLifecycle()" in text:
+    print("MainActivity Reader V3 UDF wiring already applied")
+    raise SystemExit(0)
+
 def once(old: str, new: str, label: str):
     global text
     count = text.count(old)
