@@ -60,4 +60,5 @@
     <string name="reader_highlight_pink">粉色</string>
     <string name="reader_screen_on_motion">自动阅读时保持屏幕常亮</string>
     <string name="reader_no_chapters">未识别到章节标记。</string>
+    <string name="ok">保存</string>
 </resources>
