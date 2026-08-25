@@ -17,6 +17,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+cd "$ROOT"
+python3 scripts/test-android-performance-slo.py
 command -v adb >/dev/null
 [[ -x "$SDKMANAGER" ]]
 [[ -x "$AVDMANAGER" ]]
