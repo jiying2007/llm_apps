@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -373,17 +374,18 @@ private fun PagedReaderPageV3(
     val presented by produceState<ReaderPresentedText?>(null, sourceText, settings.chineseMode, settings.chineseOverrides, settings.compressBlankLines, settings.paragraphSpacingEm) {
         value = withContext(Dispatchers.Default) { ReaderPresentationPipeline.present(sourceText, settings) }
     }
-    val value = presented ?: return
-    val displayText = value.displayText
-    val map = value.map
+    val presentedValue = presented ?: return
+    val displayText = presentedValue.displayText
+    val map = presentedValue.map
     val spec = remember(settings) { ReaderTypographySpec.from(settings) }
     val style = spec.composeTextStyle(textColor, fontFamily)
     val typeface = remember(settings.typeface, settings.customFontId, settings.fontWeight) { spec.androidTypeface(context) }
     var widthPx by remember { mutableIntStateOf(0) }
     var heightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
-    val systemLeft = WindowInsets.systemGestures.getLeft(density)
-    val systemRight = WindowInsets.systemGestures.getRight(density)
+    val layoutDirection = LocalLayoutDirection.current
+    val systemLeft = WindowInsets.systemGestures.getLeft(density, layoutDirection)
+    val systemRight = WindowInsets.systemGestures.getRight(density, layoutDirection)
     val columns = when (settings.wideColumns) {
         ReaderWideColumns.SINGLE -> 1
         ReaderWideColumns.DOUBLE -> if (adaptiveLayout.width >= ReaderAdaptiveWidth.MEDIUM && !adaptiveLayout.tabletop) 2 else 1
@@ -446,8 +448,9 @@ private fun ContinuousReaderPageV3(
     val engine = remember(book.id) { ReaderViewportEngine(context, book.id) }
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
-    val systemLeft = WindowInsets.systemGestures.getLeft(density)
-    val systemRight = WindowInsets.systemGestures.getRight(density)
+    val layoutDirection = LocalLayoutDirection.current
+    val systemLeft = WindowInsets.systemGestures.getLeft(density, layoutDirection)
+    val systemRight = WindowInsets.systemGestures.getRight(density, layoutDirection)
     var window by remember(book.id) { mutableStateOf<ReaderDisplayWindow?>(null) }
     var layoutResult by remember(book.id) { mutableStateOf<TextLayoutResult?>(null) }
     var viewportHeight by remember { mutableIntStateOf(0) }
@@ -503,12 +506,13 @@ private fun ContinuousReaderPageV3(
         if (!state.autoScrolling) return@LaunchedEffect
         var lastFrame = 0L
         while (isActive && state.autoScrolling) {
-            val now = withFrameNanos { it }
-            if (lastFrame != 0L) {
-                val seconds = (now - lastFrame).toDouble() / 1_000_000_000.0
-                scrollState.scrollBy(with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() })
+            withFrameNanos { now ->
+                if (lastFrame != 0L) {
+                    val seconds = (now - lastFrame).toDouble() / 1_000_000_000.0
+                    scrollState.scrollBy(with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() })
+                }
+                lastFrame = now
             }
-            lastFrame = now
             val w = window ?: continue
             if (scrollState.maxValue > 0 && scrollState.value >= scrollState.maxValue - 1 && w.start + w.map.sourceCodePoints >= w.documentLength - 1) {
                 actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)); break

@@ -30,7 +30,7 @@ internal fun ReaderSettingsScreen(state: AppUiState, actions: JingduActions) {
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.reader_v3_settings)) },
-                navigationIcon = { IconButton(actions.onClosePanel) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
+                navigationIcon = { IconButton(actions.onClosePanel) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library)) } },
                 actions = { TextButton(actions.onClosePanel) { Text(stringResource(R.string.reader_settings_done)) } },
             )
         },
