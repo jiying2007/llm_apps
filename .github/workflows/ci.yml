@@ -70,7 +70,6 @@ jobs:
           python3 scripts/verify-android-i18n.py
           bash ./scripts/verify-reading-experience.sh
           bash ./scripts/verify-reader-v2.sh
-
           grep -q 'ReaderSession' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'ReaderMotionController' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
           grep -q 'ReaderAnnotationStore' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
@@ -130,6 +129,25 @@ jobs:
           set -euo pipefail
           ./scripts/verify-terminal.sh
           bash ./scripts/verify-terminal-quality.sh
+
+  reader-v2-coroutine-fix:
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]' && github.head_ref == 'feat/reader-v2-prelaunch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reader-v2-prelaunch
+      - name: Apply coroutine scope fix
+        run: |
+          set -euo pipefail
+          python3 scripts/patch-reader-v2-coroutine.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+          git commit -m 'fix(reader): scope delayed double-tap action'
+          git push origin HEAD:feat/reader-v2-prelaunch
 
   publish-source-release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
