@@ -5,6 +5,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
+import kotlin.random.Random
 
 class ReaderV3FoundationsTest {
     @Test fun equalLengthProjectionIsExactOneToOne() {
@@ -33,6 +34,68 @@ class ReaderV3FoundationsTest {
             val display = map.displayForSource(source)
             assertTrue(display >= last)
             last = display
+        }
+    }
+
+    @Test fun randomizedProjectionSoakRemainsBoundedAndMonotonic() {
+        val random = Random(0x5EED_C0DE)
+        val alphabet = intArrayOf('a'.code, 'b'.code, '中'.code, '文'.code, '。'.code, '\n'.code, 0x1F642)
+        repeat(5_000) {
+            val sourcePoints = IntArray(random.nextInt(1, 96)) { alphabet[random.nextInt(alphabet.size)] }.toMutableList()
+            val displayPoints = sourcePoints.toMutableList()
+            repeat(random.nextInt(1, 6)) {
+                when (random.nextInt(3)) {
+                    0 -> if (displayPoints.isNotEmpty()) displayPoints.removeAt(random.nextInt(displayPoints.size))
+                    1 -> displayPoints.add(random.nextInt(displayPoints.size + 1), alphabet[random.nextInt(alphabet.size)])
+                    else -> if (displayPoints.isNotEmpty()) displayPoints[random.nextInt(displayPoints.size)] = alphabet[random.nextInt(alphabet.size)]
+                }
+            }
+            val source = String(sourcePoints.toIntArray(), 0, sourcePoints.size)
+            val display = String(displayPoints.toIntArray(), 0, displayPoints.size)
+            val map = SourceDisplayMap.between(source, display)
+            assertEquals(0L, map.displayForSource(0))
+            assertEquals(displayPoints.size.toLong(), map.displayForSource(sourcePoints.size.toLong()))
+            assertEquals(0L, map.sourceForDisplay(0))
+            assertEquals(sourcePoints.size.toLong(), map.sourceForDisplay(displayPoints.size.toLong()))
+
+            var lastDisplay = -1L
+            for (sourceOffset in 0L..sourcePoints.size.toLong()) {
+                val mapped = map.displayForSource(sourceOffset)
+                assertTrue(mapped in 0L..displayPoints.size.toLong())
+                assertTrue(mapped >= lastDisplay)
+                lastDisplay = mapped
+            }
+            var lastSource = -1L
+            for (displayOffset in 0L..displayPoints.size.toLong()) {
+                val mapped = map.sourceForDisplay(displayOffset)
+                assertTrue(mapped in 0L..sourcePoints.size.toLong())
+                assertTrue(mapped >= lastSource)
+                lastSource = mapped
+            }
+        }
+    }
+
+    @Test fun semanticTtsNavigationPureCoreSoakIsBounded() {
+        val samples = listOf(
+            "第一句。第二句！第三句？\n\n下一段。",
+            "One sentence. Second sentence! Third?\n\nNext paragraph.",
+            "混合 text one. 第二句。\r\n\r\n尾段。",
+        )
+        val locales = listOf(Locale.SIMPLIFIED_CHINESE, Locale.TRADITIONAL_CHINESE, Locale.ENGLISH)
+        repeat(20_000) { index ->
+            val text = samples[index % samples.size]
+            val locale = locales[index % locales.size]
+            val total = text.codePointCount(0, text.length).toLong()
+            val previousSentence = TtsSemanticNavigator.previousSentenceOffset(text, locale)
+            val nextSentence = TtsSemanticNavigator.nextSentenceOffset(text, locale)
+            val previousParagraph = TtsSemanticNavigator.previousParagraphOffset(text)
+            val nextParagraph = TtsSemanticNavigator.nextParagraphOffset(text)
+            assertTrue(previousSentence in 0L..total)
+            assertTrue(nextSentence in 0L..total)
+            assertTrue(previousParagraph in 0L..total)
+            assertTrue(nextParagraph in 0L..total)
+            assertTrue(nextSentence > 0L)
+            assertTrue(nextParagraph > 0L)
         }
     }
 
