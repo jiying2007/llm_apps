@@ -1,31 +1,26 @@
 package com.junchen.jingdu
 
 import android.content.Context
+import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import java.io.Closeable
 import java.util.LinkedHashMap
 import kotlin.math.roundToInt
 
-data class SourceDisplayMap(
-    val sourceCodePoints: Long,
-    val displayCodePoints: Long,
-) {
-    fun sourceForDisplay(displayed: Long): Long {
-        if (sourceCodePoints <= 0 || displayCodePoints <= 0) return 0
-        return (displayed.coerceIn(0, displayCodePoints).toDouble() / displayCodePoints.toDouble() * sourceCodePoints)
-            .toLong().coerceIn(0, sourceCodePoints)
-    }
+internal data class SourceDisplayMap(private val projection: TextProjection) {
+    val sourceCodePoints: Long get() = projection.sourceCodePoints
+    val displayCodePoints: Long get() = projection.displayCodePoints
+    fun sourceForDisplay(displayed: Long): Long = projection.sourceForDisplay(displayed)
+    fun displayForSource(source: Long): Long = projection.displayForSource(source)
 
-    fun displayForSource(source: Long): Long {
-        if (sourceCodePoints <= 0 || displayCodePoints <= 0) return 0
-        return (source.coerceIn(0, sourceCodePoints).toDouble() / sourceCodePoints.toDouble() * displayCodePoints)
-            .toLong().coerceIn(0, displayCodePoints)
+    companion object {
+        fun between(source: String, display: String): SourceDisplayMap = SourceDisplayMap(TextProjection.between(source, display))
+        fun compose(first: TextProjection, second: TextProjection): SourceDisplayMap = SourceDisplayMap(first.compose(second))
     }
 }
 
@@ -38,8 +33,9 @@ data class ReaderDisplayWindow(
 )
 
 /**
- * Bounded read/presentation pipeline shared by paged and continuous modes. Conversion and
- * source/display mapping are cached outside Compose so scrolling only performs cheap lookups.
+ * Bounded read/presentation pipeline shared by paged and continuous modes. Presentation edits are
+ * converted into an edit-aware source/display projection so unchanged regions retain exact Core
+ * offsets. Conversion and mapping are cached outside Compose.
  */
 internal class ReaderViewportEngine(context: Context, private val bookId: String) : Closeable {
     private val reader = ReaderController()
@@ -56,23 +52,22 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
     @Synchronized
     fun readAround(position: Long, settings: ReaderSettings): ReaderDisplayWindow {
         val length = reader.length()
-        if (length <= 0) return ReaderDisplayWindow(0, "", "", 0, SourceDisplayMap(0, 0))
+        if (length <= 0) return ReaderDisplayWindow(0, "", "", 0, SourceDisplayMap.between("", ""))
         val bounded = position.coerceIn(0, length - 1)
         val aligned = ((bounded - BACK_BUFFER_CHARS).coerceAtLeast(0) / ALIGN_CHARS) * ALIGN_CHARS
         val key = WindowKey(aligned, presentationKey(settings))
         cache[key]?.let { return it }
         val source = reader.readAt(aligned, ReaderController.WINDOW_CHARS)
-        val presentedSource = presentationNormalize(source, settings)
-        val display = ChineseDisplayConverter.convert(presentedSource, settings.chineseMode, settings.chineseOverrides)
+        val presented = presentationNormalize(source, settings)
+        val sourceToPresented = TextProjection.between(source, presented)
+        val display = ChineseDisplayConverter.convert(presented, settings.chineseMode, settings.chineseOverrides)
+        val presentedToDisplay = TextProjection.between(presented, display)
         val result = ReaderDisplayWindow(
             start = aligned,
             sourceText = source,
             displayText = display,
             documentLength = length,
-            map = SourceDisplayMap(
-                sourceCodePoints = source.codePointCount(0, source.length).toLong(),
-                displayCodePoints = display.codePointCount(0, display.length).toLong(),
-            ),
+            map = SourceDisplayMap.compose(sourceToPresented, presentedToDisplay),
         )
         cache[key] = result
         return result
@@ -86,8 +81,7 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         readAround((position - ReaderController.WINDOW_CHARS / 2).coerceAtLeast(0), settings)
     }
 
-    @Synchronized
-    fun clear() = cache.clear()
+    @Synchronized fun clear() = cache.clear()
 
     @Synchronized
     override fun close() {
@@ -96,14 +90,19 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
     }
 
     private fun presentationNormalize(source: String, settings: ReaderSettings): String {
-        if (!settings.compressBlankLines) return source
-        return source.replace(Regex("\\n[ \\t]*\\n(?:[ \\t]*\\n)+"), "\n\n")
+        var value = source
+        if (settings.compressBlankLines) value = value.replace(Regex("\\n[ \\t]*\\n(?:[ \\t]*\\n)+"), "\n\n")
+        if (settings.paragraphSpacingEm > 0f) {
+            value = value.replace("\n\n", "\n${ReaderTypographySpec.PARAGRAPH_SPACER}\n")
+        }
+        return value
     }
 
     private fun presentationKey(settings: ReaderSettings): Int = listOf(
         settings.chineseMode.name,
         settings.chineseOverrides.hashCode(),
         settings.compressBlankLines,
+        settings.paragraphSpacingEm,
     ).hashCode()
 
     private data class WindowKey(val start: Long, val presentationKey: Int)
@@ -119,9 +118,7 @@ data class PageLayoutKey(
     val textHash: Int,
     val widthPx: Int,
     val heightPx: Int,
-    val fontSizeMilliSp: Int,
-    val lineHeightMilliSp: Int,
-    val letterSpacingMilliEm: Int,
+    val typographyFingerprint: Int,
     val columns: Int,
 )
 
@@ -132,20 +129,15 @@ data class PageLayoutSnapshot(
     val firstColumnEndUtf16: Int,
 )
 
-/** Small LRU used to keep page measurement out of repeated Compose layout churn. */
+/** Small LRU used to keep exact page measurement out of repeated Compose layout churn. */
 internal object ReaderPageLayoutCache {
     private val cache = object : LinkedHashMap<PageLayoutKey, PageLayoutSnapshot>(20, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PageLayoutKey, PageLayoutSnapshot>?): Boolean = size > 16
     }
 
-    @Synchronized
-    fun get(key: PageLayoutKey): PageLayoutSnapshot? = cache[key]
-
-    @Synchronized
-    fun put(key: PageLayoutKey, value: PageLayoutSnapshot) { cache[key] = value }
-
-    @Synchronized
-    fun clear() = cache.clear()
+    @Synchronized fun get(key: PageLayoutKey): PageLayoutSnapshot? = cache[key]
+    @Synchronized fun put(key: PageLayoutKey, value: PageLayoutSnapshot) { cache[key] = value }
+    @Synchronized fun clear() = cache.clear()
 
     fun measure(
         sourceText: String,
@@ -155,45 +147,54 @@ internal object ReaderPageLayoutCache {
         columns: Int,
         settings: ReaderSettings,
         density: Density,
+        typeface: Typeface? = null,
+        map: SourceDisplayMap? = null,
     ): PageLayoutSnapshot {
         val safeColumns = columns.coerceIn(1, 2)
         val columnWidth = ((widthPx - if (safeColumns == 2) (28f * density.density).roundToInt() else 0) / safeColumns).coerceAtLeast(1)
+        val spec = ReaderTypographySpec.from(settings)
         val key = PageLayoutKey(
             textHash = 31 * sourceText.hashCode() + displayText.hashCode(),
             widthPx = widthPx,
             heightPx = heightPx,
-            fontSizeMilliSp = (settings.fontSizeSp * 1000).roundToInt(),
-            lineHeightMilliSp = (settings.fontSizeSp * settings.lineHeightMultiplier * 1000).roundToInt(),
-            letterSpacingMilliEm = (settings.letterSpacingEm * 1000).roundToInt(),
+            typographyFingerprint = spec.fingerprint,
             columns = safeColumns,
         )
         get(key)?.let { return it }
 
-        val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply {
-            textSize = with(density) { settings.fontSizeSp.sp.toPx() }
-            letterSpacing = settings.letterSpacingEm
+        val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG or TextPaint.SUBPIXEL_TEXT_FLAG).apply {
+            textSize = with(density) { spec.fontSizeSp.sp.toPx() }
+            letterSpacing = spec.letterSpacingEm
+            this.typeface = typeface ?: Typeface.create(Typeface.SANS_SERIF, when (spec.weight) {
+                ReaderFontWeight.NORMAL -> Typeface.NORMAL
+                ReaderFontWeight.MEDIUM, ReaderFontWeight.SEMIBOLD -> Typeface.BOLD
+            })
         }
+        val layoutText = spec.androidLayoutText(displayText, density)
         fun endFor(text: CharSequence): Int {
             if (text.isEmpty()) return 0
-            val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, columnWidth)
+            val builder = StaticLayout.Builder.obtain(text, 0, text.length, paint, columnWidth)
                 .setIncludePad(false)
                 .setEllipsize(TextUtils.TruncateAt.END)
                 .setMaxLines(Int.MAX_VALUE)
-                .setLineSpacing(0f, settings.lineHeightMultiplier.coerceAtLeast(1f))
-                .setAlignment(if (settings.textAlignment == ReaderTextAlignment.JUSTIFY) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_NORMAL)
-                .build()
+                .setLineSpacing(0f, spec.lineHeightMultiplier.coerceAtLeast(1f))
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY)
+            if (spec.alignment == ReaderTextAlignment.JUSTIFY) builder.setJustificationMode(Layout.JUSTIFICATION_MODE_INTER_WORD)
+            val layout = builder.build()
             if (layout.lineCount <= 0) return 0
             val line = layout.getLineForVertical((heightPx - 1).coerceAtLeast(0))
             return layout.getLineEnd(line.coerceIn(0, layout.lineCount - 1)).coerceIn(0, text.length)
         }
 
-        val firstEnd = endFor(displayText)
-        val secondEnd = if (safeColumns == 2 && firstEnd < displayText.length) {
-            firstEnd + endFor(displayText.substring(firstEnd))
+        val firstEnd = endFor(layoutText)
+        val secondEnd = if (safeColumns == 2 && firstEnd < layoutText.length) {
+            firstEnd + endFor(layoutText.subSequence(firstEnd, layoutText.length))
         } else firstEnd
         val displayedEnd = secondEnd.coerceIn(0, displayText.length)
         val displayedPoints = displayText.codePointCount(0, displayedEnd).toLong()
-        val sourcePoints = ChineseDisplayConverter.sourceCharsForDisplayed(sourceText, displayText, displayedPoints)
+        val projection = map ?: SourceDisplayMap.between(sourceText, displayText)
+        val sourcePoints = projection.sourceForDisplay(displayedPoints)
         return PageLayoutSnapshot(displayedEnd, displayedPoints, sourcePoints, firstEnd).also { put(key, it) }
     }
 }
