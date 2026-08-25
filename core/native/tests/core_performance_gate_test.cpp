@@ -39,7 +39,7 @@ size_t fixtureMiB() {
   if (raw == nullptr || *raw == '\0') return kDefaultMiB;
   const unsigned long parsed = std::strtoul(raw, nullptr, 10);
   if (parsed == 0) return kDefaultMiB;
-  return std::clamp<size_t>(static_cast<size_t>(parsed), 20, 200);
+  return std::clamp<size_t>(static_cast<size_t>(parsed), 20, 1024);
 }
 
 bool writeFixture(const char* path, size_t mib) {
@@ -139,6 +139,7 @@ int main() {
   CHECK(reopenMs < std::max(6000L, scale * 120L));
   CHECK(searchMs < std::max(12000L, scale * 250L));
   CHECK(randomReadMs < 10000L);
+  // This ceiling is intentionally size-independent. The 960MiB CTest proves bounded-memory access.
   if (rssMiB >= 0) CHECK(rssMiB < 640L);
 
   cleanup(path);
