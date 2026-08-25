@@ -44,7 +44,7 @@ yes | "$SDKMANAGER" --licenses >/dev/null || true
 require_executable "$ADB" adb
 require_executable "$EMULATOR" emulator
 "$ADB" version
-"$EMULATOR" -version | head -n 2
+"$EMULATOR" -version
 
 # GitHub-hosted Linux runners normally expose /dev/kvm. Keep a software fallback for other runners.
 if [[ -e /dev/kvm ]]; then
