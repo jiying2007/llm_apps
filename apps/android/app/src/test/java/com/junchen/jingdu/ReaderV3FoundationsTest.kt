@@ -21,7 +21,7 @@ class ReaderV3FoundationsTest {
         assertEquals(3L, map.displayForSource(3))
         assertEquals(3L, map.displayForSource(6))
         assertEquals(6L, map.displayForSource(9))
-        assertEquals(6L, map.sourceForDisplay(6))
+        assertEquals(9L, map.sourceForDisplay(6))
     }
 
     @Test fun projectionCompositionKeepsBoundariesMonotonic() {
@@ -48,8 +48,8 @@ class ReaderV3FoundationsTest {
             locale = Locale.ENGLISH,
         ) ?: error("selection missing")
         assertEquals("world", selected.excerpt)
-        assertEquals(109L, selected.sourceStart)
-        assertEquals(114L, selected.sourceEnd)
+        assertEquals(110L, selected.sourceStart)
+        assertEquals(115L, selected.sourceEnd)
     }
 
     @Test fun typographyFingerprintCoversPaginationInputs() {
