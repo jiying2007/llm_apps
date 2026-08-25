@@ -1,5 +1,6 @@
 package com.junchen.jingdu.macrobenchmark
 
+import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
 import androidx.benchmark.macro.Metric
@@ -57,7 +58,7 @@ class ReaderJourneyBenchmark {
     private fun openJourney(fixtureMiB: Int, iterations: Int) = rule.measureRepeated(
         packageName = PACKAGE_NAME,
         metrics = listOf(StartupTimingMetric(), FrameTimingMetric()),
-        compilationMode = CompilationMode.Partial(),
+        compilationMode = CI_COMPILATION_MODE,
         startupMode = StartupMode.WARM,
         iterations = iterations,
         setupBlock = {
@@ -78,7 +79,7 @@ class ReaderJourneyBenchmark {
     ) = rule.measureRepeated(
         packageName = PACKAGE_NAME,
         metrics = frameMetrics(),
-        compilationMode = CompilationMode.Partial(),
+        compilationMode = CI_COMPILATION_MODE,
         startupMode = StartupMode.WARM,
         iterations = iterations,
         setupBlock = {
@@ -109,5 +110,13 @@ class ReaderJourneyBenchmark {
 
     private companion object {
         const val PACKAGE_NAME = "com.junchen.jingdu"
+
+        // The CI regression gate must not require a profile that this same job generates later.
+        // One warmup iteration provides a repeatable partial/JIT state while BaselineProfileRule
+        // remains the separate authority for generating and archiving the real Reader V3 profile.
+        val CI_COMPILATION_MODE = CompilationMode.Partial(
+            baselineProfileMode = BaselineProfileMode.Disable,
+            warmupIterations = 1,
+        )
     }
 }
