@@ -147,9 +147,9 @@ fi
 "$ADB" shell getprop ro.product.cpu.abi
 
 # Macrobenchmark CI is deliberately split into build -> install -> run. AGP connectedCheck can
-# build the benchmark target without installing it on hosted CI, which makes every Macrobenchmark
-# fail before measurement with PackageManager.NameNotFoundException. Make target installation an
-# explicit hard precondition while retaining Gradle connectedCheck for result/Perfetto collection.
+# select the debug test variant after a successful benchmark run; that variant is not a product
+# performance target and can produce a false red gate because the benchmark target APK is absent.
+# Build and install the real benchmark target explicitly, then run only the benchmark test variant.
 cd "$ANDROID_DIR"
 ./gradlew --no-daemon --warning-mode all :app:assembleBenchmark :macrobenchmark:assembleBenchmark
 TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
@@ -167,7 +167,7 @@ if [[ "$TARGET_PATH" != package:* ]]; then
 fi
 echo "Macrobenchmark target installed: $TARGET_PATH"
 
-./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedCheck \
+./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedBenchmarkAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark
 
 cd "$ROOT"
@@ -175,9 +175,10 @@ RESULT_ROOT="$ANDROID_DIR/macrobenchmark/build/outputs"
 python3 scripts/check-android-performance-slo.py "$RESULT_ROOT"
 find "$RESULT_ROOT" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
 
-# Execute the Baseline Profile CUJ separately so the performance report and profile evidence are both real.
+# Execute the Baseline Profile CUJ separately on the same signed benchmark variant so performance
+# evidence and profile evidence are both real without invoking any debug-variant instrumentation.
 cd "$ANDROID_DIR"
-./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedCheck \
+./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedBenchmarkAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile
 cd "$ROOT"
 find "$RESULT_ROOT" -type f \( -name '*baseline-prof.txt' -o -name '*startup-prof.txt' \) -print -quit | grep -q .
