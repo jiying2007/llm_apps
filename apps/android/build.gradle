@@ -8,8 +8,9 @@ def releaseVersion = providers.gradleProperty("jingduVersionName").getOrElse("2.
 
 tasks.register("androidCheck") {
     group = "verification"
-    description = "Builds the Android product and runs lint plus Compose and Macrobenchmark test compilation."
+    description = "Builds the Android product and runs unit tests, lint plus Compose and Macrobenchmark test compilation."
     dependsOn(
+            ":app:testDebugUnitTest",
             ":app:lintDebug",
             ":app:lintRelease",
             ":app:assembleDebug",

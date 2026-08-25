@@ -3,14 +3,12 @@
 package com.junchen.jingdu
 
 import android.app.Activity
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.ActivityInfo
-import android.os.Build
-import android.os.SystemClock
+import android.os.BatteryManager
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -21,10 +19,10 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,48 +38,58 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private data class ReaderSelection(val start: Long, val end: Long, val excerpt: String)
 
 @Composable
 internal fun ReaderScreen(
     state: AppUiState,
     actions: JingduActions,
     snackbar: SnackbarHostState,
+    adaptiveLayout: ReaderAdaptiveLayout = ReaderAdaptiveLayout(ReaderAdaptiveWidth.COMPACT, false, false),
     canLocationBack: Boolean = false,
     canLocationForward: Boolean = false,
     onLocationBack: () -> Unit = {},
@@ -89,39 +97,36 @@ internal fun ReaderScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    val lifecycleOwner = context as? androidx.lifecycle.LifecycleOwner
     val book = state.currentBook ?: return
     val settings = state.settings
-    val paceStore = remember { ReadingPaceStore(context) }
+    val haptics = LocalHapticFeedback.current
+    val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
+    val touchExploration = accessibility.isTouchExplorationEnabled
+    val fontFamily = rememberReaderFontFamily(context, settings)
     var controlsVisible by rememberSaveable(book.id) { mutableStateOf(true) }
     var more by remember { mutableStateOf(false) }
-    var servicePlaying by remember(book.id) { mutableStateOf(false) }
-    var serviceActive by remember(book.id) { mutableStateOf(false) }
-    var ttsOffset by remember(book.id) { mutableLongStateOf(-1L) }
-    var ttsNextOffset by remember(book.id) { mutableLongStateOf(-1L) }
     var pageDirection by remember(book.id) { mutableIntStateOf(0) }
+    var selection by remember(book.id) { mutableStateOf<ReaderSelection?>(null) }
+    var noteDraft by remember { mutableStateOf("") }
+    var showNoteDialog by remember { mutableStateOf(false) }
+
     val fraction = if (state.length <= 0) 0f else (state.position.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
     val progressPercent = (fraction * 100).roundToInt()
-    val remainingMinutes = remember(state.position, state.length) { paceStore.remainingMinutes(state.position, state.length) }
-
-    LaunchedEffect(book.id, state.position) { paceStore.resetSession(book.id, state.position) }
+    val currentChapter = remember(state.chapters, state.position) { state.chapters.lastOrNull { it.offset <= state.position }?.title }
 
     DisposableEffect(activity) {
         val window = activity?.window
         onDispose {
-            ReaderInteractionRuntime.backgroundTtsPlaying = false
-            if (window != null) {
-                WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
-                val attributes = window.attributes
-                attributes.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                window.attributes = attributes
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window?.let {
+                WindowCompat.getInsetsController(it, it.decorView).show(WindowInsetsCompat.Type.systemBars())
+                val attrs = it.attributes
+                attrs.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                it.attributes = attrs
             }
-            if (activity != null && !activity.isChangingConfigurations && !activity.isFinishing) {
-                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            }
+            if (activity != null && !activity.isChangingConfigurations && !activity.isFinishing) activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
-
     LaunchedEffect(activity, settings.orientation) {
         activity?.requestedOrientation = when (settings.orientation) {
             ReaderOrientation.SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -129,291 +134,129 @@ internal fun ReaderScreen(
             ReaderOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
     }
-
     LaunchedEffect(activity, settings.useSystemBrightness, settings.readerBrightness) {
         activity?.window?.let { window ->
-            val attributes = window.attributes
-            attributes.screenBrightness = if (settings.useSystemBrightness) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else settings.readerBrightness.coerceIn(0.05f, 1f)
-            window.attributes = attributes
+            val attrs = window.attributes
+            attrs.screenBrightness = if (settings.useSystemBrightness) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else settings.readerBrightness.coerceIn(0.03f, 1f)
+            window.attributes = attrs
         }
     }
-
+    LaunchedEffect(activity, state.motion) {
+        activity?.window?.let { window ->
+            if (state.motion == ReaderMotionState.IDLE) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            else window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
     LaunchedEffect(activity, controlsVisible, state.panel) {
         activity?.window?.let { window ->
             val controller = WindowCompat.getInsetsController(window, window.decorView)
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            if (controlsVisible || state.panel != null) controller.show(WindowInsetsCompat.Type.systemBars())
-            else controller.hide(WindowInsetsCompat.Type.systemBars())
+            if (controlsVisible || state.panel != null) controller.show(WindowInsetsCompat.Type.systemBars()) else controller.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
-
     LaunchedEffect(controlsVisible, state.panel, settings.controlsAutoHideMs) {
-        if (controlsVisible && state.panel == null) {
-            delay(settings.controlsAutoHideMs)
-            controlsVisible = false
-        }
+        if (controlsVisible && state.panel == null) { delay(settings.controlsAutoHideMs); controlsVisible = false }
     }
 
-    DisposableEffect(activity, settings.autoScrollEnabled) {
-        val lifecycle = lifecycleOwner?.lifecycle
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE && settings.autoScrollEnabled) {
-                actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-            }
-        }
-        lifecycle?.addObserver(observer)
-        onDispose { lifecycle?.removeObserver(observer) }
+    fun tick() { if (settings.hapticEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
+    fun previous() { selection = null; tick(); pageDirection = -1; actions.onNavigatePrevious() }
+    fun next() { selection = null; tick(); pageDirection = 1; actions.onNavigateNext() }
+    fun seek(value: Float) { selection = null; pageDirection = 0; actions.onSeekFraction(value) }
+    fun updateBrightness(delta: Float) {
+        val value = (settings.readerBrightness + delta).coerceIn(0.03f, 1f)
+        if (abs(value - settings.readerBrightness) >= 0.005f) actions.onSettingsChanged(settings.copy(useSystemBrightness = false, readerBrightness = value))
     }
-
-    LaunchedEffect(state.sleepMinutes, settings.autoScrollEnabled) {
-        if (state.sleepMinutes > 0 && settings.autoScrollEnabled) {
-            delay(state.sleepMinutes * 60_000L)
-            actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-        }
+    fun resizeFont(zoom: Float) {
+        if (!settings.pinchFontEnabled || abs(zoom - 1f) < 0.05f) return
+        val value = (settings.fontSizeSp * zoom).coerceIn(14f, 40f)
+        if (abs(value - settings.fontSizeSp) >= 0.5f) actions.onSettingsChanged(settings.copy(fontSizeSp = value, preset = ReaderPreset.CUSTOM))
     }
+    fun addBookmark() { tick(); actions.onAddBookmark() }
 
-    fun stopBackgroundTts() {
-        if (serviceActive) context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STOP))
-        servicePlaying = false
-        serviceActive = false
-        ReaderInteractionRuntime.backgroundTtsPlaying = false
-        ttsOffset = -1L
-        ttsNextOffset = -1L
-    }
-
-    fun stopMotionForManualNavigation() {
-        stopBackgroundTts()
-        if (state.ttsPlaying) actions.onToggleTts()
-        if (settings.autoScrollEnabled) actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-    }
-
-    fun manualPrevious() {
-        stopMotionForManualNavigation()
-        paceStore.markManualPage(book.id, state.position)
-        pageDirection = -1
-        actions.onNavigatePrevious()
-    }
-
-    fun manualNext() {
-        stopMotionForManualNavigation()
-        paceStore.markManualPage(book.id, state.position)
-        pageDirection = 1
-        actions.onNavigateNext()
-    }
-
-    fun manualSeek(value: Float) {
-        stopMotionForManualNavigation()
-        pageDirection = 0
-        actions.onSeekFraction(value)
-    }
-
-    fun toggleAutoScroll() {
-        if (state.cleanMode) return
-        if (settings.autoScrollEnabled) {
-            actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-        } else {
-            stopBackgroundTts()
-            if (state.ttsPlaying) actions.onToggleTts()
-            if (state.autoPaging) actions.onToggleAutoPaging()
-            actions.onSettingsChanged(settings.copy(readingMode = ReaderMode.CONTINUOUS, autoScrollEnabled = true))
-            controlsVisible = false
-        }
-    }
-
-    DisposableEffect(context, book.id, state.panel) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                if (intent?.action != TtsPlaybackService.ACTION_STATE) return
-                val active = intent.getBooleanExtra(TtsPlaybackService.EXTRA_ACTIVE, false)
-                val playing = intent.getBooleanExtra(TtsPlaybackService.EXTRA_PLAYING, false)
-                val offset = intent.getLongExtra(TtsPlaybackService.EXTRA_OFFSET, -1L)
-                serviceActive = active
-                servicePlaying = playing
-                ReaderInteractionRuntime.backgroundTtsPlaying = playing
-                ttsOffset = offset
-                ttsNextOffset = intent.getLongExtra(TtsPlaybackService.EXTRA_NEXT_OFFSET, -1L)
-                if (active && state.panel == null && offset >= 0 && offset != state.position) actions.onSyncTtsPosition(offset)
-            }
-        }
-        val filter = IntentFilter(TtsPlaybackService.ACTION_STATE)
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
-        context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STATE))
-        onDispose {
-            runCatching { context.unregisterReceiver(receiver) }
-            ReaderInteractionRuntime.backgroundTtsPlaying = false
-        }
-    }
-
-    LaunchedEffect(state.sleepMinutes, serviceActive) {
-        if (serviceActive) context.startService(
-            Intent(context, TtsPlaybackService::class.java)
-                .setAction(TtsPlaybackService.ACTION_SLEEP)
-                .putExtra(TtsPlaybackService.EXTRA_MINUTES, state.sleepMinutes),
-        )
-    }
-
-    fun startBackgroundTts() {
-        if (settings.autoScrollEnabled) actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-        if (state.cleanMode) { actions.onToggleTts(); return }
-        if (state.autoPaging) actions.onToggleAutoPaging()
-        val repository = BookRepository(context)
-        val source = repository.list().firstOrNull { it.id == book.id }
-        if (source == null) { actions.onToggleTts(); return }
-        val file = repository.normalizedFile(source)
-        val intent = Intent(context, TtsPlaybackService::class.java)
-            .setAction(TtsPlaybackService.ACTION_START)
-            .putExtra(TtsPlaybackService.EXTRA_PATH, file.absolutePath)
-            .putExtra(TtsPlaybackService.EXTRA_BOOK_ID, book.id)
-            .putExtra(TtsPlaybackService.EXTRA_TITLE, stripTxt(book.name))
-            .putExtra(TtsPlaybackService.EXTRA_OFFSET, state.position)
-            .putExtra(TtsPlaybackService.EXTRA_RATE, settings.ttsRate)
-            .putExtra(TtsPlaybackService.EXTRA_PITCH, settings.ttsPitch)
-            .putExtra(TtsPlaybackService.EXTRA_VOICE, settings.ttsVoiceName)
-        serviceActive = true
-        servicePlaying = true
-        ReaderInteractionRuntime.backgroundTtsPlaying = true
-        if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
-    }
-
-    fun toggleBackgroundTts() {
-        if (settings.autoScrollEnabled) actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-        if (state.cleanMode) { actions.onToggleTts(); return }
-        if (!serviceActive) startBackgroundTts()
-        else context.startService(Intent(context, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_TOGGLE))
-    }
-
-    val anyTtsPlaying = servicePlaying || state.ttsPlaying
-    val pageBackground = readerBackground(settings.palette)
-    val pageTextColor = readerTextColor(settings.palette)
-
-    Box(Modifier.fillMaxSize().background(pageBackground)) {
+    val background = readerBackground(settings.palette)
+    val textColor = readerTextColor(settings.palette)
+    Box(Modifier.fillMaxSize().background(background)) {
         if (settings.readingMode == ReaderMode.CONTINUOUS && !state.cleanMode) {
-            ContinuousReaderPage(
-                state = state,
-                actions = actions,
-                onPrevious = ::manualPrevious,
-                onNext = ::manualNext,
-                onToggleControls = { controlsVisible = !controlsVisible },
-                followExternalPosition = anyTtsPlaying,
-                onPauseAutoScroll = {
-                    if (settings.autoScrollEnabled) {
-                        actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-                        controlsVisible = true
-                    }
-                },
-                textColor = pageTextColor,
-            )
+            ContinuousReaderPage(state, actions, fontFamily, textColor, touchExploration, ::previous, ::next,
+                { controlsVisible = !controlsVisible }, ::updateBrightness, ::resizeFont, ::addBookmark,
+                { selection = it; controlsVisible = true })
         } else {
             AnimatedContent(
                 targetState = state.position to state.pageText,
                 transitionSpec = {
                     if (settings.pageAnimation == ReaderPageAnimation.SLIDE && pageDirection != 0) {
-                        (slideInHorizontally { width -> pageDirection * width } + fadeIn()) togetherWith
-                            (slideOutHorizontally { width -> -pageDirection * width } + fadeOut())
+                        (slideInHorizontally { pageDirection * it } + fadeIn()) togetherWith (slideOutHorizontally { -pageDirection * it } + fadeOut())
                     } else fadeIn() togetherWith fadeOut()
                 },
                 label = "reader-page",
                 modifier = Modifier.fillMaxSize(),
-            ) { (targetPosition, targetText) ->
-                PagedReaderPage(
-                    text = targetText,
-                    settings = settings,
-                    onVisibleCharsChanged = actions.onVisibleCharsChanged,
-                    onPrevious = ::manualPrevious,
-                    onNext = ::manualNext,
-                    onToggleControls = { controlsVisible = !controlsVisible },
-                    textColor = pageTextColor,
-                    ttsHighlight = servicePlaying && ttsOffset == targetPosition,
-                    ttsChunkSourceChars = (ttsNextOffset - ttsOffset).coerceAtLeast(0),
-                )
+            ) { (position, text) ->
+                PagedReaderPage(position, text, state, adaptiveLayout, fontFamily, textColor, touchExploration,
+                    actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
+                    ::updateBrightness, ::resizeFont, ::addBookmark, { selection = it; controlsVisible = true })
             }
         }
 
-        if (settings.focusRulerLines > 0) {
-            val density = LocalDensity.current
-            val height = with(density) { (settings.fontSizeSp.sp.toDp() * settings.lineHeightMultiplier * settings.focusRulerLines) }
-            Box(
-                Modifier.fillMaxWidth().height(height).align(Alignment.Center).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)),
-            )
-        }
-
-        AnimatedVisibility(visible = controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
-            ReaderTopBar(state, actions) { more = it }
-        }
-        if (controlsVisible && more) {
-            Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)) {
-                ReaderMoreMenu(state, actions, onDismiss = { more = false })
-            }
-        }
-
-        AnimatedVisibility(visible = controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
-            ReaderBottomBar(
-                fraction = fraction,
-                ttsPlaying = anyTtsPlaying,
-                autoPaging = state.autoPaging,
-                autoScrolling = settings.autoScrollEnabled,
-                autoScrollAvailable = !state.cleanMode,
-                canLocationBack = canLocationBack,
-                canLocationForward = canLocationForward,
-                onLocationBack = { stopMotionForManualNavigation(); pageDirection = 0; onLocationBack() },
-                onLocationForward = { stopMotionForManualNavigation(); pageDirection = 0; onLocationForward() },
-                onPrevious = ::manualPrevious,
-                onNext = ::manualNext,
-                onSeek = ::manualSeek,
-                onTts = ::toggleBackgroundTts,
-                onAutoScroll = ::toggleAutoScroll,
-            )
-        }
-
-        if (!controlsVisible && settings.showReadingStatus) {
-            Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
-                color = pageBackground.copy(alpha = 0.78f),
-                shape = MaterialTheme.shapes.small,
-            ) {
-                Text(
-                    text = if (settings.autoScrollEnabled) stringResource(R.string.reader_auto_scroll_running, settings.autoScrollSpeedDpPerSecond.roundToInt())
-                    else remainingMinutes?.let { stringResource(R.string.reader_status_remaining, progressPercent, it) }
-                        ?: stringResource(R.string.reader_status_progress, progressPercent),
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = pageTextColor.copy(alpha = 0.72f),
-                )
-            }
-        }
-
-        SnackbarHost(
-            hostState = snackbar,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (controlsVisible) 92.dp else 28.dp),
+        if (settings.focusRulerLines > 0) Box(
+            Modifier.fillMaxWidth().height((settings.fontSizeSp * settings.lineHeightMultiplier * settings.focusRulerLines).dp)
+                .align(Alignment.Center).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)),
         )
+
+        AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+            ReaderTopBar(state, currentChapter, actions) { more = true }
+        }
+        if (controlsVisible && more) Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)) {
+            ReaderMoreMenu(state, actions) { more = false }
+        }
+        AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+            ReaderBottomBar(fraction, state, currentChapter, canLocationBack, canLocationForward, onLocationBack, onLocationForward,
+                ::seek, { actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }, actions.onToggleTts, actions.onToggleAutoPaging)
+        }
+        if (!controlsVisible && settings.showReadingStatus) ReaderReadingStatus(state, progressPercent, currentChapter, textColor, background, Modifier.align(Alignment.BottomCenter))
+        if (state.autoScrolling && !controlsVisible) AutoScrollLiveControl(settings, actions, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 42.dp))
+
+        selection?.let { selected ->
+            ReaderSelectionBar(selected,
+                onHighlight = { style -> actions.onAddAnnotation(selected.start, selected.end, ReaderAnnotationKind.HIGHLIGHT, style, "", selected.excerpt); selection = null },
+                onNote = { noteDraft = ""; showNoteDialog = true },
+                onCopy = {
+                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("Jingdu", selected.excerpt)); selection = null
+                },
+                onShare = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, selected.excerpt) }, null)); selection = null },
+                onDismiss = { selection = null }, modifier = Modifier.align(Alignment.Center))
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (controlsVisible) 104.dp else 24.dp))
     }
 
-    LaunchedEffect(state.position) {
-        if (pageDirection != 0) {
-            delay(260L)
-            pageDirection = 0
-        }
-    }
+    if (showNoteDialog && selection != null) AlertDialog(
+        onDismissRequest = { showNoteDialog = false },
+        title = { Text(stringResource(R.string.reader_note)) },
+        text = { OutlinedTextField(noteDraft, { noteDraft = it.take(2000) }, label = { Text(stringResource(R.string.reader_note_hint)) }) },
+        confirmButton = { TextButton(onClick = {
+            selection?.let { actions.onAddAnnotation(it.start, it.end, ReaderAnnotationKind.NOTE, ReaderHighlightStyle.YELLOW, noteDraft, it.excerpt) }
+            selection = null; showNoteDialog = false
+        }) { Text(stringResource(R.string.ok)) } },
+        dismissButton = { TextButton({ showNoteDialog = false }) { Text(stringResource(R.string.cancel)) } },
+    )
+    LaunchedEffect(state.position) { if (pageDirection != 0) { delay(220); pageDirection = 0 } }
 }
 
 @Composable
-private fun ReaderTopBar(state: AppUiState, actions: JingduActions, onMore: (Boolean) -> Unit) {
+private fun ReaderTopBar(state: AppUiState, chapter: String?, actions: JingduActions, onMore: () -> Unit) {
     val book = state.currentBook ?: return
-    Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
+    Surface(tonalElevation = 2.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
         CenterAlignedTopAppBar(
             modifier = Modifier.statusBarsPadding(),
-            navigationIcon = { IconButton(onClick = actions.onBackToLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back_to_library)) } },
-            title = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(stripTxt(book.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val fraction = if (state.length <= 0) 0f else (state.position.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
-                    Text(if (state.cleanMode) stringResource(R.string.clean_preview) else stringResource(R.string.reader_status, (fraction * 100).roundToInt(), book.encoding), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
+            navigationIcon = { IconButton(actions.onBackToLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library)) } },
+            title = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(stripTxt(book.name), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                chapter?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) }
+            } },
             actions = {
-                IconButton(onClick = { actions.onOpenPanel(ReaderPanel.SEARCH) }) { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.full_text_search)) }
-                IconButton(onClick = { actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = stringResource(R.string.chapters)) }
-                IconButton(onClick = { onMore(true) }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more_reading_tools)) }
+                TextButton({ actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }) { Text("Aa") }
+                IconButton({ actions.onOpenPanel(ReaderPanel.CHAPTERS); actions.onEnsureChapters() }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
+                IconButton(onMore) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools)) }
             },
         )
     }
@@ -421,103 +264,98 @@ private fun ReaderTopBar(state: AppUiState, actions: JingduActions, onMore: (Boo
 
 @Composable
 private fun ReaderMoreMenu(state: AppUiState, actions: JingduActions, onDismiss: () -> Unit) {
-    DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
-        DropdownMenuItem(text = { Text(stringResource(R.string.txt_doctor)) }, leadingIcon = { Icon(Icons.Outlined.HealthAndSafety, null) }, onClick = { onDismiss(); actions.onOpenPanel(ReaderPanel.DOCTOR) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.smart_clean4)) }, leadingIcon = { Icon(Icons.Outlined.Psychology, null) }, onClick = { onDismiss(); actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.bookmarks)) }, leadingIcon = { Icon(Icons.Outlined.BookmarkBorder, null) }, onClick = { onDismiss(); actions.onOpenPanel(ReaderPanel.BOOKMARKS) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.clean)) }, leadingIcon = { Icon(Icons.Outlined.AutoFixHigh, null) }, onClick = { onDismiss(); actions.onOpenPanel(ReaderPanel.CLEAN) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.text_encoding)) }, leadingIcon = { Icon(Icons.Outlined.TextFields, null) }, onClick = { onDismiss(); actions.onOpenPanel(ReaderPanel.ENCODING) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.reading_settings)) }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { onDismiss(); actions.onOpenPanel(ReaderPanel.SETTINGS) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.privacy_verification)) }, leadingIcon = { Icon(Icons.Outlined.Lock, null) }, onClick = { onDismiss(); actions.onOpenPanel(ReaderPanel.PRIVACY) })
-        DropdownMenuItem(text = { Text(stringResource(R.string.delete_private_copy)) }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { onDismiss(); actions.onRequestDeleteCurrent() })
+    DropdownMenu(true, onDismissRequest = onDismiss) {
+        fun close(action: () -> Unit) { onDismiss(); action() }
+        DropdownMenuItem({ Text(stringResource(R.string.full_text_search)) }, { close { actions.onOpenPanel(ReaderPanel.SEARCH) } }, leadingIcon = { Icon(Icons.Default.Search, null) })
+        DropdownMenuItem({ Text(stringResource(R.string.reader_annotations)) }, { close { actions.onOpenPanel(ReaderPanel.ANNOTATIONS) } }, leadingIcon = { Icon(Icons.Outlined.EditNote, null) })
+        DropdownMenuItem({ Text(stringResource(R.string.reader_reading_map)) }, { close { actions.onOpenPanel(ReaderPanel.READING_MAP); actions.onEnsureChapters() } }, leadingIcon = { Icon(Icons.Outlined.Map, null) })
+        DropdownMenuItem({ Text(stringResource(R.string.txt_doctor)) }, { close { actions.onOpenPanel(ReaderPanel.DOCTOR) } }, leadingIcon = { Icon(Icons.Outlined.HealthAndSafety, null) })
+        DropdownMenuItem({ Text(stringResource(R.string.smart_clean4)) }, { close { actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) } }, leadingIcon = { Icon(Icons.Outlined.Psychology, null) })
+        DropdownMenuItem({ Text(stringResource(R.string.clean)) }, { close { actions.onOpenPanel(ReaderPanel.CLEAN) } }, leadingIcon = { Icon(Icons.Outlined.AutoFixHigh, null) })
+        DropdownMenuItem({ Text(stringResource(R.string.reading_settings)) }, { close { actions.onOpenPanel(ReaderPanel.SETTINGS) } }, leadingIcon = { Icon(Icons.Default.Settings, null) })
+        if (!state.cleanMode) DropdownMenuItem({ Text(stringResource(R.string.reader_access_bookmark)) }, { close(actions.onAddBookmark) }, leadingIcon = { Icon(Icons.Outlined.BookmarkAdd, null) })
     }
 }
 
 @Composable
 private fun PagedReaderPage(
-    text: String,
-    settings: ReaderSettings,
+    sourceStart: Long,
+    sourceText: String,
+    state: AppUiState,
+    adaptiveLayout: ReaderAdaptiveLayout,
+    fontFamily: FontFamily,
+    textColor: Color,
+    touchExploration: Boolean,
     onVisibleCharsChanged: (Long) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onToggleControls: () -> Unit,
-    textColor: Color,
-    ttsHighlight: Boolean,
-    ttsChunkSourceChars: Long,
+    onBrightnessDelta: (Float) -> Unit,
+    onResizeFont: (Float) -> Unit,
+    onBookmark: () -> Unit,
+    onSelection: (ReaderSelection) -> Unit,
 ) {
-    val displayText = remember(text, settings.chineseMode, settings.chineseOverrides) { ChineseDisplayConverter.convert(text, settings.chineseMode, settings.chineseOverrides) }
-    val style = readerTextStyle(settings, textColor)
+    val settings = state.settings
+    val displayText by produceState(sourceText, sourceText, settings.chineseMode, settings.chineseOverrides, settings.compressBlankLines) {
+        value = withContext(Dispatchers.Default) {
+            val normalized = if (settings.compressBlankLines) sourceText.replace(Regex("\\n[ \\t]*\\n(?:[ \\t]*\\n)+"), "\n\n") else sourceText
+            ChineseDisplayConverter.convert(normalized, settings.chineseMode, settings.chineseOverrides)
+        }
+    }
+    val style = readerTextStyle(settings, textColor, fontFamily)
     var widthPx by remember { mutableIntStateOf(0) }
-    val surfaceDescription = stringResource(R.string.reader_surface)
-    val gestureModifier = Modifier
-        .fillMaxSize()
-        .onSizeChanged { widthPx = it.width }
-        .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls, surfaceDescription)
-
-    BoxWithConstraints(gestureModifier) {
-        val useTwoColumns = when (settings.wideColumns) {
-            ReaderWideColumns.SINGLE -> false
-            ReaderWideColumns.DOUBLE -> maxWidth >= 600.dp
-            ReaderWideColumns.AUTO -> maxWidth >= 840.dp
-        }
-        if (useTwoColumns) {
-            TwoColumnPage(text, displayText, settings, style, onVisibleCharsChanged, ttsHighlight, ttsChunkSourceChars)
-        } else {
-            Box(Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), contentAlignment = Alignment.TopCenter) {
-                SelectionContainer {
-                    Text(
-                        text = highlightedText(displayText, ttsHighlight, ttsChunkSourceChars),
-                        modifier = Modifier.widthIn(max = 760.dp).fillMaxHeight(),
-                        style = style,
-                        overflow = TextOverflow.Clip,
-                        onTextLayout = { layout -> reportVisibleSourceChars(text, displayText, layout, onVisibleCharsChanged) },
-                    )
-                }
-            }
-        }
+    var heightPx by remember { mutableIntStateOf(0) }
+    var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val density = LocalDensity.current
+    val columns = when (settings.wideColumns) {
+        ReaderWideColumns.SINGLE -> 1
+        ReaderWideColumns.DOUBLE -> if (adaptiveLayout.width >= ReaderAdaptiveWidth.MEDIUM && !adaptiveLayout.tabletop) 2 else 1
+        ReaderWideColumns.AUTO -> if (adaptiveLayout.prefersTwoColumns) 2 else 1
+    }
+    LaunchedEffect(sourceText, displayText, widthPx, heightPx, columns, settings.fontSizeSp, settings.lineHeightMultiplier, settings.letterSpacingEm) {
+        if (widthPx <= 0 || heightPx <= 0 || displayText.isEmpty()) return@LaunchedEffect
+        val snapshot = withContext(Dispatchers.Default) { ReaderPageLayoutCache.measure(sourceText, displayText, widthPx, heightPx, columns, settings, density) }
+        if (snapshot.sourceCodePoints >= ReaderController.MIN_PAGE_CHARS) onVisibleCharsChanged(snapshot.sourceCodePoints)
+    }
+    val semantics = Modifier.readerAccessibilityActions(
+        onPrevious, onNext, onToggleControls, onBookmark,
+        stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous),
+        stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls),
+        stringResource(R.string.reader_access_bookmark),
+    )
+    val gestures = if (touchExploration) Modifier else Modifier.readerGesturesV2(settings, widthPx, heightPx, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark,
+        onLongPress = { point ->
+            val layout = layoutResult ?: return@readerGesturesV2
+            if (displayText.isEmpty()) return@readerGesturesV2
+            val y = (point.y - with(density) { settings.verticalPaddingDp.dp.toPx() }).coerceAtLeast(0f)
+            val line = layout.getLineForVerticalPosition(y).coerceIn(0, layout.lineCount - 1)
+            val a = layout.getLineStart(line).coerceIn(0, displayText.length)
+            val b = layout.getLineEnd(line, visibleEnd = true).coerceIn(a, displayText.length)
+            val sourceA = sourceStart + ChineseDisplayConverter.sourceCharsForDisplayed(sourceText, displayText, displayText.codePointCount(0, a).toLong())
+            val sourceB = sourceStart + ChineseDisplayConverter.sourceCharsForDisplayed(sourceText, displayText, displayText.codePointCount(0, b).toLong())
+            if (sourceB > sourceA) onSelection(ReaderSelection(sourceA, sourceB, displayText.substring(a, b).trim().take(800)))
+        }).pointerInput(settings.pinchFontEnabled) { if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) } }
+    Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures), contentAlignment = Alignment.TopCenter) {
+        if (columns == 2) TwoColumnPage(sourceStart, sourceText, displayText, state, style) { layoutResult = it }
+        else Text(readerAnnotatedText(sourceStart, sourceText, displayText, state),
+            Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+            style = style, overflow = TextOverflow.Clip, onTextLayout = { layoutResult = it })
     }
 }
 
 @Composable
-private fun TwoColumnPage(
-    sourceText: String,
-    displayText: String,
-    settings: ReaderSettings,
-    style: TextStyle,
-    onVisibleCharsChanged: (Long) -> Unit,
-    ttsHighlight: Boolean,
-    ttsChunkSourceChars: Long,
-) {
-    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), contentAlignment = Alignment.TopCenter) {
+private fun TwoColumnPage(sourceStart: Long, sourceText: String, displayText: String, state: AppUiState, style: TextStyle, onLayout: (TextLayoutResult) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = state.settings.horizontalPaddingDp.dp, vertical = state.settings.verticalPaddingDp.dp), contentAlignment = Alignment.TopCenter) {
         val density = LocalDensity.current
-        val textMeasurer = rememberTextMeasurer()
-        val gap = 28.dp
-        val contentWidth = (maxWidth.coerceAtMost(1200.dp) - gap) / 2
-        val maxWidthPx = with(density) { contentWidth.roundToPx().coerceAtLeast(1) }
-        val maxHeightPx = with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
-        val constraints = remember(maxWidthPx, maxHeightPx) { Constraints(maxWidth = maxWidthPx, maxHeight = maxHeightPx) }
-        val firstLayout = remember(displayText, style, constraints) { textMeasurer.measure(displayText, style = style, overflow = TextOverflow.Clip, constraints = constraints) }
-        val firstLine = if (firstLayout.lineCount <= 0) 0 else firstLayout.getLineForVerticalPosition((maxHeightPx - 1).toFloat()).coerceIn(0, firstLayout.lineCount - 1)
-        val firstEnd = if (displayText.isEmpty() || firstLayout.lineCount <= 0) 0 else firstLayout.getLineEnd(firstLine, visibleEnd = true).coerceIn(0, displayText.length)
-        val secondSource = displayText.substring(firstEnd)
-        val secondLayout = remember(secondSource, style, constraints) { textMeasurer.measure(secondSource, style = style, overflow = TextOverflow.Clip, constraints = constraints) }
-        val secondLine = if (secondLayout.lineCount <= 0) 0 else secondLayout.getLineForVerticalPosition((maxHeightPx - 1).toFloat()).coerceIn(0, secondLayout.lineCount - 1)
-        val secondEnd = if (secondSource.isEmpty() || secondLayout.lineCount <= 0) 0 else secondLayout.getLineEnd(secondLine, visibleEnd = true).coerceIn(0, secondSource.length)
-        val displayedEnd = (firstEnd + secondEnd).coerceIn(0, displayText.length)
-        LaunchedEffect(sourceText, displayText, displayedEnd) {
-            if (displayedEnd > 0) {
-                val displayedCount = displayText.codePointCount(0, displayedEnd).toLong()
-                val sourceCount = ChineseDisplayConverter.sourceCharsForDisplayed(sourceText, displayText, displayedCount)
-                if (sourceCount >= ReaderController.MIN_PAGE_CHARS) onVisibleCharsChanged(sourceCount)
-            }
-        }
-        Row(Modifier.widthIn(max = 1200.dp).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-            SelectionContainer(Modifier.weight(1f)) {
-                Text(highlightedText(displayText.substring(0, firstEnd), ttsHighlight, ttsChunkSourceChars), modifier = Modifier.fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
-            }
-            SelectionContainer(Modifier.weight(1f)) {
-                Text(AnnotatedString(secondSource.substring(0, secondEnd)), modifier = Modifier.fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
-            }
+        val widthPx = with(density) { maxWidth.coerceAtMost(1200.dp).roundToPx() }
+        val heightPx = with(density) { maxHeight.roundToPx() }
+        val snapshot = remember(sourceText, displayText, widthPx, heightPx, state.settings) { ReaderPageLayoutCache.measure(sourceText, displayText, widthPx, heightPx, 2, state.settings, density) }
+        val firstEnd = snapshot.firstColumnEndUtf16.coerceIn(0, displayText.length)
+        val fullEnd = snapshot.displayedEndUtf16.coerceIn(firstEnd, displayText.length)
+        Row(Modifier.widthIn(max = 1200.dp).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            Text(readerAnnotatedText(sourceStart, sourceText, displayText.substring(0, firstEnd), state), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip, onTextLayout = onLayout)
+            val secondStart = sourceStart + ChineseDisplayConverter.sourceCharsForDisplayed(sourceText, displayText, displayText.codePointCount(0, firstEnd).toLong())
+            Text(readerAnnotatedText(secondStart, sourceText, displayText.substring(firstEnd, fullEnd), state), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
         }
     }
 }
@@ -526,305 +364,286 @@ private fun TwoColumnPage(
 private fun ContinuousReaderPage(
     state: AppUiState,
     actions: JingduActions,
+    fontFamily: FontFamily,
+    textColor: Color,
+    touchExploration: Boolean,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onToggleControls: () -> Unit,
-    followExternalPosition: Boolean,
-    onPauseAutoScroll: () -> Unit,
-    textColor: Color,
+    onBrightnessDelta: (Float) -> Unit,
+    onResizeFont: (Float) -> Unit,
+    onBookmark: () -> Unit,
+    onSelection: (ReaderSelection) -> Unit,
 ) {
     val context = LocalContext.current
     val book = state.currentBook ?: return
     val settings = state.settings
-    val density = LocalDensity.current
+    val engine = remember(book.id) { ReaderViewportEngine(context, book.id) }
     val scrollState = rememberScrollState()
-    var session by remember(book.id) { mutableStateOf<ContinuousWindowReader?>(null) }
-    var sourceText by remember(book.id) { mutableStateOf("") }
-    var windowStart by remember(book.id) { mutableLongStateOf(0L) }
-    var documentLength by remember(book.id) { mutableLongStateOf(state.length) }
-    var localPosition by remember(book.id) { mutableLongStateOf(state.position) }
+    val density = LocalDensity.current
+    var window by remember(book.id) { mutableStateOf<ReaderDisplayWindow?>(null) }
     var layoutResult by remember(book.id) { mutableStateOf<TextLayoutResult?>(null) }
-    var viewportHeightPx by remember { mutableIntStateOf(0) }
-    var loading by remember(book.id) { mutableStateOf(false) }
-    var lastReported by remember(book.id) { mutableLongStateOf(state.position) }
-    var lastRebaseAt by remember(book.id) { mutableLongStateOf(0L) }
-    val displayText = remember(sourceText, settings.chineseMode, settings.chineseOverrides) { ChineseDisplayConverter.convert(sourceText, settings.chineseMode, settings.chineseOverrides) }
-    val style = readerTextStyle(settings, textColor)
+    var viewportHeight by remember { mutableIntStateOf(0) }
     var widthPx by remember { mutableIntStateOf(0) }
+    var loading by remember(book.id) { mutableStateOf(false) }
+    var lastCommitted by remember(book.id) { mutableLongStateOf(state.position) }
+    var localPosition by remember(book.id) { mutableLongStateOf(state.position) }
 
     suspend fun loadAround(target: Long) {
         if (loading) return
-        val active = session ?: return
         loading = true
         try {
-            val result = withContext(Dispatchers.IO) { active.readAround(target) }
-            localPosition = target.coerceIn(0L, (result.documentLength - 1).coerceAtLeast(0L))
-            windowStart = result.start
-            sourceText = result.text
-            documentLength = result.documentLength
-            layoutResult = null
-        } finally {
-            loading = false
-        }
+            val next = withContext(Dispatchers.IO) { engine.readAround(target, settings) }
+            window = next; localPosition = target.coerceIn(0L, (next.documentLength - 1).coerceAtLeast(0L)); layoutResult = null
+        } finally { loading = false }
     }
-
-    DisposableEffect(book.id) {
-        onDispose {
-            session?.close()
-            session = null
-        }
+    DisposableEffect(engine) { onDispose { engine.close() } }
+    LaunchedEffect(book.id, settings.chineseMode, settings.chineseOverrides, settings.compressBlankLines) {
+        withContext(Dispatchers.IO) { engine.clear() }; loadAround(state.position); withContext(Dispatchers.IO) { engine.prefetch(state.position, settings) }
     }
-
-    LaunchedEffect(book.id) {
-        val opened = withContext(Dispatchers.IO) { runCatching { ContinuousWindowReader(context, book.id) } }.getOrNull()
-        session?.close()
-        session = opened
-        if (opened != null) loadAround(state.position)
-    }
-
-    LaunchedEffect(state.position, session, followExternalPosition) {
-        if (session != null && (followExternalPosition || abs(state.position - localPosition) > EXTERNAL_POSITION_REBASE_CHARS)) {
-            loadAround(state.position)
-        }
-    }
-
-    LaunchedEffect(windowStart, sourceText, layoutResult) {
-        val layout = layoutResult ?: return@LaunchedEffect
-        if (displayText.isEmpty()) return@LaunchedEffect
-        val sourceDelta = (localPosition - windowStart).coerceAtLeast(0L)
-        val displayedPoints = ChineseDisplayConverter.displayedCharsForSource(sourceText, displayText, sourceDelta)
-        val charIndex = utf16IndexForCodePoints(displayText, displayedPoints)
-        val line = layout.getLineForOffset(charIndex.coerceIn(0, (displayText.length - 1).coerceAtLeast(0)))
+    LaunchedEffect(state.tts.offset, state.tts.active) { if (state.tts.active && state.tts.offset >= 0 && abs(state.tts.offset - localPosition) > 128) loadAround(state.tts.offset) }
+    LaunchedEffect(window, layoutResult) {
+        val w = window ?: return@LaunchedEffect; val layout = layoutResult ?: return@LaunchedEffect
+        if (w.displayText.isEmpty()) return@LaunchedEffect
+        val utf = utf16IndexForCodePoints(w.displayText, w.map.displayForSource((localPosition - w.start).coerceAtLeast(0)))
+        val line = layout.getLineForOffset(utf.coerceIn(0, (w.displayText.length - 1).coerceAtLeast(0)))
         scrollState.scrollTo(layout.getLineTop(line).roundToInt().coerceIn(0, scrollState.maxValue))
     }
-
-    LaunchedEffect(scrollState, layoutResult, windowStart, sourceText, displayText, viewportHeightPx) {
-        snapshotFlow { scrollState.value }.distinctUntilChanged().collect { scrollY ->
-            val layout = layoutResult ?: return@collect
-            if (displayText.isEmpty() || layout.lineCount <= 0) return@collect
-            val line = layout.getLineForVerticalPosition(scrollY.toFloat()).coerceIn(0, layout.lineCount - 1)
-            val charIndex = layout.getLineStart(line).coerceIn(0, displayText.length)
-            val displayedPoints = displayText.codePointCount(0, charIndex).toLong()
-            val sourceDelta = ChineseDisplayConverter.sourceCharsForDisplayed(sourceText, displayText, displayedPoints)
-            val absolute = (windowStart + sourceDelta).coerceIn(0L, (documentLength - 1).coerceAtLeast(0L))
+    LaunchedEffect(scrollState, layoutResult, window, viewportHeight) {
+        snapshotFlow { scrollState.value }.distinctUntilChanged().collect { y ->
+            val w = window ?: return@collect; val layout = layoutResult ?: return@collect
+            if (w.displayText.isEmpty() || layout.lineCount <= 0) return@collect
+            val line = layout.getLineForVerticalPosition(y.toFloat()).coerceIn(0, layout.lineCount - 1)
+            val utf = layout.getLineStart(line).coerceIn(0, w.displayText.length)
+            val absolute = (w.start + w.map.sourceForDisplay(w.displayText.codePointCount(0, utf).toLong())).coerceIn(0L, (w.documentLength - 1).coerceAtLeast(0L))
             localPosition = absolute
-            if (abs(absolute - lastReported) >= CONTINUOUS_REPORT_CHARS) {
-                lastReported = absolute
-                actions.onSyncTtsPosition(absolute)
-            }
-
-            val now = SystemClock.elapsedRealtime()
-            if (!loading && now - lastRebaseAt >= CONTINUOUS_REBASE_INTERVAL_MS && viewportHeightPx > 0) {
-                val edge = (viewportHeightPx * 0.30f).roundToInt()
-                val windowSourcePoints = sourceText.codePointCount(0, sourceText.length).toLong()
-                val nearTop = scrollY <= edge && windowStart > 0
-                val nearBottom = scrollState.maxValue > 0 && scrollState.maxValue - scrollY <= edge && windowStart + windowSourcePoints < documentLength - 1
-                if (nearTop || nearBottom) {
-                    lastRebaseAt = now
-                    loadAround(absolute)
-                }
-            }
+            if (abs(absolute - lastCommitted) >= 192) { lastCommitted = absolute; actions.onSyncTtsPosition(absolute) }
+            val edge = (viewportHeight * 0.25f).roundToInt()
+            val nearTop = y <= edge && w.start > 0
+            val nearBottom = scrollState.maxValue > 0 && scrollState.maxValue - y <= edge && w.start + w.map.sourceCodePoints < w.documentLength - 1
+            if (!loading && (nearTop || nearBottom)) loadAround(absolute)
         }
     }
-
-    LaunchedEffect(settings.autoScrollEnabled, settings.autoScrollSpeedDpPerSecond, sourceText) {
-        if (!settings.autoScrollEnabled) return@LaunchedEffect
+    LaunchedEffect(state.autoScrolling, settings.autoScrollSpeedDpPerSecond, window) {
+        if (!state.autoScrolling) return@LaunchedEffect
         var lastFrame = 0L
-        while (isActive && settings.autoScrollEnabled) {
+        while (isActive && state.autoScrolling) {
             withFrameNanos { now ->
                 if (lastFrame != 0L) {
                     val seconds = (now - lastFrame).toDouble() / 1_000_000_000.0
-                    val deltaPx = with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() }
-                    scrollState.scrollBy(deltaPx)
+                    scrollState.scrollBy(with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() })
                 }
                 lastFrame = now
             }
-            if (scrollState.maxValue > 0 && scrollState.value >= scrollState.maxValue - 1) {
-                val windowSourcePoints = sourceText.codePointCount(0, sourceText.length).toLong()
-                if (windowStart + windowSourcePoints >= documentLength - 1) {
-                    actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-                    break
+            val w = window ?: continue
+            if (scrollState.maxValue > 0 && scrollState.value >= scrollState.maxValue - 1 && w.start + w.map.sourceCodePoints >= w.documentLength - 1) {
+                actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)); break
+            }
+        }
+    }
+    val display = window?.displayText.orEmpty(); val source = window?.sourceText.orEmpty(); val start = window?.start ?: state.position
+    val style = readerTextStyle(settings, textColor, fontFamily)
+    val semantics = Modifier.readerAccessibilityActions(
+        onPrevious, onNext, onToggleControls, onBookmark,
+        stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous),
+        stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls),
+        stringResource(R.string.reader_access_bookmark),
+    )
+    val gestures = if (touchExploration) Modifier else Modifier.readerGesturesV2(settings, widthPx, viewportHeight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark,
+        onLongPress = { point ->
+            val layout = layoutResult ?: return@readerGesturesV2; val w = window ?: return@readerGesturesV2
+            if (display.isEmpty()) return@readerGesturesV2
+            val y = (point.y + scrollState.value - with(density) { settings.verticalPaddingDp.dp.toPx() }).coerceAtLeast(0f)
+            val line = layout.getLineForVerticalPosition(y).coerceIn(0, layout.lineCount - 1)
+            val a = layout.getLineStart(line).coerceIn(0, display.length); val b = layout.getLineEnd(line, true).coerceIn(a, display.length)
+            val sa = w.start + w.map.sourceForDisplay(display.codePointCount(0, a).toLong()); val sb = w.start + w.map.sourceForDisplay(display.codePointCount(0, b).toLong())
+            if (sb > sa) onSelection(ReaderSelection(sa, sb, display.substring(a, b).trim().take(800)))
+        }, onAnyTouch = { if (state.autoScrolling) actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)) })
+        .pointerInput(settings.pinchFontEnabled) { if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) } }
+    Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; viewportHeight = it.height }.then(semantics).then(gestures), contentAlignment = Alignment.TopCenter) {
+        Text(readerAnnotatedText(start, source, display, state), Modifier.fillMaxWidth().verticalScroll(scrollState)
+            .padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp),
+            style = style, overflow = TextOverflow.Clip, onTextLayout = { layoutResult = it })
+        if (loading && display.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.Center))
+    }
+}
+
+private fun Modifier.readerGesturesV2(
+    settings: ReaderSettings,
+    widthPx: Int,
+    heightPx: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onToggleControls: () -> Unit,
+    onBrightnessDelta: (Float) -> Unit,
+    onBookmark: () -> Unit,
+    onLongPress: (Offset) -> Unit,
+    onAnyTouch: () -> Unit = {},
+): Modifier = pointerInput(settings, widthPx, heightPx) {
+    val swipe = 52.dp.toPx(); val tapSlop = 14.dp.toPx()
+    var lastCenterTapAt = 0L
+    var pendingCenterTap: Job? = null
+    val gestureScope = CoroutineScope(currentCoroutineContext())
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false); onAnyTouch(); var last = down; var maxPointers = 1
+        do { val event = awaitPointerEvent(PointerEventPass.Final); maxPointers = maxOf(maxPointers, event.changes.size); event.changes.firstOrNull { it.id == down.id }?.let { last = it } } while (last.pressed)
+        if (maxPointers > 1) return@awaitEachGesture
+        val delta = last.position - down.position; val duration = last.uptimeMillis - down.uptimeMillis
+        if (settings.brightnessGestureEnabled && widthPx > 0 && down.position.x <= widthPx * 0.14f && abs(delta.y) > abs(delta.x) * 1.35f && abs(delta.y) >= swipe) {
+            onBrightnessDelta((-delta.y / heightPx.coerceAtLeast(1).toFloat()) * 0.8f); return@awaitEachGesture
+        }
+        if (settings.swipePagingEnabled && abs(delta.x) >= swipe && abs(delta.x) > abs(delta.y) * 1.25f) {
+            var forward = delta.x < 0; if (settings.reversePagingGestures) forward = !forward; if (forward) onNext() else onPrevious(); return@awaitEachGesture
+        }
+        if (duration >= 520 && delta.getDistance() <= tapSlop * 1.5f) { onLongPress(down.position); return@awaitEachGesture }
+        if (duration <= 360 && delta.getDistance() <= tapSlop && widthPx > 0) {
+            val edge = when (settings.tapZonePreset) {
+                ReaderTapZonePreset.BALANCED, ReaderTapZonePreset.CUSTOM -> widthPx * settings.tapZoneEdgeFraction
+                ReaderTapZonePreset.RIGHT_HANDED -> widthPx * 0.22f
+                ReaderTapZonePreset.LEFT_HANDED -> widthPx * 0.32f
+            }
+            when {
+                down.position.x < edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onNext() else onPrevious()
+                down.position.x > widthPx - edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onPrevious() else onNext()
+                else -> {
+                    if (!settings.doubleTapBookmarkEnabled) {
+                        onToggleControls()
+                    } else {
+                        val tapAt = last.uptimeMillis
+                        if (lastCenterTapAt > 0L && tapAt - lastCenterTapAt in 40L..320L) {
+                            pendingCenterTap?.cancel(); pendingCenterTap = null; lastCenterTapAt = 0L; onBookmark()
+                        } else {
+                            lastCenterTapAt = tapAt
+                            pendingCenterTap?.cancel()
+                            pendingCenterTap = gestureScope.launch { delay(280L); onToggleControls() }
+                        }
+                    }
                 }
             }
         }
     }
-
-    val touchPauseModifier = Modifier.pointerInput(settings.autoScrollEnabled) {
-        if (settings.autoScrollEnabled) {
-            awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
-                onPauseAutoScroll()
-            }
-        }
-    }
-
-    val surfaceDescription = stringResource(R.string.reader_surface)
-    Box(
-        Modifier.fillMaxSize()
-            .onSizeChanged { viewportHeightPx = it.height; widthPx = it.width }
-            .then(touchPauseModifier)
-            .readerGestures(settings, widthPx, onPrevious, onNext, onToggleControls, surfaceDescription),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        SelectionContainer {
-            Text(
-                text = displayText,
-                modifier = Modifier.fillMaxWidth()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp)
-                    .widthIn(max = 760.dp),
-                style = style,
-                overflow = TextOverflow.Clip,
-                onTextLayout = { layoutResult = it },
-            )
-        }
-        if (loading && sourceText.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.Center))
-    }
 }
 
-private fun Modifier.readerGestures(
-    settings: ReaderSettings,
-    widthPx: Int,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onToggleControls: () -> Unit,
-    surfaceDescription: String,
-): Modifier = pointerInput(
-    settings.tapPagingEnabled,
-    settings.swipePagingEnabled,
-    settings.reversePagingGestures,
-    settings.tapZoneEdgeFraction,
-    widthPx,
-) {
-    val swipeThreshold = 56.dp.toPx()
-    val tapSlop = 14.dp.toPx()
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        var last = down
-        do {
-            val event = awaitPointerEvent(PointerEventPass.Final)
-            event.changes.firstOrNull { it.id == down.id }?.let { last = it }
-        } while (last.pressed)
-
-        val delta = last.position - down.position
-        val duration = last.uptimeMillis - down.uptimeMillis
-        if (settings.swipePagingEnabled && abs(delta.x) >= swipeThreshold && abs(delta.x) > abs(delta.y) * 1.25f) {
-            var forward = delta.x < 0f
-            if (settings.reversePagingGestures) forward = !forward
-            if (forward) onNext() else onPrevious()
-            return@awaitEachGesture
-        }
-
-        if (duration <= 350L && delta.getDistance() <= tapSlop && widthPx > 0) {
-            val edge = widthPx * settings.tapZoneEdgeFraction
-            when {
-                down.position.x < edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onNext() else onPrevious()
-                down.position.x > widthPx - edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onPrevious() else onNext()
-                else -> onToggleControls()
-            }
-        }
-    }
-}.semantics { contentDescription = surfaceDescription }
+private fun Modifier.readerAccessibilityActions(
+    previous: () -> Unit, next: () -> Unit, controls: () -> Unit, bookmark: () -> Unit,
+    surfaceLabel: String, previousLabel: String, nextLabel: String, controlsLabel: String, bookmarkLabel: String,
+): Modifier = semantics {
+    contentDescription = surfaceLabel
+    customActions = listOf(
+        CustomAccessibilityAction(previousLabel) { previous(); true }, CustomAccessibilityAction(nextLabel) { next(); true },
+        CustomAccessibilityAction(controlsLabel) { controls(); true }, CustomAccessibilityAction(bookmarkLabel) { bookmark(); true },
+    )
+}
 
 @Composable
 private fun ReaderBottomBar(
-    fraction: Float,
-    ttsPlaying: Boolean,
-    autoPaging: Boolean,
-    autoScrolling: Boolean,
-    autoScrollAvailable: Boolean,
-    canLocationBack: Boolean,
-    canLocationForward: Boolean,
-    onLocationBack: () -> Unit,
-    onLocationForward: () -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onSeek: (Float) -> Unit,
-    onTts: () -> Unit,
-    onAutoScroll: () -> Unit,
+    fraction: Float, state: AppUiState, chapter: String?, canLocationBack: Boolean, canLocationForward: Boolean,
+    onLocationBack: () -> Unit, onLocationForward: () -> Unit, onSeek: (Float) -> Unit,
+    onOpenQuick: () -> Unit, onTts: () -> Unit, onAutoPage: () -> Unit,
 ) {
-    var sliderValue by remember(fraction) { mutableFloatStateOf(fraction) }
+    var value by remember(fraction) { mutableFloatStateOf(fraction) }
     val progressDescription = stringResource(R.string.reading_progress)
-    Surface(tonalElevation = 4.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, contentDescription = stringResource(R.string.reader_location_back)) }
-                IconButton(onClick = onPrevious) { Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.previous_page)) }
-                Slider(value = sliderValue, onValueChange = { sliderValue = it }, onValueChangeFinished = { onSeek(sliderValue) }, modifier = Modifier.weight(1f).semantics { contentDescription = progressDescription })
-                IconButton(onClick = onNext) { Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.next_page)) }
-                IconButton(onClick = onLocationForward, enabled = canLocationForward) { Icon(Icons.AutoMirrored.Outlined.Redo, contentDescription = stringResource(R.string.reader_location_forward)) }
-                IconButton(onClick = onAutoScroll, enabled = autoScrollAvailable) { Icon(if (autoScrolling) Icons.Default.Pause else Icons.Outlined.UnfoldMore, contentDescription = stringResource(if (autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll)) }
-                IconButton(onClick = onTts) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (ttsPlaying) stringResource(R.string.pause_read_aloud) else stringResource(R.string.start_read_aloud)) }
-            }
-            if (autoScrolling || autoPaging || ttsPlaying) {
-                Text(
-                    when {
-                        autoScrolling -> stringResource(R.string.reader_auto_scroll)
-                        ttsPlaying -> stringResource(R.string.reading_aloud_background)
-                        else -> stringResource(R.string.auto_paging_active)
-                    },
-                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+    Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Text(chapter ?: "", Modifier.align(Alignment.CenterHorizontally), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+            Slider(value, { value = it }, onValueChangeFinished = { onSeek(value) }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressDescription })
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                IconButton(onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
+                TextButton(onOpenQuick) { Text("Aa") }
+                IconButton(onAutoPage) { Icon(if (state.autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (state.autoPaging) R.string.stop_auto_page else R.string.start_auto_page)) }
+                IconButton(onTts) { Icon(if (state.ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (state.ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud)) }
+                IconButton(onLocationForward, enabled = canLocationForward) { Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.reader_location_forward)) }
             }
         }
     }
 }
 
-private fun readerTextStyle(settings: ReaderSettings, color: Color): TextStyle = TextStyle(
-    color = color,
-    fontFamily = if (settings.typeface == ReaderTypeface.SERIF) FontFamily.Serif else FontFamily.SansSerif,
-    fontWeight = when (settings.fontWeight) {
-        ReaderFontWeight.NORMAL -> FontWeight.Normal
-        ReaderFontWeight.MEDIUM -> FontWeight.Medium
-        ReaderFontWeight.SEMIBOLD -> FontWeight.SemiBold
-    },
-    fontSize = settings.fontSizeSp.sp,
-    lineHeight = (settings.fontSizeSp * settings.lineHeightMultiplier).sp,
+@Composable
+private fun AutoScrollLiveControl(settings: ReaderSettings, actions: JingduActions, modifier: Modifier = Modifier) {
+    Surface(modifier, shape = MaterialTheme.shapes.extraLarge, tonalElevation = 5.dp) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton({ actions.onSettingsChanged(settings.copy(autoScrollSpeedDpPerSecond = (settings.autoScrollSpeedDpPerSecond - 8).coerceAtLeast(12f))) }) { Icon(Icons.Default.Remove, stringResource(R.string.reader_auto_scroll_slow)) }
+            Text(stringResource(R.string.reader_auto_scroll_speed_value, settings.autoScrollSpeedDpPerSecond.roundToInt()), style = MaterialTheme.typography.labelMedium)
+            IconButton({ actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)) }) { Icon(Icons.Default.Pause, stringResource(R.string.reader_stop_auto_scroll)) }
+            IconButton({ actions.onSettingsChanged(settings.copy(autoScrollSpeedDpPerSecond = (settings.autoScrollSpeedDpPerSecond + 8).coerceAtMost(320f))) }) { Icon(Icons.Default.Add, stringResource(R.string.reader_auto_scroll_fast)) }
+        }
+    }
+}
+
+@Composable
+private fun ReaderReadingStatus(state: AppUiState, progressPercent: Int, chapter: String?, color: Color, background: Color, modifier: Modifier = Modifier) {
+    val context = LocalContext.current; var now by remember { mutableStateOf(Date()) }
+    LaunchedEffect(Unit) { while (true) { now = Date(); delay(60_000) } }
+    val locale = LocalConfiguration.current.locales[0]
+    val clock = if (state.settings.showClock) SimpleDateFormat("HH:mm", locale).format(now) else null
+    val battery = if (state.settings.showBattery) (context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 }?.let { "$it%" } else null
+    val pieces = listOfNotNull(chapter?.take(24), "$progressPercent%", clock, battery)
+    Surface(modifier.navigationBarsPadding().padding(bottom = 6.dp), color = background.copy(alpha = 0.80f), shape = MaterialTheme.shapes.small) {
+        Text(pieces.joinToString(" · "), Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = color.copy(alpha = 0.75f))
+    }
+}
+
+@Composable
+private fun ReaderSelectionBar(selection: ReaderSelection, onHighlight: (ReaderHighlightStyle) -> Unit, onNote: () -> Unit, onCopy: () -> Unit, onShare: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(modifier.padding(16.dp), shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, shadowElevation = 8.dp) {
+        Column(Modifier.widthIn(max = 420.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(selection.excerpt, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                ReaderHighlightStyle.entries.forEach { style ->
+                    val label = stringResource(when (style) {
+                        ReaderHighlightStyle.YELLOW -> R.string.reader_highlight_yellow
+                        ReaderHighlightStyle.GREEN -> R.string.reader_highlight_green
+                        ReaderHighlightStyle.BLUE -> R.string.reader_highlight_blue
+                        ReaderHighlightStyle.PINK -> R.string.reader_highlight_pink
+                    })
+                    TextButton({ onHighlight(style) }) { Text(label) }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onNote) { Text(stringResource(R.string.reader_note)) }; TextButton(onCopy) { Text(stringResource(R.string.reader_copy)) }
+                TextButton(onShare) { Text(stringResource(R.string.reader_share)) }; TextButton(onDismiss) { Text(stringResource(R.string.cancel)) }
+            }
+        }
+    }
+}
+
+private fun readerTextStyle(settings: ReaderSettings, color: Color, fontFamily: FontFamily): TextStyle = TextStyle(
+    color = color, fontFamily = fontFamily,
+    fontWeight = when (settings.fontWeight) { ReaderFontWeight.NORMAL -> FontWeight.Normal; ReaderFontWeight.MEDIUM -> FontWeight.Medium; ReaderFontWeight.SEMIBOLD -> FontWeight.SemiBold },
+    fontSize = settings.fontSizeSp.sp, lineHeight = (settings.fontSizeSp * settings.lineHeightMultiplier).sp,
+    letterSpacing = (settings.fontSizeSp * settings.letterSpacingEm).sp,
     textAlign = if (settings.textAlignment == ReaderTextAlignment.START) TextAlign.Start else TextAlign.Justify,
     textIndent = TextIndent(firstLine = (settings.fontSizeSp * settings.firstLineIndentEm).sp),
 )
 
-private fun highlightedText(displayText: String, highlight: Boolean, sourceChars: Long): AnnotatedString {
-    if (!highlight || displayText.isEmpty()) return AnnotatedString(displayText)
-    val sentenceBoundary = displayText.indexOfAny(charArrayOf('。', '！', '？', '\n')).let { if (it < 0) displayText.length else it + 1 }
-    val approximate = if (sourceChars > 0) sourceChars.coerceAtMost(240).toInt() else 120
-    val end = minOf(displayText.length, maxOf(1, minOf(sentenceBoundary, approximate)))
-    return buildAnnotatedString {
-        append(displayText)
-        addStyle(SpanStyle(background = Color(0x3358A67A)), 0, end)
+private fun readerAnnotatedText(sourceStart: Long, sourceText: String, displayText: String, state: AppUiState): AnnotatedString = buildAnnotatedString {
+    append(displayText); if (displayText.isEmpty()) return@buildAnnotatedString
+    fun displayIndex(sourceAbsolute: Long): Int = utf16IndexForCodePoints(displayText, ChineseDisplayConverter.displayedCharsForSource(sourceText, displayText, (sourceAbsolute - sourceStart).coerceAtLeast(0))).coerceIn(0, displayText.length)
+    val sourceEnd = sourceStart + sourceText.codePointCount(0, sourceText.length)
+    state.annotations.forEach { annotation ->
+        if (annotation.sourceEnd <= sourceStart || annotation.sourceStart >= sourceEnd) return@forEach
+        val a = displayIndex(annotation.sourceStart); val b = displayIndex(annotation.sourceEnd).coerceAtLeast(a)
+        if (b > a) addStyle(SpanStyle(background = highlightColor(annotation.style)), a, b)
     }
+    if (state.tts.active && state.tts.rangeEnd > state.tts.rangeStart) {
+        val a = displayIndex(state.tts.rangeStart); val b = displayIndex(state.tts.rangeEnd).coerceAtLeast(a)
+        if (b > a) addStyle(SpanStyle(background = Color(0x5558A67A)), a, b)
+    }
+    if (state.settings.emphasizeHeadings) {
+        var cursor = 0
+        displayText.lineSequence().forEach { line ->
+            val end = (cursor + line.length).coerceAtMost(displayText.length); val trimmed = line.trim()
+            if (ReaderHeadingClassifier.isHeading(trimmed)) addStyle(SpanStyle(fontWeight = FontWeight.SemiBold), cursor, end)
+            cursor = (end + 1).coerceAtMost(displayText.length)
+        }
+    }
+    if (state.settings.paragraphSpacingEm > 0f) addStyle(ParagraphStyle(lineHeight = (state.settings.fontSizeSp * state.settings.lineHeightMultiplier).sp), 0, displayText.length)
 }
 
-private fun reportVisibleSourceChars(source: String, displayed: String, layout: TextLayoutResult, callback: (Long) -> Unit) {
-    if (layout.lineCount <= 0 || displayed.isEmpty() || layout.size.height <= 0) return
-    val visibleLine = layout.getLineForVerticalPosition((layout.size.height - 1).toFloat()).coerceIn(0, layout.lineCount - 1)
-    val end = layout.getLineEnd(visibleLine, visibleEnd = true).coerceIn(0, displayed.length)
-    val displayedCount = displayed.codePointCount(0, end).toLong()
-    val sourceCount = ChineseDisplayConverter.sourceCharsForDisplayed(source, displayed, displayedCount)
-    if (sourceCount >= ReaderController.MIN_PAGE_CHARS) callback(sourceCount)
+private fun highlightColor(style: ReaderHighlightStyle): Color = when (style) {
+    ReaderHighlightStyle.YELLOW -> Color(0x55FFD54F); ReaderHighlightStyle.GREEN -> Color(0x554CAF50)
+    ReaderHighlightStyle.BLUE -> Color(0x5542A5F5); ReaderHighlightStyle.PINK -> Color(0x55EC407A)
 }
-
-private fun utf16IndexForCodePoints(text: String, codePoints: Long): Int {
-    if (text.isEmpty()) return 0
-    val total = text.codePointCount(0, text.length)
-    return text.offsetByCodePoints(0, codePoints.coerceIn(0, total.toLong()).toInt())
-}
-
-private fun readerBackground(palette: ReaderPalette): Color = when (palette) {
-    ReaderPalette.PAPER -> Color(0xFFF7F0DE)
-    ReaderPalette.LIGHT -> Color(0xFFFFFBFF)
-    ReaderPalette.NIGHT -> Color(0xFF151713)
-    ReaderPalette.OLED -> Color.Black
-}
-
-private fun readerTextColor(palette: ReaderPalette): Color = when (palette) {
-    ReaderPalette.NIGHT -> Color(0xFFE8E5DA)
-    ReaderPalette.OLED -> Color(0xFFE8E8E8)
-    else -> Color(0xFF24241F)
-}
-
-private const val CONTINUOUS_REPORT_CHARS = 64L
-private const val EXTERNAL_POSITION_REBASE_CHARS = 512L
-private const val CONTINUOUS_REBASE_INTERVAL_MS = 450L
+private fun utf16IndexForCodePoints(text: String, codePoints: Long): Int = if (text.isEmpty()) 0 else text.offsetByCodePoints(0, codePoints.coerceIn(0, text.codePointCount(0, text.length).toLong()).toInt())
+private fun readerBackground(palette: ReaderPalette): Color = when (palette) { ReaderPalette.PAPER -> Color(0xFFF7F0DE); ReaderPalette.LIGHT -> Color(0xFFFFFBFF); ReaderPalette.SEPIA -> Color(0xFFF3E5C8); ReaderPalette.NIGHT -> Color(0xFF151713); ReaderPalette.OLED -> Color.Black }
+private fun readerTextColor(palette: ReaderPalette): Color = when (palette) { ReaderPalette.NIGHT -> Color(0xFFE8E5DA); ReaderPalette.OLED -> Color(0xFFE8E8E8); else -> Color(0xFF24241F) }

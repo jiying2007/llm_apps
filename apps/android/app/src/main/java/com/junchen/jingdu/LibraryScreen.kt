@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.StarBorder
@@ -393,14 +394,14 @@ private fun sortLabel(name: String): String = when (runCatching { LibrarySort.va
 private fun EmptyLibrary(modifier: Modifier, onImport: () -> Unit, onBatchImport: () -> Unit, onFolder: () -> Unit) {
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Surface(modifier = Modifier.size(88.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) {
-            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer) }
+            Box(contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer) }
         }
         Spacer(Modifier.height(24.dp))
         Text(stringResource(R.string.empty_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(10.dp))
         Text(stringResource(R.string.empty_body), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onImport) { Icon(Icons.Default.MenuBook, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.select_txt)) }
+        Button(onClick = onImport) { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.select_txt)) }
         TextButton(onClick = onBatchImport) { Text(stringResource(R.string.select_multiple_txt)) }
         TextButton(onClick = onFolder) { Text(stringResource(R.string.add_folder_library)) }
     }
@@ -437,7 +438,7 @@ private fun BookCard(book: BookCardModel, onOpen: () -> Unit, onDelete: () -> Un
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.book_actions)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.continue_reading)) }, leadingIcon = { Icon(Icons.Default.MenuBook, contentDescription = null) }, onClick = { menu = false; onOpen() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.continue_reading)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) }, onClick = { menu = false; onOpen() })
                     DropdownMenuItem(text = { Text(stringResource(if (book.favorite) R.string.unfavorite_book else R.string.favorite_book)) }, leadingIcon = { Icon(if (book.favorite) Icons.Default.Star else Icons.Outlined.StarBorder, contentDescription = null) }, onClick = { menu = false; onToggleFavorite() })
                     DropdownMenuItem(text = { Text(stringResource(R.string.edit_tags)) }, leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }, onClick = { menu = false; onEditTags() })
                     DropdownMenuItem(text = { Text(stringResource(R.string.delete_private_copy)) }, leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }, onClick = { menu = false; onDelete() })

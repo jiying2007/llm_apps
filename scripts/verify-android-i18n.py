@@ -87,7 +87,8 @@ presentation_files = [
     "LibraryScreen.kt",
     "ReaderScreen.kt",
     "ReaderSheets.kt",
-    "ProductSettingsSheet.kt",
+    "ReaderV2Panels.kt",
+    "ReaderAdvancedSettingsSheet.kt",
 ]
 for name in presentation_files:
     text = (base / name).read_text(encoding="utf-8")

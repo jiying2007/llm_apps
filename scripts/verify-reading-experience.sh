@@ -3,84 +3,98 @@ set -euo pipefail
 
 required=(
   docs/READING_EXPERIENCE.md
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderFrameCompat.kt
-  apps/android/app/src/main/res/values/strings_reader_experience.xml
-  apps/android/app/src/main/res/values-b+zh+Hans/strings_reader_experience.xml
-  apps/android/app/src/main/res/values-b+zh+Hant/strings_reader_experience.xml
+  docs/READER_V2_PRELAUNCH.md
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderMotionController.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
 )
 for path in "${required[@]}"; do
-  test -f "$path" || { echo "reading-experience asset missing: $path" >&2; exit 1; }
+  test -f "$path" || { echo "reading-experience V2 asset missing: $path" >&2; exit 1; }
 done
 
 prefs=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
 screen=apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
-runtime=apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt
-frame=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFrameCompat.kt
+motion=apps/android/app/src/main/java/com/junchen/jingdu/ReaderMotionController.kt
+viewport=apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt
+route=apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
+panels=apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt
+advanced=apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
 main=apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-app=apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
-converter=apps/android/app/src/main/java/com/junchen/jingdu/ChineseDisplayConverter.java
 
+# Reader modes and presentation settings are first-class and persisted via DataStore.
 grep -q 'enum class ReaderMode { PAGED, CONTINUOUS }' "$prefs"
 grep -q 'enum class ReaderPageAnimation { NONE, SLIDE }' "$prefs"
 grep -q 'enum class ReaderOrientation { SYSTEM, PORTRAIT, LANDSCAPE }' "$prefs"
 grep -q 'enum class ReaderVolumeKeyMode { PAGE_WHEN_NOT_TTS, ALWAYS_PAGE, SYSTEM_VOLUME }' "$prefs"
 grep -q 'enum class ReaderWideColumns { AUTO, SINGLE, DOUBLE }' "$prefs"
+grep -q 'preferencesDataStore' "$prefs"
 grep -q 'autoScrollSpeedDpPerSecond' "$prefs"
-grep -q 'autoScrollEnabled = false' "$prefs"
+grep -q 'autoPageMode' "$prefs"
+grep -q 'brightnessGestureEnabled' "$prefs"
+grep -q 'pinchFontEnabled' "$prefs"
+grep -q 'doubleTapBookmarkEnabled' "$prefs"
 grep -q 'applyPreset' "$prefs"
 
-grep -q 'class ContinuousWindowReader' "$runtime"
-grep -q 'ReaderController.WINDOW_CHARS' "$runtime"
-grep -q 'readAt(start, ReaderController.WINDOW_CHARS)' "$runtime"
-grep -q 'shouldUseVolumeKeysForPaging' "$runtime"
-grep -q 'settings.autoScrollEnabled' "$runtime"
-grep -A1 '@Synchronized' "$runtime" | grep -q 'override fun close()'
-grep -q 'class ReadingPaceStore' "$runtime"
+# A single motion state coordinates automatic scrolling, automatic paging and TTS.
+grep -q 'enum class ReaderMotionState { IDLE, AUTO_SCROLL, AUTO_PAGE, TTS }' "$motion"
+grep -q 'adaptivePageDelayMs' "$motion"
+grep -q 'private val motionController = ReaderMotionController()' "$main"
 
-grep -q 'suspend fun withFrameNanos' "$frame"
-grep -q 'composeWithFrameNanos' "$frame"
-
-grep -q 'ContinuousReaderPage' "$screen"
+# Paged and continuous surfaces share bounded source-offset infrastructure.
 grep -q 'PagedReaderPage' "$screen"
-grep -q 'readerGestures' "$screen"
-grep -q 'withFrameNanos' "$screen"
-grep -q 'scrollState.scrollBy' "$screen"
-grep -q 'WindowInsetsControllerCompat' "$screen"
-grep -q 'screenBrightness' "$screen"
-grep -q 'SCREEN_ORIENTATION_PORTRAIT' "$screen"
-grep -q 'ReaderWideColumns.DOUBLE' "$screen"
-grep -q 'TwoColumnPage' "$screen"
-grep -q 'TextIndent' "$screen"
-grep -q 'reader_location_back' "$screen"
+grep -q 'ContinuousReaderPage' "$screen"
+grep -q 'ReaderViewportEngine' "$screen"
+grep -q 'ReaderPageLayoutCache.measure' "$screen"
+grep -q 'MAX_WINDOWS' "$viewport"
+grep -q 'ReaderController.WINDOW_CHARS' "$viewport"
+grep -q 'prefetch' "$viewport"
 grep -q 'actions.onSyncTtsPosition(absolute)' "$screen"
 
-grep -q 'ReaderInteractionRuntime.shouldUseVolumeKeysForPaging' "$main"
-grep -q 'reverseVolumeKeys' "$main"
-grep -q 'fun stopAutoScroll()' "$app"
-grep -q 'onNavigatePrevious = {' "$app"
-grep -q 'onNavigateNext = {' "$app"
-grep -q 'onOpenPanel = { panel ->' "$app"
-grep -q 'onSettingsChanged = { requested ->' "$app"
-grep -q 'TtsPlaybackService.ACTION_STOP' "$app"
-grep -q 'state.cleanMode && requested.autoScrollEnabled' "$app"
-grep -q 'locationBack' "$app"
-grep -q 'locationForward' "$app"
-grep -q 'displayedCharsForSource' "$converter"
+# Mature reader interaction fundamentals.
+grep -q 'readerGesturesV2' "$screen"
+grep -q 'brightnessGestureEnabled' "$screen"
+grep -q 'detectTransformGestures' "$screen"
+grep -q 'lastCenterTapAt' "$screen"
+grep -q 'onBookmark()' "$screen"
+grep -q 'customActions' "$screen"
+grep -q 'isTouchExplorationEnabled' "$screen"
+grep -q 'WindowInsetsControllerCompat' "$screen"
+grep -q 'screenBrightness' "$screen"
+grep -q 'FLAG_KEEP_SCREEN_ON' "$screen"
+grep -q 'AutoScrollLiveControl' "$screen"
+grep -q 'scrollState.scrollBy' "$screen"
+grep -q 'ReaderAnnotationKind.HIGHLIGHT' "$screen"
+grep -q 'ReaderAnnotationKind.NOTE' "$screen"
 
-grep -q 'same `ReaderController` source-offset domain' docs/READING_EXPERIENCE.md
-grep -q 'whole TXT is never loaded into Compose' docs/READING_EXPERIENCE.md
+# Quick controls and advanced settings are separate, intentional surfaces.
+grep -q 'ReaderQuickSettingsSheet' "$panels"
+grep -q 'ReaderAnnotationsSheet' "$panels"
+grep -q 'ReaderReadingMapSheet' "$panels"
+grep -q 'autoScrollEnabled = !state.autoScrolling' "$panels"
+grep -q 'ReaderAdvancedSettingsSheet' "$advanced"
+test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
 
+# Adaptive window posture replaces fixed device assumptions.
+grep -q 'currentWindowAdaptiveInfoV2' "$route"
+grep -q 'windowPosture.hingeList' "$route"
+grep -q 'prefersTwoColumns' "$route"
+
+# Privacy/performance invariants.
 if grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml; then
   echo 'reading experience must remain offline; INTERNET permission found' >&2
   exit 1
 fi
-
-if grep -qE 'readAt\([^,]+,[[:space:]]*(Long\.MAX_VALUE|[0-9]+[[:space:]]*\*[[:space:]]*1024[[:space:]]*\*[[:space:]]*1024)' "$screen" "$runtime"; then
-  echo 'continuous reader must remain a bounded window' >&2
+if git grep -n -E 'readAt\([^,]+,[[:space:]]*(Long\.MAX_VALUE|[0-9]+[[:space:]]*\*[[:space:]]*1024[[:space:]]*\*[[:space:]]*1024)' -- "$screen" "$viewport"; then
+  echo 'reading experience must keep bounded document windows' >&2
   exit 1
 fi
 
 python3 scripts/verify-android-i18n.py
+bash scripts/verify-reader-v2.sh
 
-echo 'Reading experience contract OK: paged/continuous/gestures/auto-scroll/immersive/source-offset invariants aligned'
+echo 'Reading experience V2 contract OK: paged/continuous/gestures/auto-read/adaptive/annotation/source-offset invariants aligned'
