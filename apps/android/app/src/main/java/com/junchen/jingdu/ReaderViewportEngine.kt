@@ -94,8 +94,8 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
 
     private companion object {
         const val MAX_WINDOWS = 8
-        const val ALIGN_CHARS = 2048L
-        const val BACK_BUFFER_CHARS = 1536L
+        const val ALIGN_CHARS = 1024L
+        const val BACK_BUFFER_CHARS = 768L
     }
 }
 
@@ -164,7 +164,7 @@ internal object ReaderPageLayoutCache {
                 .setMaxLines(Int.MAX_VALUE)
                 .setLineSpacing(0f, spec.lineHeightMultiplier.coerceAtLeast(1f))
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                .setBreakStrategy(LineBreaker.BREAK_STRATEGY_HIGH_QUALITY)
+                .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE)
             if (spec.alignment == ReaderTextAlignment.JUSTIFY) builder.setJustificationMode(LineBreaker.JUSTIFICATION_MODE_INTER_WORD)
             val layout = builder.build()
             if (layout.lineCount <= 0) return 0
