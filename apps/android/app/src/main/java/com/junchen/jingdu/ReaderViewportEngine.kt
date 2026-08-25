@@ -2,6 +2,7 @@ package com.junchen.jingdu
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.text.LineBreaker
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -163,8 +164,8 @@ internal object ReaderPageLayoutCache {
                 .setMaxLines(Int.MAX_VALUE)
                 .setLineSpacing(0f, spec.lineHeightMultiplier.coerceAtLeast(1f))
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY)
-            if (spec.alignment == ReaderTextAlignment.JUSTIFY) builder.setJustificationMode(Layout.JUSTIFICATION_MODE_INTER_WORD)
+                .setBreakStrategy(LineBreaker.BREAK_STRATEGY_HIGH_QUALITY)
+            if (spec.alignment == ReaderTextAlignment.JUSTIFY) builder.setJustificationMode(LineBreaker.JUSTIFICATION_MODE_INTER_WORD)
             val layout = builder.build()
             if (layout.lineCount <= 0) return 0
             val line = layout.getLineForVertical((heightPx - 1).coerceAtLeast(0))

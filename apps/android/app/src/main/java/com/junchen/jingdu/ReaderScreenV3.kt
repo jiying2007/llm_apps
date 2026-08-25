@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -92,6 +93,7 @@ internal fun ReaderScreenV3(
     onLocationForward: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val activity = context as? Activity
     val book = state.currentBook ?: return
     val settings = state.settings
@@ -191,7 +193,7 @@ internal fun ReaderScreenV3(
     fun updateBrightness(delta: Float) {
         val value = (settings.readerBrightness + delta).coerceIn(0.03f, 1f)
         if (abs(value - settings.readerBrightness) >= 0.005f) {
-            hudText = context.getString(R.string.reader_brightness_hud, (value * 100).roundToInt())
+            hudText = resources.getString(R.string.reader_brightness_hud, (value * 100).roundToInt())
             actions.onSettingsChanged(settings.copy(useSystemBrightness = false, readerBrightness = value))
         }
     }
@@ -199,7 +201,7 @@ internal fun ReaderScreenV3(
         if (!settings.pinchFontEnabled || abs(zoom - 1f) < 0.04f) return
         val value = (settings.fontSizeSp * zoom).coerceIn(14f, 40f)
         if (abs(value - settings.fontSizeSp) >= 0.5f) {
-            hudText = context.getString(R.string.reader_font_hud, value.roundToInt())
+            hudText = resources.getString(R.string.reader_font_hud, value.roundToInt())
             actions.onSettingsChanged(settings.copy(fontSizeSp = value, preset = ReaderPreset.CUSTOM, activeThemeId = ""))
         }
     }
@@ -776,6 +778,7 @@ private fun ReaderSkimPreviewCardV3(preview: ReaderSkimPreview?, showReturn: Boo
 @Composable
 private fun ReaderReadingStatusV3(state: AppUiState, chapterIndex: Int, color: Color, background: Color, stats: ReaderStatsStore, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) { while (true) { now = Date(); delay(60_000) } }
     val locale = LocalConfiguration.current.locales[0]
@@ -788,9 +791,9 @@ private fun ReaderReadingStatusV3(state: AppUiState, chapterIndex: Int, color: C
     val remaining = stats.remainingMinutes(state.position, state.length)
     val pieces = buildList {
         chapter?.title?.take(18)?.let(::add)
-        chapterProgress?.let { add(context.getString(R.string.reader_chapter_progress_value, it)) }
-        add(context.getString(R.string.reader_book_progress_value, bookProgress))
-        remaining?.let { add(context.getString(R.string.reader_book_remaining, it)) }
+        chapterProgress?.let { add(resources.getString(R.string.reader_chapter_progress_value, it)) }
+        add(resources.getString(R.string.reader_book_progress_value, bookProgress))
+        remaining?.let { add(resources.getString(R.string.reader_book_remaining, it)) }
         clock?.let(::add); battery?.let(::add)
     }
     Surface(modifier.navigationBarsPadding().padding(bottom = 6.dp), color = background.copy(alpha = 0.80f), shape = MaterialTheme.shapes.small) {

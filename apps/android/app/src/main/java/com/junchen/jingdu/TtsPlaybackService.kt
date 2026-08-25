@@ -13,7 +13,7 @@ import java.io.File
  * Single Android speech playback authority. Media3 owns session/controller/notification lifecycle;
  * ReaderTtsPlayer owns TextToSpeech transport while source offsets remain Jingdu/Core coordinates.
  */
-@UnstableApi
+@OptIn(UnstableApi::class)
 class TtsPlaybackService : MediaSessionService() {
     private val main = Handler(Looper.getMainLooper())
     private lateinit var repository: BookRepository
