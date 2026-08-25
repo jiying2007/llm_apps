@@ -25,15 +25,12 @@ class JingduUiTest {
         composeRule.setContent {
             JingduApp(
                 AppUiState(
-                    screen = AppScreen.READER,
-                    currentBook = sampleBook(),
+                    screen = AppScreen.READER, currentBook = sampleBook(),
                     pageText = "Chapter 1\nA stable body used for Reader V2 UI smoke verification.",
-                    position = 500,
-                    length = 10_000,
-                    chapters = listOf(ChapterModel(0, "Chapter 1")),
-                    chaptersLoaded = true,
-                ),
-                noOpActions(),
+                    position = 500, length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
+                    settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
             )
         }
         composeRule.onNodeWithText("Long Novel").assertIsDisplayed()
@@ -47,13 +44,9 @@ class JingduUiTest {
         composeRule.setContent {
             JingduApp(
                 AppUiState(
-                    screen = AppScreen.READER,
-                    currentBook = sampleBook(),
-                    pageText = "Body",
-                    length = 10_000,
-                    panel = ReaderPanel.QUICK_SETTINGS,
-                ),
-                noOpActions(),
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", length = 10_000,
+                    panel = ReaderPanel.QUICK_SETTINGS, settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsDisplayed()
@@ -61,19 +54,20 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.reader_mode_continuous)).assertIsDisplayed()
     }
 
-    @Test fun annotationsAndReadingMapAreFirstClassPanels() {
-        val annotation = ReaderAnnotation("a", ReaderAnnotationKind.HIGHLIGHT, 100, 140, ReaderHighlightStyle.YELLOW, "", "Local highlight", 1)
+    @Test fun annotationsAreFirstClassLocalReaderAssets() {
+        val book = sampleBook()
+        val annotation = ReaderAnnotation(
+            id = "note-1", bookId = book.id, sourceStart = 100, sourceEnd = 140,
+            kind = ReaderAnnotationKind.HIGHLIGHT, style = ReaderHighlightStyle.YELLOW,
+            excerpt = "Local highlight", createdAt = 1, updatedAt = 1,
+        )
         composeRule.setContent {
             JingduApp(
                 AppUiState(
-                    screen = AppScreen.READER,
-                    currentBook = sampleBook(),
-                    pageText = "Body",
-                    length = 10_000,
-                    panel = ReaderPanel.ANNOTATIONS,
-                    annotations = listOf(annotation),
-                ),
-                noOpActions(),
+                    screen = AppScreen.READER, currentBook = book, pageText = "Body", length = 10_000,
+                    panel = ReaderPanel.ANNOTATIONS, annotations = listOf(annotation),
+                    settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.reader_annotations)).assertIsDisplayed()
@@ -84,17 +78,11 @@ class JingduUiTest {
         composeRule.setContent {
             JingduApp(
                 AppUiState(
-                    screen = AppScreen.READER,
-                    currentBook = sampleBook(),
-                    pageText = "Body",
-                    length = 10_000,
-                    panel = ReaderPanel.CLEAN,
-                    smartCleanAnalyzed = true,
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", length = 10_000,
+                    panel = ReaderPanel.CLEAN, smartCleanAnalyzed = true,
                     noiseCandidates = listOf(NoiseCandidateModel(94, 326, "promo_repeated", "www.example.com", selected = true)),
-                    proUnlocked = false,
-                    proPrice = "US$6.99",
-                ),
-                noOpActions(),
+                    proUnlocked = false, proPrice = "US$6.99", settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.smart_clean)).assertIsDisplayed()
