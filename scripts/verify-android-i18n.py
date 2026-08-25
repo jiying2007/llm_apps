@@ -85,13 +85,17 @@ base = ROOT / "apps/android/app/src/main/java/com/junchen/jingdu"
 presentation_files = [
     "JingduApp.kt",
     "LibraryScreen.kt",
-    "ReaderScreen.kt",
+    "ReaderScreenV3.kt",
     "ReaderSheets.kt",
-    "ReaderV2Panels.kt",
-    "ReaderAdvancedSettingsSheet.kt",
+    "ReaderV2Panels.kt",  # retained quick-settings/coach surface until final V3 rename
+    "ReaderSettingsScreen.kt",
+    "ReaderV3Panels.kt",
 ]
 for name in presentation_files:
-    text = (base / name).read_text(encoding="utf-8")
+    path = base / name
+    if not path.is_file():
+        raise SystemExit(f"localized presentation asset missing: {name}")
+    text = path.read_text(encoding="utf-8")
     if cjk.search(text):
         raise SystemExit(f"hard-coded CJK UI copy found in {name}; move it to string resources")
     if "stringResource(R.string." not in text:
