@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_DIR="$ROOT/apps/android"
 AVD_NAME="jingdu-v3-ci"
+TARGET_PACKAGE="com.junchen.jingdu"
 API_LEVEL="${JINGDU_BENCHMARK_API:-35}"
 IMAGE="system-images;android-${API_LEVEL};google_apis;x86_64"
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
@@ -145,7 +146,27 @@ fi
 "$ADB" shell getprop ro.build.version.release
 "$ADB" shell getprop ro.product.cpu.abi
 
+# Macrobenchmark CI is deliberately split into build -> install -> run. AGP connectedCheck can
+# build the benchmark target without installing it on hosted CI, which makes every Macrobenchmark
+# fail before measurement with PackageManager.NameNotFoundException. Make target installation an
+# explicit hard precondition while retaining Gradle connectedCheck for result/Perfetto collection.
 cd "$ANDROID_DIR"
+./gradlew --no-daemon --warning-mode all :app:assembleBenchmark :macrobenchmark:assembleBenchmark
+TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
+if [[ -z "$TARGET_APK" || ! -f "$TARGET_APK" ]]; then
+  echo "Benchmark target APK was not produced" >&2
+  exit 1
+fi
+echo "Installing Macrobenchmark target: $TARGET_APK"
+"$ADB" install -r "$TARGET_APK"
+TARGET_PATH="$("$ADB" shell pm path "$TARGET_PACKAGE" 2>/dev/null | tr -d '\r')"
+if [[ "$TARGET_PATH" != package:* ]]; then
+  echo "Macrobenchmark target package is not installed: $TARGET_PACKAGE" >&2
+  "$ADB" shell pm list packages | grep 'com.junchen.jingdu' >&2 || true
+  exit 1
+fi
+echo "Macrobenchmark target installed: $TARGET_PATH"
+
 ./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedCheck \
   -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark
 
