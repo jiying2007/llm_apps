@@ -24,6 +24,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
+  apps/android/app/src/benchmark/AndroidManifest.xml
   apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
@@ -51,6 +52,7 @@ motion=apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerT
 journey=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
 baseline=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
 fixture=apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
+benchmark_manifest=apps/android/app/src/benchmark/AndroidManifest.xml
 
 # Typed settings; key/value V2 schema is not retained.
 grep -q 'DataStore<ReaderSettingsProto>' "$prefs"
@@ -132,8 +134,9 @@ grep -q 'ReaderMotionState.AUTO_SCROLL' "$motion"
 grep -q 'ReaderMotionState.AUTO_PAGE' "$motion"
 grep -q 'ReaderMotionState.TTS' "$motion"
 
-# Real Android performance contract: benchmark-only fixture, 10/100MiB journeys, hosted execution,
-# machine-readable P95/P99 SLO and a real Baseline Profile critical-user journey.
+# Real Android performance contract: benchmark-only fixture/profileability, 10/100MiB journeys,
+# hosted execution, machine-readable P95/P99 SLO and a real Baseline Profile critical-user journey.
+grep -q '<profileable android:shell="true"' "$benchmark_manifest"
 grep -q 'Benchmark-build only' "$fixture"
 grep -q 'Reader V3' "$fixture"
 ! grep -q 'Reader V2' "$fixture"
