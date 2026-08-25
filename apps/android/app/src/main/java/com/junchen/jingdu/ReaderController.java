@@ -12,7 +12,7 @@ import java.util.List;
 final class ReaderController implements Closeable {
     static final long MIN_PAGE_CHARS = 120;
     static final long DEFAULT_PAGE_CHARS = 800;
-    static final long WINDOW_CHARS = 3072;
+    static final long WINDOW_CHARS = 1536;
 
     record Hit(long offset, String context) {}
     record Chapter(long offset, String title) {}
