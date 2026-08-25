@@ -54,6 +54,7 @@ baseline=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobench
 fixture=apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
 benchmark_manifest=apps/android/app/src/benchmark/AndroidManifest.xml
 macrobenchmark_gradle=apps/android/macrobenchmark/build.gradle
+benchmark_runner=scripts/run-android-macrobenchmark-ci.sh
 
 # Typed settings; key/value V2 schema is not retained.
 grep -q 'DataStore<ReaderSettingsProto>' "$prefs"
@@ -75,6 +76,8 @@ grep -q 'ReaderPresentationPipeline.present' "$engine"
 grep -q 'SourceDisplayMap.compose' "$pipeline"
 grep -q 'typographyFingerprint = spec.fingerprint' "$engine"
 grep -q 'androidLayoutText' "$engine"
+grep -q 'BREAK_STRATEGY_SIMPLE' "$engine"
+grep -q 'WINDOW_CHARS = 3072' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 grep -q 'PARAGRAPH_SPACER' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt
 
 # Room is the retained annotation/stat persistence backend.
@@ -136,8 +139,9 @@ grep -q 'ReaderMotionState.AUTO_PAGE' "$motion"
 grep -q 'ReaderMotionState.TTS' "$motion"
 
 # Real Android performance contract: benchmark-only fixture/profileability, signed benchmark test APK,
-# 10/100MiB journeys, deterministic Reader controls, hosted execution, explicit target installation,
-# machine-readable P95/P99 SLO and a real Baseline Profile critical-user journey.
+# 10/100MiB journeys, deterministic Reader controls, representative heavy chapter density, hosted
+# benchmark-variant-only execution, explicit target installation, machine-readable P95/P99 SLO and
+# a real Baseline Profile critical-user journey.
 grep -q '<profileable android:shell="true"' "$benchmark_manifest"
 grep -q 'signingConfig = signingConfigs.debug' "$macrobenchmark_gradle"
 grep -q 'Benchmark-build only' "$fixture"
@@ -146,6 +150,7 @@ grep -q 'Reader V3' "$fixture"
 grep -q 'advancedGestureCustomizationEnabled = false' "$fixture"
 grep -q 'centerTapAction = ReaderGestureAction.CONTROLS' "$fixture"
 grep -q 'volumeKeyMode = ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS' "$fixture"
+grep -q 'BODY_LINES_PER_CHAPTER = 256' "$fixture"
 grep -q 'open10MiBTxt' "$journey"
 grep -q 'open100MiBTxt' "$journey"
 grep -q 'StartupTimingMetric' "$journey"
@@ -157,18 +162,19 @@ grep -q 'readerV3CriticalJourneys' "$baseline"
 grep -q 'KEYCODE_VOLUME_DOWN' "$baseline"
 grep -q 'ensureTopControlsVisible' "$baseline"
 ! grep -q 'reader-v2' "$baseline"
-grep -q ':app:assembleBenchmark' scripts/run-android-macrobenchmark-ci.sh
-grep -q 'pm path.*TARGET_PACKAGE' scripts/run-android-macrobenchmark-ci.sh
-grep -q 'connectedCheck' scripts/run-android-macrobenchmark-ci.sh
-grep -q 'enabledRules=Macrobenchmark' scripts/run-android-macrobenchmark-ci.sh
-grep -q 'enabledRules=BaselineProfile' scripts/run-android-macrobenchmark-ci.sh
-grep -q 'test-android-performance-slo.py' scripts/run-android-macrobenchmark-ci.sh
+grep -q ':app:assembleBenchmark' "$benchmark_runner"
+grep -q 'pm path.*TARGET_PACKAGE' "$benchmark_runner"
+grep -q ':macrobenchmark:connectedBenchmarkAndroidTest' "$benchmark_runner"
+! grep -q ':macrobenchmark:connectedCheck' "$benchmark_runner"
+grep -q 'enabledRules=Macrobenchmark' "$benchmark_runner"
+grep -q 'enabledRules=BaselineProfile' "$benchmark_runner"
+grep -q 'test-android-performance-slo.py' "$benchmark_runner"
 grep -q 'frameDurationCpuMs' scripts/check-android-performance-slo.py
 grep -q 'JINGDU_FRAME_P95_MS' scripts/check-android-performance-slo.py
 grep -q 'JINGDU_FRAME_P99_MS' scripts/check-android-performance-slo.py
 python3 -m py_compile scripts/check-android-performance-slo.py scripts/test-android-performance-slo.py
 python3 scripts/test-android-performance-slo.py
-bash -n scripts/run-android-macrobenchmark-ci.sh
+bash -n "$benchmark_runner"
 
 # Near-1GiB native RSS must remain a real CTest, not only prose.
 grep -q 'JINGDU_PERF_FIXTURE_MIB=960' core/native/CMakeLists.txt
