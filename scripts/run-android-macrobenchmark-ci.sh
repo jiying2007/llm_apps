@@ -12,10 +12,18 @@ AVDMANAGER="${AVDMANAGER:-$SDK_ROOT/cmdline-tools/latest/bin/avdmanager}"
 EMULATOR="${EMULATOR:-$SDK_ROOT/emulator/emulator}"
 ADB="${ADB:-$SDK_ROOT/platform-tools/adb}"
 TEMP_DIR="${RUNNER_TEMP:-/tmp}"
+AVD_HOME="${ANDROID_AVD_HOME:-$TEMP_DIR/jingdu-avd-home}"
+BOOT_TIMEOUT_SECONDS="${JINGDU_EMULATOR_BOOT_TIMEOUT_SECONDS:-240}"
+EMULATOR_LOG="$TEMP_DIR/jingdu-emulator.log"
+EMULATOR_PID=""
+export ANDROID_AVD_HOME="$AVD_HOME"
 
 cleanup() {
   if [[ -x "$ADB" ]]; then
     "$ADB" emu kill >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$EMULATOR_PID" ]] && kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
+    kill "$EMULATOR_PID" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -29,6 +37,14 @@ require_executable() {
   fi
 }
 
+fail_emulator() {
+  local message="$1"
+  echo "$message" >&2
+  echo "===== Android emulator log =====" >&2
+  tail -n 240 "$EMULATOR_LOG" >&2 || true
+  exit 1
+}
+
 cd "$ROOT"
 python3 scripts/test-android-performance-slo.py
 require_executable "$SDKMANAGER" sdkmanager
@@ -36,6 +52,7 @@ require_executable "$AVDMANAGER" avdmanager
 
 echo "Android SDK root: $SDK_ROOT"
 echo "Benchmark image: $IMAGE"
+echo "Android AVD home: $AVD_HOME"
 
 # Install the runtime before validating adb/emulator. GitHub's performance job intentionally only
 # guarantees Java + Android SDK roots; platform-tools/emulator may not be preinstalled or on PATH.
@@ -57,33 +74,76 @@ fi
 # GitHub-hosted Linux runners normally expose /dev/kvm. Keep a software fallback for other runners.
 if [[ -e /dev/kvm ]]; then
   sudo chmod 666 /dev/kvm || true
+  echo "KVM acceleration available"
+else
+  echo "KVM unavailable; using software acceleration fallback"
 fi
 
-echo no | "$AVDMANAGER" create avd --force --name "$AVD_NAME" --package "$IMAGE" --device "pixel_6"
+# Keep avdmanager and emulator on the same explicit AVD root. Relying on HOME/ANDROID_SDK_HOME
+# produced an AVD that avdmanager accepted but the hosted emulator could not subsequently resolve.
+rm -rf "$AVD_HOME"
+mkdir -p "$AVD_HOME"
+echo no | "$AVDMANAGER" create avd \
+  --force \
+  --name "$AVD_NAME" \
+  --package "$IMAGE" \
+  --device "pixel_6" \
+  --path "$AVD_HOME/$AVD_NAME.avd"
+
+echo "Available AVDs:"
+"$EMULATOR" -list-avds
+if ! "$EMULATOR" -list-avds | grep -Fxq "$AVD_NAME"; then
+  echo "AVD metadata after creation:" >&2
+  find "$AVD_HOME" -maxdepth 2 -type f -print >&2 || true
+  exit 1
+fi
 
 GPU_MODE="swiftshader_indirect"
+: >"$EMULATOR_LOG"
 if [[ -e /dev/kvm ]]; then
-  "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot -camera-back none -camera-front none -gpu "$GPU_MODE" >"$TEMP_DIR/jingdu-emulator.log" 2>&1 &
+  "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot \
+    -camera-back none -camera-front none -gpu "$GPU_MODE" >"$EMULATOR_LOG" 2>&1 &
 else
-  "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot -camera-back none -camera-front none -gpu "$GPU_MODE" -accel off >"$TEMP_DIR/jingdu-emulator.log" 2>&1 &
+  "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot \
+    -camera-back none -camera-front none -gpu "$GPU_MODE" -accel off >"$EMULATOR_LOG" 2>&1 &
 fi
+EMULATOR_PID=$!
+echo "Android emulator PID: $EMULATOR_PID"
+"$ADB" start-server >/dev/null
 
-"$ADB" wait-for-device
-for _ in $(seq 1 180); do
-  if [[ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
-    break
+booted=0
+for ((second = 1; second <= BOOT_TIMEOUT_SECONDS; second++)); do
+  if ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
+    wait "$EMULATOR_PID" || true
+    fail_emulator "Android emulator process exited before boot completed"
+  fi
+
+  adb_state="$("$ADB" get-state 2>/dev/null || true)"
+  if [[ "$adb_state" == "device" ]]; then
+    boot_state="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+    if [[ "$boot_state" == "1" ]]; then
+      booted=1
+      echo "Android emulator boot completed in ${second}s"
+      break
+    fi
+  fi
+
+  if (( second % 15 == 0 )); then
+    echo "Waiting for Android emulator boot: ${second}s/${BOOT_TIMEOUT_SECONDS}s (adb=${adb_state:-unavailable})"
   fi
   sleep 1
 done
-if [[ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" != "1" ]]; then
-  echo "Android emulator did not finish booting" >&2
-  tail -n 200 "$TEMP_DIR/jingdu-emulator.log" >&2 || true
-  exit 1
+
+if (( booted == 0 )); then
+  fail_emulator "Android emulator did not finish booting within ${BOOT_TIMEOUT_SECONDS}s"
 fi
+
 "$ADB" shell input keyevent 82 || true
 "$ADB" shell settings put global window_animation_scale 0
 "$ADB" shell settings put global transition_animation_scale 0
 "$ADB" shell settings put global animator_duration_scale 0
+"$ADB" shell getprop ro.build.version.release
+"$ADB" shell getprop ro.product.cpu.abi
 
 cd "$ANDROID_DIR"
 ./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedCheck \
