@@ -10,6 +10,7 @@ SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
 SDKMANAGER="${SDKMANAGER:-$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager}"
 AVDMANAGER="${AVDMANAGER:-$SDK_ROOT/cmdline-tools/latest/bin/avdmanager}"
 EMULATOR="${EMULATOR:-$SDK_ROOT/emulator/emulator}"
+TEMP_DIR="${RUNNER_TEMP:-/tmp}"
 
 cleanup() {
   adb emu kill >/dev/null 2>&1 || true
@@ -33,9 +34,9 @@ echo no | "$AVDMANAGER" create avd --force --name "$AVD_NAME" --package "$IMAGE"
 
 GPU_MODE="swiftshader_indirect"
 if [[ -e /dev/kvm ]]; then
-  "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot -camera-back none -camera-front none -gpu "$GPU_MODE" >"$RUNNER_TEMP/jingdu-emulator.log" 2>&1 &
+  "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot -camera-back none -camera-front none -gpu "$GPU_MODE" >"$TEMP_DIR/jingdu-emulator.log" 2>&1 &
 else
-  "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot -camera-back none -camera-front none -gpu "$GPU_MODE" -accel off >"${RUNNER_TEMP:-/tmp}/jingdu-emulator.log" 2>&1 &
+  "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot -camera-back none -camera-front none -gpu "$GPU_MODE" -accel off >"$TEMP_DIR/jingdu-emulator.log" 2>&1 &
 fi
 
 adb wait-for-device
@@ -58,6 +59,11 @@ cd "$ANDROID_DIR"
 cd "$ROOT"
 RESULT_ROOT="$ANDROID_DIR/macrobenchmark/build/outputs"
 python3 scripts/check-android-performance-slo.py "$RESULT_ROOT"
-
-# Assert Gradle actually pulled a machine-readable report from the emulator.
 find "$RESULT_ROOT" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
+
+# Execute the Baseline Profile CUJ separately so the performance report and profile evidence are both real.
+cd "$ANDROID_DIR"
+./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedCheck \
+  -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile
+cd "$ROOT"
+find "$RESULT_ROOT" -type f \( -name '*baseline-prof.txt' -o -name '*startup-prof.txt' \) -print -quit | grep -q .
