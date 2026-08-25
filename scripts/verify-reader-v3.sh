@@ -53,6 +53,7 @@ journey=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchm
 baseline=apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
 fixture=apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
 benchmark_manifest=apps/android/app/src/benchmark/AndroidManifest.xml
+macrobenchmark_gradle=apps/android/macrobenchmark/build.gradle
 
 # Typed settings; key/value V2 schema is not retained.
 grep -q 'DataStore<ReaderSettingsProto>' "$prefs"
@@ -134,10 +135,11 @@ grep -q 'ReaderMotionState.AUTO_SCROLL' "$motion"
 grep -q 'ReaderMotionState.AUTO_PAGE' "$motion"
 grep -q 'ReaderMotionState.TTS' "$motion"
 
-# Real Android performance contract: benchmark-only fixture/profileability, 10/100MiB journeys,
-# hosted execution, explicit target installation, machine-readable P95/P99 SLO and a real
-# Baseline Profile critical-user journey.
+# Real Android performance contract: benchmark-only fixture/profileability, signed benchmark test APK,
+# 10/100MiB journeys, hosted execution, explicit target installation, machine-readable P95/P99 SLO
+# and a real Baseline Profile critical-user journey.
 grep -q '<profileable android:shell="true"' "$benchmark_manifest"
+grep -q 'signingConfig = signingConfigs.debug' "$macrobenchmark_gradle"
 grep -q 'Benchmark-build only' "$fixture"
 grep -q 'Reader V3' "$fixture"
 ! grep -q 'Reader V2' "$fixture"

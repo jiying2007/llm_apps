@@ -21,6 +21,7 @@ android {
     buildTypes {
         benchmark {
             debuggable = true
+            signingConfig = signingConfigs.debug
             matchingFallbacks = ["benchmark"]
         }
     }
