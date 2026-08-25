@@ -63,11 +63,11 @@ class ReaderV3FoundationsTest {
         assertNotEquals(fingerprint, ReaderTypographySpec.from(base.copy(typeface = ReaderTypeface.SERIF)).fingerprint)
     }
 
-    @Test fun lowVisionPresetIsLegibleAndNonAnimatedByDefault() {
+    @Test fun lowVisionPresetIsLegibleAndFocused() {
         val lowVision = ReaderSettings().applyPreset(ReaderPreset.LOW_VISION)
         assertTrue(lowVision.fontSizeSp >= 30f)
         assertTrue(lowVision.lineHeightMultiplier >= 1.7f)
         assertEquals(ReaderTextAlignment.START, lowVision.textAlignment)
-        assertEquals(ReaderPageAnimation.NONE, lowVision.pageAnimation)
+        assertTrue(lowVision.focusRulerLines >= 3)
     }
 }
