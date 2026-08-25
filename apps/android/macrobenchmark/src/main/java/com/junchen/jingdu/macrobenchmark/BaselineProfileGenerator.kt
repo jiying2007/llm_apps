@@ -12,23 +12,40 @@ import org.junit.runner.RunWith
 class BaselineProfileGenerator {
     @get:Rule val baselineProfileRule = BaselineProfileRule()
 
-    @Test fun generate() = baselineProfileRule.collect(
+    @Test fun readerV3CriticalJourneys() = baselineProfileRule.collect(
         packageName = PACKAGE_NAME,
         maxIterations = 10,
         stableIterations = 3,
         includeInStartupProfile = true,
-        outputFilePrefix = "jingdu-reader-v2",
+        outputFilePrefix = "jingdu-reader-v3",
     ) {
         pressHome()
-        device.executeShellCommand("content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 8")
+        val seed = device.executeShellCommand(
+            "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 10",
+        )
+        check(seed.contains("bytes=")) { "Reader V3 baseline fixture seed failed: $seed" }
         startActivityAndWait()
-        device.wait(Until.hasObject(By.textContains("Benchmark Novel")), 4_000)
-        device.findObject(By.textContains("Benchmark Novel"))?.click()
+        val title = "Benchmark Novel 10 MiB"
+        check(device.wait(Until.hasObject(By.textContains(title)), 8_000)) { "baseline fixture missing" }
+        device.findObject(By.textContains(title))?.click()
         device.waitForIdle()
-        repeat(4) { device.click((device.displayWidth * 0.86).toInt(), device.displayHeight / 2) }
+        repeat(10) {
+            device.click((device.displayWidth * 0.86).toInt(), device.displayHeight / 2)
+            device.waitForIdle()
+        }
         device.findObject(By.text("Aa"))?.click()
         device.waitForIdle()
+        device.findObject(By.textContains("Continuous"))?.click()
         device.pressBack()
+        repeat(4) {
+            device.swipe(
+                device.displayWidth / 2,
+                (device.displayHeight * 0.80).toInt(),
+                device.displayWidth / 2,
+                (device.displayHeight * 0.25).toInt(),
+                20,
+            )
+        }
         device.findObject(By.descContains("chapter"))?.click()
         device.waitForIdle()
         device.pressBack()
