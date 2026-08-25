@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Fail CI when Reader V3 Macrobenchmark frame-tail SLOs regress.
 
-AndroidX has emitted frame percentiles in more than one JSON shape across benchmark releases.
-This parser intentionally accepts both flattened metric names and nested percentile objects, while
-refusing to pass when P95/P99 frameDurationCpuMs evidence is absent.
+AndroidX writes FrameTimingMetric samples under sampledMetrics.frameDurationCpuMs.runs as one
+list per benchmark iteration. Percentiles shown by Macrobenchmark are computed from the flattened
+sample pool. This script mirrors AndroidX MetricResult.getPercentile() so CI thresholds and the
+benchmark's own P95/P99 reporting use the same interpolation semantics.
 """
 from __future__ import annotations
 
@@ -12,43 +13,67 @@ import json
 import math
 import os
 import pathlib
-import re
 import sys
 from typing import Any, Iterable
 
-PERCENTILE_RE = re.compile(r"(?:^|[_ .-])P?(95|99)(?:$|[_ .-])", re.IGNORECASE)
-FRAME_RE = re.compile(r"frameDurationCpuMs", re.IGNORECASE)
 
-
-def numbers(value: Any) -> Iterable[float]:
+def finite_numbers(value: Any) -> Iterable[float]:
     if isinstance(value, bool):
         return
     if isinstance(value, (int, float)) and math.isfinite(float(value)):
         yield float(value)
     elif isinstance(value, list):
         for item in value:
-            yield from numbers(item)
+            yield from finite_numbers(item)
 
 
-def find_percentiles(node: Any, path: tuple[str, ...] = ()) -> list[tuple[str, int, float]]:
-    found: list[tuple[str, int, float]] = []
-    if isinstance(node, dict):
-        for key, value in node.items():
-            key_text = str(key)
-            next_path = path + (key_text,)
-            joined = ".".join(next_path)
-            if FRAME_RE.search(joined):
-                match = PERCENTILE_RE.search(key_text) or PERCENTILE_RE.search(joined)
-                if match:
-                    values = list(numbers(value))
-                    if values:
-                        # Percentile nodes should be scalar; max makes malformed duplicate data fail-safe.
-                        found.append((joined, int(match.group(1)), max(values)))
-            found.extend(find_percentiles(value, next_path))
-    elif isinstance(node, list):
-        for index, item in enumerate(node):
-            found.extend(find_percentiles(item, path + (str(index),)))
+def androidx_percentile(values: list[float], percentile: int) -> float:
+    """Mirror androidx.benchmark.MetricResult.getPercentile()."""
+    if not values:
+        raise ValueError("percentile requires at least one sample")
+    ordered = sorted(values)
+    ideal_index = min(100, max(0, percentile)) / 100.0 * (len(ordered) - 1)
+    first_index = int(ideal_index)
+    second_index = min(first_index + 1, len(ordered) - 1)
+    ratio = ideal_index - first_index
+    return ordered[first_index] * (1.0 - ratio) + ordered[second_index] * ratio
+
+
+def frame_sample_sets(payload: Any) -> list[tuple[str, list[float]]]:
+    """Return one flattened frameDurationCpuMs sample pool per benchmark record."""
+    if not isinstance(payload, dict):
+        return []
+    benchmarks = payload.get("benchmarks")
+    if not isinstance(benchmarks, list):
+        return []
+    found: list[tuple[str, list[float]]] = []
+    for index, benchmark in enumerate(benchmarks):
+        if not isinstance(benchmark, dict):
+            continue
+        sampled = benchmark.get("sampledMetrics")
+        if not isinstance(sampled, dict):
+            continue
+        metric = sampled.get("frameDurationCpuMs")
+        if not isinstance(metric, dict):
+            continue
+        samples = list(finite_numbers(metric.get("runs")))
+        if samples:
+            name = str(benchmark.get("name") or f"benchmark[{index}]")
+            class_name = str(benchmark.get("className") or "")
+            label = f"{class_name}.{name}".strip(".")
+            found.append((label, samples))
     return found
+
+
+def collect_files(paths: list[str]) -> list[pathlib.Path]:
+    files: list[pathlib.Path] = []
+    for raw in paths:
+        path = pathlib.Path(raw)
+        if path.is_dir():
+            files.extend(sorted(path.rglob("*-benchmarkData.json")))
+        elif path.is_file():
+            files.append(path)
+    return list(dict.fromkeys(files))
 
 
 def main() -> int:
@@ -58,44 +83,52 @@ def main() -> int:
     parser.add_argument("--p99-ms", type=float, default=float(os.environ.get("JINGDU_FRAME_P99_MS", "80")))
     args = parser.parse_args()
 
-    files: list[pathlib.Path] = []
-    for raw in args.paths:
-        path = pathlib.Path(raw)
-        if path.is_dir():
-            files.extend(sorted(path.rglob("*-benchmarkData.json")))
-        elif path.is_file():
-            files.append(path)
-    files = list(dict.fromkeys(files))
+    files = collect_files(args.paths)
     if not files:
         print("performance SLO: no benchmarkData.json found", file=sys.stderr)
         return 2
 
-    worst = {95: -math.inf, 99: -math.inf}
-    evidence: dict[int, list[tuple[str, str, float]]] = {95: [], 99: []}
+    rows: list[tuple[str, str, int, float, float, int]] = []
+    limits = {95: args.p95_ms, 99: args.p99_ms}
     for file in files:
         try:
             payload = json.loads(file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             print(f"performance SLO: cannot parse {file}: {exc}", file=sys.stderr)
             return 2
-        for metric_path, percentile, value in find_percentiles(payload):
-            if percentile in worst:
-                worst[percentile] = max(worst[percentile], value)
-                evidence[percentile].append((str(file), metric_path, value))
+        for benchmark, samples in frame_sample_sets(payload):
+            for percentile in (95, 99):
+                rows.append(
+                    (
+                        str(file),
+                        benchmark,
+                        percentile,
+                        androidx_percentile(samples, percentile),
+                        limits[percentile],
+                        len(samples),
+                    )
+                )
 
-    missing = [p for p in (95, 99) if not evidence[p]]
-    if missing:
-        print(f"performance SLO: missing frameDurationCpuMs percentile evidence: {missing}", file=sys.stderr)
+    if not rows:
+        print("performance SLO: no sampledMetrics.frameDurationCpuMs.runs evidence found", file=sys.stderr)
         return 2
 
-    limits = {95: args.p95_ms, 99: args.p99_ms}
+    # Every frame-producing benchmark is independently gated. This prevents a fast journey from
+    # masking a slow one when result files contain multiple tests.
     failed = False
-    for percentile in (95, 99):
-        value = worst[percentile]
-        limit = limits[percentile]
+    seen = {95: 0, 99: 0}
+    for file, benchmark, percentile, value, limit, sample_count in rows:
+        seen[percentile] += 1
         status = "PASS" if value <= limit else "FAIL"
-        print(f"frameDurationCpuMs P{percentile}: worst={value:.3f}ms limit={limit:.3f}ms {status}")
+        print(
+            f"{benchmark} frameDurationCpuMs P{percentile}: {value:.3f}ms "
+            f"limit={limit:.3f}ms samples={sample_count} {status} ({file})"
+        )
         failed |= value > limit
+
+    if not all(seen[p] for p in (95, 99)):
+        print(f"performance SLO: incomplete percentile evidence: {seen}", file=sys.stderr)
+        return 2
     return 1 if failed else 0
 
 
