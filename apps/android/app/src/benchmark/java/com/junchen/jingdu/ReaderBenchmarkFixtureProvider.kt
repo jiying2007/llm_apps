@@ -65,15 +65,25 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
     }
 
     private fun writeFixture(file: File, target: Long) {
-        val paragraph = ("第%05d章 Reader V3 基准阅读旅程\n" +
-            "这是用于净读 Reader V3 性能与长文本稳定性验证的本地夹具。The quick brown fox jumps over the lazy dog.\n\n")
+        val heading = "第%05d章 Reader V3 基准阅读旅程\n"
+        val body = "这是用于净读 Reader V3 性能与长文本稳定性验证的本地夹具。The quick brown fox jumps over the lazy dog.\n"
         FileOutputStream(file).buffered().use { output ->
             var bytes = 0L
             var chapter = 1
             while (bytes < target) {
-                val chunk = paragraph.format(chapter++).toByteArray(Charsets.UTF_8)
-                output.write(chunk)
-                bytes += chunk.size
+                val title = heading.format(chapter++).toByteArray(Charsets.UTF_8)
+                output.write(title)
+                bytes += title.size
+                repeat(BODY_LINES_PER_CHAPTER) {
+                    if (bytes >= target) return@repeat
+                    val chunk = body.toByteArray(Charsets.UTF_8)
+                    output.write(chunk)
+                    bytes += chunk.size
+                }
+                if (bytes < target) {
+                    output.write('\n'.code)
+                    bytes++
+                }
             }
             output.flush()
         }
@@ -85,4 +95,10 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? = null
+
+    private companion object {
+        // ~25 KiB/chapter keeps 10 MiB at hundreds of chapters and 100 MiB at thousands:
+        // still a heavy novel fixture without the previous pathological one-heading-per-paragraph bias.
+        const val BODY_LINES_PER_CHAPTER = 256
+    }
 }
