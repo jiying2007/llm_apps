@@ -60,4 +60,5 @@
     <string name="reader_highlight_pink">Pink</string>
     <string name="reader_screen_on_motion">Keep screen awake during automatic reading</string>
     <string name="reader_no_chapters">No chapter markers found.</string>
+    <string name="ok">Save</string>
 </resources>
