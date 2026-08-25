@@ -17,14 +17,15 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "Reader V3 asset missing: $path" >&2; exit 1; }; done
 
 prefs=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
-screen=apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+screen=apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
 engine=apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt
+pipeline=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt
 annotations=apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt
 stats=apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt
 settings=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
@@ -43,7 +44,7 @@ grep -q 'extraDim' "$prefs"
 # Exact source/display projection and one presentation/typography truth.
 grep -q 'class TextProjection' apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt
 grep -q 'ReaderPresentationPipeline.present' "$engine"
-grep -q 'SourceDisplayMap.compose' "$engine"
+grep -q 'SourceDisplayMap.compose' "$pipeline"
 grep -q 'typographyFingerprint = spec.fingerprint' "$engine"
 grep -q 'androidLayoutText' "$engine"
 grep -q 'PARAGRAPH_SPACER' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt
@@ -51,19 +52,23 @@ grep -q 'PARAGRAPH_SPACER' apps/android/app/src/main/java/com/junchen/jingdu/Rea
 # Room is the only retained annotations/stats persistence backend.
 grep -q '@Database' apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt
 grep -q 'ReaderAnnotationEntity' "$annotations"
-grep -q 'contextualRelocate' "$annotations"
+grep -q 'reanchor(item' "$annotations"
 grep -q 'ReaderSessionEntity' "$stats"
 ! grep -q 'reader-v2-annotations.json' "$annotations"
 ! grep -q 'reader-v2-stats.json' "$stats"
 
-# Selection/skim/UDF foundations.
-grep -q 'ReaderSelectionController' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSelectionController.kt
-grep -q 'extendAcrossBoundary' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSelectionController.kt
-grep -q 'ReaderSkimPreview' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSkimController.kt
+# Native selection/skim/UDF are on the actual runtime path.
+grep -q 'rememberSelectionState' "$screen"
+grep -q 'SelectionContainer(state = selectionState)' "$screen"
+grep -q 'ReaderSelectionController.fromSelectedTexts' "$screen"
+grep -q 'extendAcrossBoundary' "$screen"
+grep -q 'ReaderSkimController' "$screen"
+grep -q 'ReaderSkimPreviewCardV3' "$screen"
 grep -q 'MutableStateFlow' apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewModel.kt
 grep -q 'ReaderSettingsScreen' "$app"
-grep -q 'ReaderV3AnnotationsSheet' "$app"
-grep -q 'ReaderV3ReadingMapSheet' "$app"
+grep -q 'ReaderAnnotationsV3Panel' "$app"
+grep -q 'ReaderReadingMapV3Panel' "$app"
+grep -q 'ReaderScreenV3' apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
 
 # All requested prelaunch controls must be reachable by users.
 grep -q 'ReaderPreset.entries' "$settings"
@@ -73,6 +78,8 @@ grep -q 'extraDim' "$settings"
 grep -q 'twoStageSelectionEnabled' "$settings"
 grep -q 'dictionaryProcessTextEnabled' "$settings"
 grep -q 'advancedGestureCustomizationEnabled' "$settings"
+grep -q 'ACTION_PROCESS_TEXT' "$screen"
+grep -q 'WindowInsets.systemGestures' "$screen"
 
 # Exact projection/typography tests are mandatory.
 grep -q 'localizedDeletionDoesNotScaleUnchangedSuffix' apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
