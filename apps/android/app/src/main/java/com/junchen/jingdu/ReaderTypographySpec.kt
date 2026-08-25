@@ -1,6 +1,7 @@
 package com.junchen.jingdu
 
 import android.content.Context
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.SpannableString
 import android.text.Spanned
@@ -70,7 +71,7 @@ internal data class ReaderTypographySpec(
         val gapPx = with(density) { (fontSizeSp * paragraphSpacingEm).sp.toPx() }.roundToInt().coerceAtLeast(1)
         var index = displayText.indexOf(PARAGRAPH_SPACER)
         while (index >= 0) {
-            value.setSpan(LineHeightSpan.Standard(gapPx), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            value.setSpan(ExactLineHeightSpan(gapPx), index, index + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             index = displayText.indexOf(PARAGRAPH_SPACER, index + 1)
         }
         val firstMarginPx = with(density) { (fontSizeSp * firstLineIndentEm).sp.toPx() }.roundToInt().coerceAtLeast(0)
@@ -94,6 +95,24 @@ internal data class ReaderTypographySpec(
         ReaderFontWeight.NORMAL -> FontWeight.Normal
         ReaderFontWeight.MEDIUM -> FontWeight.Medium
         ReaderFontWeight.SEMIBOLD -> FontWeight.SemiBold
+    }
+
+    /** API-26-compatible equivalent of LineHeightSpan.Standard (which is API 29+). */
+    private class ExactLineHeightSpan(private val heightPx: Int) : LineHeightSpan {
+        override fun chooseHeight(
+            text: CharSequence,
+            start: Int,
+            end: Int,
+            spanstartv: Int,
+            lineHeight: Int,
+            fm: Paint.FontMetricsInt,
+        ) {
+            val originalHeight = fm.descent - fm.ascent
+            if (originalHeight <= 0) return
+            val ratio = heightPx.toFloat() / originalHeight.toFloat()
+            fm.descent = (fm.descent * ratio).roundToInt()
+            fm.ascent = fm.descent - heightPx
+        }
     }
 
     companion object {
