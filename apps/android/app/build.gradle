@@ -1,7 +1,6 @@
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.plugin.compose"
-    id "com.google.protobuf"
     id "com.google.devtools.ksp"
 }
 
@@ -56,20 +55,9 @@ android {
 
 kotlin { compilerOptions { freeCompilerArgs.add("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api") } }
 
-protobuf {
-    protoc { artifact = "com.google.protobuf:protoc:4.32.1" }
-    generateProtoTasks {
-        all().each { task ->
-            task.builtins {
-                java { option "lite" }
-                kotlin { option "lite" }
-            }
-        }
-    }
-}
-
 dependencies {
     def composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    implementation project(":readerproto")
     implementation composeBom
     androidTestImplementation composeBom
     implementation "androidx.activity:activity-compose:1.13.0"
@@ -81,7 +69,6 @@ dependencies {
     implementation "androidx.compose.ui:ui-tooling-preview"
     implementation "androidx.core:core-ktx:1.19.0"
     implementation "androidx.datastore:datastore:1.2.1"
-    implementation "com.google.protobuf:protobuf-kotlin-lite:4.32.1"
     implementation "androidx.room3:room3-runtime:3.0.1"
     implementation "androidx.sqlite:sqlite-bundled:2.7.0"
     ksp "androidx.room3:room3-compiler:3.0.1"
