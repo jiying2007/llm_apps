@@ -3,7 +3,7 @@ set -euo pipefail
 
 required=(
   docs/PRODUCT.md docs/PERFORMANCE_SLO.md docs/SMART_CLEAN_ARCHITECTURE.md docs/COMPETITIVE_MOAT.md
-  docs/GROWTH_MONETIZATION.md docs/RELEASE.md docs/READER_V2_PRELAUNCH.md
+  docs/GROWTH_MONETIZATION.md docs/RELEASE.md docs/READER_V3_PRELAUNCH_FINAL.md
   THIRD_PARTY_NOTICES.md third_party/NOTICE.md
   core/native/tests/core_performance_gate_test.cpp
   apps/android/app/src/main/java/com/junchen/jingdu/TxtDoctor.kt
@@ -18,15 +18,19 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderMotionController.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderFontStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
-  scripts/train-smartclean-model.py scripts/verify-smartclean-model.py scripts/verify-reader-v2.sh
+  scripts/train-smartclean-model.py scripts/verify-smartclean-model.py scripts/verify-reader-v3.sh
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "terminal-quality asset missing: $path" >&2; exit 1; }; done
 
@@ -52,8 +56,8 @@ grep -q 'TinyLocalSemanticCandidateClassifier' apps/android/app/src/main/java/co
 python3 scripts/train-smartclean-model.py --verify-source apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt
 python3 scripts/verify-smartclean-model.py
 
-# Reader V2 owns the prelaunch basic-experience and performance contracts.
-bash ./scripts/verify-reader-v2.sh
+# Reader V3 owns the final prelaunch correctness/performance contracts.
+bash ./scripts/verify-reader-v3.sh
 grep -q ':app:testDebugUnitTest' apps/android/build.gradle
 grep -q 'repeat(100_000)' apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
 grep -q 'FrameTimingMetric' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
@@ -73,4 +77,4 @@ python3 -m py_compile scripts/publish-source-release.py
 grep -Fq 'needs: [native-core, android, harmony-contract, play-store-contract, terminal-contract]' .github/workflows/ci.yml
 grep -q 'if existing is not None and release_status != 404:' scripts/publish-source-release.py
 
-echo 'Terminal long-form / moat / Reader V2 quality contract OK'
+echo 'Terminal long-form / moat / Reader V3 quality contract OK'
