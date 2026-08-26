@@ -4,6 +4,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
 import java.text.BreakIterator
 import java.util.Locale
+import java.util.WeakHashMap
 
 data class ReaderSelectionRange(
     val sourceStart: Long,
@@ -15,26 +16,63 @@ data class ReaderSelectionRange(
 
 /** Pure bounded selection logic. UI handles only provide display offsets. */
 internal object ReaderSelectionController {
-    private const val SOURCE_TAG = "jingdu.source.range"
+    private const val SOURCE_RELATIVE_TAG = "jingdu.source.relative"
+    private const val SOURCE_BASE_TAG = "jingdu.source.base"
+
+    private data class CachedSelectionMetadata(
+        val text: String,
+        val annotated: AnnotatedString,
+    )
+
+    private val selectionMetadata = WeakHashMap<SourceDisplayMap, CachedSelectionMetadata>()
+
+    /**
+     * Builds the exact display->source annotations before the text reaches a Compose frame.
+     * ReaderPresentationPipeline invokes this on its worker dispatcher for both paged and
+     * continuous windows. The UI path then only copies already-built relative annotations and
+     * adds one source-base tag for the current window.
+     */
+    fun prewarmSelection(displayText: String, map: SourceDisplayMap) {
+        if (displayText.isNotEmpty()) relativeAnnotations(displayText, map)
+    }
 
     fun annotatedForSelection(
         sourceBase: Long,
         displayText: AnnotatedString,
         map: SourceDisplayMap,
-    ): AnnotatedString = buildAnnotatedString {
-        append(displayText)
-        if (displayText.isEmpty()) return@buildAnnotatedString
-        var utfStart = 0
-        var displayCp = 0L
-        while (utfStart < displayText.length) {
-            val cp = Character.codePointAt(displayText.text, utfStart)
-            val utfEnd = utfStart + Character.charCount(cp)
-            val sourceStart = sourceBase + map.sourceForDisplay(displayCp)
-            val sourceEnd = sourceBase + map.sourceForDisplay(displayCp + 1).coerceAtLeast(map.sourceForDisplay(displayCp) + 1)
-            addStringAnnotation(SOURCE_TAG, "$sourceStart:$sourceEnd", utfStart, utfEnd)
-            utfStart = utfEnd
-            displayCp++
+    ): AnnotatedString {
+        if (displayText.isEmpty()) return displayText
+        val relative = relativeAnnotations(displayText.text, map)
+        return buildAnnotatedString {
+            append(relative)
+            displayText.spanStyles.forEach { addStyle(it.item, it.start, it.end) }
+            displayText.paragraphStyles.forEach { addStyle(it.item, it.start, it.end) }
+            addStringAnnotation(SOURCE_BASE_TAG, sourceBase.toString(), 0, length)
         }
+    }
+
+    private fun relativeAnnotations(displayText: String, map: SourceDisplayMap): AnnotatedString {
+        synchronized(selectionMetadata) {
+            selectionMetadata[map]?.takeIf { it.text == displayText }?.let { return it.annotated }
+        }
+        val built = buildAnnotatedString {
+            append(displayText)
+            var utfStart = 0
+            var displayCp = 0L
+            while (utfStart < displayText.length) {
+                val cp = Character.codePointAt(displayText, utfStart)
+                val utfEnd = utfStart + Character.charCount(cp)
+                val sourceStart = map.sourceForDisplay(displayCp)
+                val sourceEnd = map.sourceForDisplay(displayCp + 1).coerceAtLeast(sourceStart + 1)
+                addStringAnnotation(SOURCE_RELATIVE_TAG, "$sourceStart:$sourceEnd", utfStart, utfEnd)
+                utfStart = utfEnd
+                displayCp++
+            }
+        }
+        synchronized(selectionMetadata) {
+            selectionMetadata[map] = CachedSelectionMetadata(displayText, built)
+        }
+        return built
     }
 
     fun fromSelectedTexts(selectedTexts: List<AnnotatedString>): ReaderSelectionRange? {
@@ -46,12 +84,14 @@ internal object ReaderSelectionController {
             if (selected.isEmpty()) return@forEach
             if (excerpt.isNotEmpty()) excerpt.append('\n')
             excerpt.append(selected.text.replace(ReaderTypographySpec.PARAGRAPH_SPACER.toString(), ""))
-            selected.getStringAnnotations(SOURCE_TAG, 0, selected.length).forEach { annotation ->
+            val base = selected.getStringAnnotations(SOURCE_BASE_TAG, 0, selected.length)
+                .firstOrNull()?.item?.toLongOrNull() ?: return@forEach
+            selected.getStringAnnotations(SOURCE_RELATIVE_TAG, 0, selected.length).forEach { annotation ->
                 val parts = annotation.item.split(':', limit = 2)
                 val a = parts.getOrNull(0)?.toLongOrNull() ?: return@forEach
                 val b = parts.getOrNull(1)?.toLongOrNull() ?: return@forEach
-                start = minOf(start, a)
-                end = maxOf(end, b)
+                start = minOf(start, base + a)
+                end = maxOf(end, base + b)
             }
         }
         if (start == Long.MAX_VALUE || end <= start) return null

@@ -23,10 +23,12 @@ internal object ReaderPresentationPipeline {
         val sourceToIntermediate = TextProjection.between(source, intermediate)
         val display = ChineseDisplayConverter.convert(intermediate, settings.chineseMode, settings.chineseOverrides)
         val intermediateToDisplay = TextProjection.between(intermediate, display)
+        val map = SourceDisplayMap.compose(sourceToIntermediate, intermediateToDisplay)
+        ReaderSelectionController.prewarmSelection(display, map)
         return ReaderPresentedText(
             sourceText = source,
             displayText = display,
-            map = SourceDisplayMap.compose(sourceToIntermediate, intermediateToDisplay),
+            map = map,
         )
     }
 }
