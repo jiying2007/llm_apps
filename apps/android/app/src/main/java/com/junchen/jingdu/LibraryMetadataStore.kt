@@ -3,6 +3,7 @@ package com.junchen.jingdu
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 data class LibraryMetadata(
     val favorite: Boolean = false,
@@ -11,9 +12,11 @@ data class LibraryMetadata(
 
 internal class LibraryMetadataStore(context: Context) {
     private val prefs = context.getSharedPreferences("jingdu.library.metadata.v1", Context.MODE_PRIVATE)
+    private val cache = ConcurrentHashMap<String, LibraryMetadata>()
 
     fun load(bookId: String): LibraryMetadata {
-        val raw = prefs.getString(bookId, null) ?: return LibraryMetadata()
+        cache[bookId]?.let { return it }
+        val raw = prefs.getString(bookId, null) ?: return LibraryMetadata().also { cache[bookId] = it }
         return runCatching {
             val json = JSONObject(raw)
             val tags = json.optJSONArray("tags") ?: JSONArray()
@@ -27,7 +30,7 @@ internal class LibraryMetadataStore(context: Context) {
                     }
                 },
             )
-        }.getOrDefault(LibraryMetadata())
+        }.getOrDefault(LibraryMetadata()).also { cache[bookId] = it }
     }
 
     fun toggleFavorite(bookId: String): LibraryMetadata {
@@ -48,6 +51,7 @@ internal class LibraryMetadataStore(context: Context) {
     }
 
     fun clear(bookId: String) {
+        cache.remove(bookId)
         prefs.edit().remove(bookId).apply()
     }
 
@@ -56,6 +60,7 @@ internal class LibraryMetadataStore(context: Context) {
             .put("favorite", value.favorite)
             .put("tags", JSONArray(value.tags))
         prefs.edit().putString(bookId, json.toString()).apply()
+        cache[bookId] = value
         return value
     }
 

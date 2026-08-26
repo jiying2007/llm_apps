@@ -94,6 +94,28 @@ fun JingduApp(
             )
         }
 
+        // Panel/busy/message state must not invalidate the heavy reader subtree. Keep a stable
+        // render snapshot keyed only by fields that can actually change ReaderScreenV3 output.
+        val readerState = remember(
+            state.screen,
+            state.currentBook,
+            state.pageText,
+            state.position,
+            state.length,
+            state.cleanMode,
+            state.chapters,
+            state.chaptersLoaded,
+            state.bookmarks,
+            state.annotations,
+            state.skimPreview,
+            state.motion,
+            state.tts,
+            state.sleepMinutes,
+            state.settings,
+        ) {
+            state.copy(panel = null, busyLabel = null, message = null, deleteConfirmation = false)
+        }
+
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
             when {
                 state.panel != null -> actions.onClosePanel()
@@ -104,13 +126,13 @@ fun JingduApp(
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
-                AppScreen.READER -> ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
+                AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
             }
             state.busyLabel?.let { BusyOverlay(it) }
             when (state.panel) {
-                ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(state, trackedActions)
+                ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(readerState, trackedActions)
                 ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
-                ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel(state, trackedActions)
+                ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel(readerState, trackedActions)
                 ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
                 ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
                 ReaderPanel.READING_MAP -> ReaderReadingMapV3Panel(state, trackedActions)

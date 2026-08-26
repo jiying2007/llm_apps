@@ -60,7 +60,10 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         val aligned = ((bounded - backBufferChars).coerceAtLeast(0) / alignChars) * alignChars
         val key = WindowKey(aligned, presentationKey(settings), windowChars)
         cache[key]?.let { return it }
-        val source = reader.readAt(aligned, windowChars)
+        val sourceWindow = reader.readAt(aligned, windowChars)
+        // Keep a 4K bounded I/O/cache window but cap the text handed to Compose. This preserves the
+        // read-ahead/back-buffer behavior while reducing glyph/layout work on every scroll frame.
+        val source = if (continuous) sourceWindow.takeCodePoints(CONTINUOUS_RENDER_CHARS) else sourceWindow
         val presented = ReaderPresentationPipeline.present(source, settings)
         val result = ReaderDisplayWindow(
             start = aligned,
@@ -97,6 +100,13 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         settings.paragraphSpacingEm,
     ).hashCode()
 
+    private fun String.takeCodePoints(maximum: Int): String {
+        if (isEmpty() || maximum <= 0) return ""
+        val count = codePointCount(0, length)
+        if (count <= maximum) return this
+        return substring(0, offsetByCodePoints(0, maximum))
+    }
+
     private data class WindowKey(val start: Long, val presentationKey: Int, val windowChars: Long)
 
     private companion object {
@@ -104,6 +114,7 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         const val PAGE_ALIGN_CHARS = 512L
         const val PAGE_BACK_BUFFER_CHARS = 384L
         const val CONTINUOUS_WINDOW_CHARS = 4096L
+        const val CONTINUOUS_RENDER_CHARS = 3072
         const val CONTINUOUS_ALIGN_CHARS = 1024L
         const val CONTINUOUS_BACK_BUFFER_CHARS = 1024L
     }
