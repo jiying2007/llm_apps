@@ -242,16 +242,15 @@ set +e
 python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"
 SLO_STATUS=$?
 set -e
+find "$RESULT_ROOT/macro" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
 if (( SLO_STATUS != 0 )); then
   preserve_failed_macro_evidence "$MACRO_REMOTE"
-  exit "$SLO_STATUS"
 fi
-find "$RESULT_ROOT/macro" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
 
-# The SLO gate no longer needs per-iteration traces after the JSON is safely on the host. Free them
-# before running the profile journey so hosted emulator storage/adb transport stays bounded.
+# Profile generation happens only after Macrobenchmark measurement and therefore cannot affect the
+# measured compilation state. Always produce the real Reader V3 baseline/startup profile asset so a
+# red performance gate remains actionable instead of blocking the profile that the product needs.
 "$ADB" shell rm -rf "$MACRO_REMOTE"
-
 PROFILE_REMOTE="$REMOTE_RESULT_ROOT/profile"
 run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log"
 REMOTE_BASELINE="$("$ADB" shell "ls -1 $PROFILE_REMOTE/*baseline-prof.txt 2>/dev/null | head -n 1" | tr -d '\r')"
@@ -265,3 +264,7 @@ fi
 "$ADB" pull "$REMOTE_STARTUP" "$RESULT_ROOT/profile/"
 find "$RESULT_ROOT/profile" -type f -name '*baseline-prof.txt' -print -quit | grep -q .
 find "$RESULT_ROOT/profile" -type f -name '*startup-prof.txt' -print -quit | grep -q .
+
+if (( SLO_STATUS != 0 )); then
+  exit "$SLO_STATUS"
+fi
