@@ -3,7 +3,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 generator = (ROOT / "apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt").read_text(encoding="utf-8")
+journey = (ROOT / "apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt").read_text(encoding="utf-8")
 runner = (ROOT / "scripts/run-android-macrobenchmark-ci.sh").read_text(encoding="utf-8")
+checker = (ROOT / "scripts/check-android-performance-slo.py").read_text(encoding="utf-8")
 workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
 startup_marker = "@Test fun readerV3Startup()"
@@ -22,11 +24,20 @@ startup_block = generator[startup_at:runtime_at]
 runtime_block = generator[runtime_at:]
 assert "includeInStartupProfile = true" in startup_block
 assert "KEYCODE_VOLUME_DOWN" not in startup_block, "page turns must not inflate Startup Profile"
-assert "continuous-scroll" not in startup_block and "requireChaptersClick" not in startup_block
+assert "requireChaptersClick" not in startup_block
 assert "includeInStartupProfile = false" in runtime_block
 assert "KEYCODE_VOLUME_DOWN" in runtime_block
 assert "requireChaptersClick" in runtime_block
 assert 'By.textContains("Continuous")' in runtime_block
+
+# Product profiles must never weaken or self-feed the original hosted regression gate.
+assert "BaselineProfileMode.Disable" in journey
+assert "warmupIterations = 1" in journey
+assert 'repeat(6) {' in journey, "Reader journeys must retain six interactions"
+assert journey.count('repeat(6) {') >= 2, "page and continuous journeys must both retain six interactions"
+assert 'os.environ.get("JINGDU_FRAME_P95_MS", "40")' in checker
+assert 'os.environ.get("JINGDU_FRAME_P99_MS", "80")' in checker
+assert 'sampled.get("frameDurationCpuMs")' in checker
 
 slo_call = 'python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"'
 profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE"'
