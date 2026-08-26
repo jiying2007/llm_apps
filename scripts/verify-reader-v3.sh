@@ -144,8 +144,8 @@ grep -q 'ReaderMotionState.TTS' "$motion"
 
 # Real Android performance contract: benchmark-only fixture/profileability, signed benchmark test APK,
 # 10/100MiB journeys, deterministic Reader controls, representative heavy chapter density, hosted
-# benchmark-variant-only execution, explicit target installation, machine-readable P95/P99 SLO and
-# a real Baseline Profile critical-user journey.
+# direct instrumentation with bounded evidence pulls, explicit target/test APK installation,
+# machine-readable P95/P99 SLO and a real Baseline Profile critical-user journey.
 grep -q '<profileable android:shell="true"' "$benchmark_manifest"
 grep -q 'signingConfig = signingConfigs.debug' "$macrobenchmark_gradle"
 grep -q 'Benchmark-build only' "$fixture"
@@ -167,11 +167,21 @@ grep -q 'KEYCODE_VOLUME_DOWN' "$baseline"
 grep -q 'ensureTopControlsVisible' "$baseline"
 ! grep -q 'reader-v2' "$baseline"
 grep -q ':app:assembleBenchmark' "$benchmark_runner"
+grep -q ':macrobenchmark:assembleBenchmark' "$benchmark_runner"
 grep -q 'pm path.*TARGET_PACKAGE' "$benchmark_runner"
-grep -q ':macrobenchmark:connectedBenchmarkAndroidTest' "$benchmark_runner"
-! grep -q ':macrobenchmark:connectedCheck' "$benchmark_runner"
-grep -q 'enabledRules=Macrobenchmark' "$benchmark_runner"
-grep -q 'enabledRules=BaselineProfile' "$benchmark_runner"
+grep -q 'TEST_APK' "$benchmark_runner"
+grep -q 'pm list instrumentation' "$benchmark_runner"
+grep -q 'shell am instrument -w -r' "$benchmark_runner"
+grep -q 'additionalTestOutputDir' "$benchmark_runner"
+grep -q 'no-isolated-storage true' "$benchmark_runner"
+grep -q 'androidx.benchmark.enabledRules.*rule' "$benchmark_runner"
+grep -q 'run_instrumentation Macrobenchmark' "$benchmark_runner"
+grep -q 'run_instrumentation BaselineProfile' "$benchmark_runner"
+grep -q 'benchmarkData.json' "$benchmark_runner"
+grep -q 'baseline-prof.txt' "$benchmark_runner"
+grep -q 'startup-prof.txt' "$benchmark_runner"
+! grep -q 'connectedBenchmarkAndroidTest' "$benchmark_runner"
+! grep -q 'connectedCheck' "$benchmark_runner"
 grep -q 'test-android-performance-slo.py' "$benchmark_runner"
 grep -q 'frameDurationCpuMs' scripts/check-android-performance-slo.py
 grep -q 'JINGDU_FRAME_P95_MS' scripts/check-android-performance-slo.py
