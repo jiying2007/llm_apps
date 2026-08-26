@@ -17,12 +17,28 @@ import kotlin.math.abs
 class BaselineProfileGenerator {
     @get:Rule val baselineProfileRule = BaselineProfileRule()
 
-    @Test fun readerV3CriticalJourneys() = baselineProfileRule.collect(
+    /** Startup Profile contains only the first-display path; runtime CUJs belong in Baseline only. */
+    @Test fun readerV3Startup() = baselineProfileRule.collect(
         packageName = PACKAGE_NAME,
         maxIterations = 10,
         stableIterations = 3,
         includeInStartupProfile = true,
-        outputFilePrefix = "jingdu-reader-v3",
+        outputFilePrefix = "jingdu-reader-v3-startup",
+    ) {
+        pressHome()
+        seedFixture()
+        setReaderMode("paged")
+        startActivityAndWait()
+        openFixture()
+    }
+
+    /** Page turn, continuous scroll and panel navigation are runtime-critical Baseline Profile CUJs. */
+    @Test fun readerV3CriticalJourneys() = baselineProfileRule.collect(
+        packageName = PACKAGE_NAME,
+        maxIterations = 10,
+        stableIterations = 3,
+        includeInStartupProfile = false,
+        outputFilePrefix = "jingdu-reader-v3-critical",
     ) {
         pressHome()
         seedFixture()
@@ -73,7 +89,7 @@ class BaselineProfileGenerator {
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
-        check(result.contains("mode=$expected")) { "Reader V3 baseline mode setup failed: $result" }
+        check(result.contains("mode=$expected")) { "Reader V3 benchmark mode setup failed: $result" }
     }
 
     private fun MacrobenchmarkScope.openFixture() {

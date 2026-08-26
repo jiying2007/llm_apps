@@ -92,15 +92,11 @@ echo "Android SDK root: $SDK_ROOT"
 echo "Benchmark image: $IMAGE"
 echo "Android AVD home: $AVD_HOME"
 
-# Install the runtime before validating adb/emulator. GitHub's performance job intentionally only
-# guarantees Java + Android SDK roots; platform-tools/emulator may not be preinstalled or on PATH.
 yes | "$SDKMANAGER" --licenses >/dev/null || true
 "$SDKMANAGER" "platform-tools" "emulator" "$IMAGE"
 require_executable "$ADB" adb
 require_executable "$EMULATOR" emulator
 
-# The current Android emulator binary links libpulse even when launched with -no-audio. The minimal
-# Ubuntu hosted image can omit that runtime library, so provision only the evidenced host dep.
 if ! dpkg-query -W libpulse0 >/dev/null 2>&1; then
   sudo apt-get update
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libpulse0
@@ -109,7 +105,6 @@ fi
 "$ADB" version
 "$EMULATOR" -version
 
-# GitHub-hosted Linux runners normally expose /dev/kvm. Keep a software fallback for other runners.
 if [[ -e /dev/kvm ]]; then
   sudo chmod 666 /dev/kvm || true
   echo "KVM acceleration available"
@@ -117,8 +112,6 @@ else
   echo "KVM unavailable; using software acceleration fallback"
 fi
 
-# Keep avdmanager and emulator on the same explicit AVD root. Relying on HOME/ANDROID_SDK_HOME
-# produced an AVD that avdmanager accepted but the hosted emulator could not subsequently resolve.
 rm -rf "$AVD_HOME"
 mkdir -p "$AVD_HOME"
 echo no | "$AVDMANAGER" create avd \
@@ -183,11 +176,6 @@ fi
 "$ADB" shell getprop ro.build.version.release
 "$ADB" shell getprop ro.product.cpu.abi
 
-# Build both signed APKs, then install them explicitly. Gradle's connected-test UTP host plugin
-# automatically copies every Perfetto trace and benchmark report after the run. On hosted emulators
-# that 80+MiB fan-out can make adb go offline after all benchmarks have already succeeded. Running
-# instrumentation directly keeps the exact same Macrobenchmark metrics on-device and lets CI pull
-# only the machine-readable evidence it gates on, plus traces only when the SLO actually fails.
 cd "$ANDROID_DIR"
 ./gradlew --no-daemon --warning-mode all :app:assembleBenchmark :macrobenchmark:assembleBenchmark
 TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
@@ -247,23 +235,30 @@ if (( SLO_STATUS != 0 )); then
   preserve_failed_macro_evidence "$MACRO_REMOTE"
 fi
 
-# Profile generation happens only after Macrobenchmark measurement and therefore cannot affect the
-# measured compilation state. Always produce the real Reader V3 baseline/startup profile asset so a
-# red performance gate remains actionable instead of blocking the profile that the product needs.
+# Profile collection runs after measured Macrobenchmark and cannot affect the frame SLO above.
+# Always emit canonical merged baseline/startup assets so a red gate can still produce the product
+# profile needed to eliminate measured JIT on the next independent exact-head run.
 "$ADB" shell rm -rf "$MACRO_REMOTE"
 PROFILE_REMOTE="$REMOTE_RESULT_ROOT/profile"
 run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log"
-REMOTE_BASELINE="$("$ADB" shell "ls -1 $PROFILE_REMOTE/*baseline-prof.txt 2>/dev/null | head -n 1" | tr -d '\r')"
-REMOTE_STARTUP="$("$ADB" shell "ls -1 $PROFILE_REMOTE/*startup-prof.txt 2>/dev/null | head -n 1" | tr -d '\r')"
-if [[ -z "$REMOTE_BASELINE" || -z "$REMOTE_STARTUP" ]]; then
-  echo "Baseline Profile journey did not produce both baseline and startup profiles" >&2
-  "$ADB" shell "ls -lah $PROFILE_REMOTE" >&2 || true
+PROFILE_RAW="$RESULT_ROOT/profile/raw"
+rm -rf "$PROFILE_RAW"
+mkdir -p "$PROFILE_RAW"
+"$ADB" pull "$PROFILE_REMOTE" "$PROFILE_RAW/"
+
+mapfile -d '' BASELINE_FILES < <(find "$PROFILE_RAW" -type f -name '*baseline-prof.txt' -print0 | sort -z)
+mapfile -d '' STARTUP_FILES < <(find "$PROFILE_RAW" -type f -name '*startup-prof.txt' -print0 | sort -z)
+if ((${#BASELINE_FILES[@]} == 0 || ${#STARTUP_FILES[@]} == 0)); then
+  echo "Baseline Profile journey did not produce baseline and startup profile sources" >&2
+  find "$PROFILE_RAW" -type f -maxdepth 4 -print >&2 || true
   exit 1
 fi
-"$ADB" pull "$REMOTE_BASELINE" "$RESULT_ROOT/profile/"
-"$ADB" pull "$REMOTE_STARTUP" "$RESULT_ROOT/profile/"
-find "$RESULT_ROOT/profile" -type f -name '*baseline-prof.txt' -print -quit | grep -q .
-find "$RESULT_ROOT/profile" -type f -name '*startup-prof.txt' -print -quit | grep -q .
+cat "${BASELINE_FILES[@]}" | sed '/^[[:space:]]*$/d' | sort -u > "$RESULT_ROOT/profile/baseline-prof.txt"
+cat "${STARTUP_FILES[@]}" | sed '/^[[:space:]]*$/d' | sort -u > "$RESULT_ROOT/profile/startup-prof.txt"
+test -s "$RESULT_ROOT/profile/baseline-prof.txt"
+test -s "$RESULT_ROOT/profile/startup-prof.txt"
+echo "Canonical Reader V3 baseline rules: $(wc -l < "$RESULT_ROOT/profile/baseline-prof.txt")"
+echo "Canonical Reader V3 startup rules: $(wc -l < "$RESULT_ROOT/profile/startup-prof.txt")"
 
 if (( SLO_STATUS != 0 )); then
   exit "$SLO_STATUS"
