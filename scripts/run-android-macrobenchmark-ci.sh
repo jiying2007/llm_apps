@@ -73,6 +73,16 @@ run_instrumentation() {
   fi
 }
 
+preserve_failed_macro_evidence() {
+  local remote_dir="$1"
+  local local_dir="$RESULT_ROOT/macro-failure-evidence"
+  mkdir -p "$local_dir"
+  echo "Preserving Macrobenchmark failure traces from ${remote_dir}"
+  "$ADB" shell "ls -lah $remote_dir" || true
+  "$ADB" pull "$remote_dir" "$local_dir/" || true
+  find "$local_dir" -type f \( -name '*.perfetto-trace' -o -name '*-benchmarkData.json' \) -print || true
+}
+
 cd "$ROOT"
 python3 scripts/test-android-performance-slo.py
 require_executable "$SDKMANAGER" sdkmanager
@@ -90,7 +100,7 @@ require_executable "$ADB" adb
 require_executable "$EMULATOR" emulator
 
 # The current Android emulator binary links libpulse even when launched with -no-audio. The minimal
-# Ubuntu 24.04 hosted image can omit that runtime library, so provision only the evidenced host dep.
+# Ubuntu hosted image can omit that runtime library, so provision only the evidenced host dep.
 if ! dpkg-query -W libpulse0 >/dev/null 2>&1; then
   sudo apt-get update
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libpulse0
@@ -177,7 +187,7 @@ fi
 # automatically copies every Perfetto trace and benchmark report after the run. On hosted emulators
 # that 80+MiB fan-out can make adb go offline after all benchmarks have already succeeded. Running
 # instrumentation directly keeps the exact same Macrobenchmark metrics on-device and lets CI pull
-# only the machine-readable evidence it gates on.
+# only the machine-readable evidence it gates on, plus traces only when the SLO actually fails.
 cd "$ANDROID_DIR"
 ./gradlew --no-daemon --warning-mode all :app:assembleBenchmark :macrobenchmark:assembleBenchmark
 TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
@@ -222,12 +232,20 @@ REMOTE_JSON="$("$ADB" shell "ls -1 $MACRO_REMOTE/*-benchmarkData.json 2>/dev/nul
 if [[ -z "$REMOTE_JSON" ]]; then
   echo "Macrobenchmark completed without benchmarkData.json" >&2
   "$ADB" shell "ls -lah $MACRO_REMOTE" >&2 || true
+  preserve_failed_macro_evidence "$MACRO_REMOTE"
   exit 1
 fi
 "$ADB" pull "$REMOTE_JSON" "$RESULT_ROOT/macro/"
 
 cd "$ROOT"
+set +e
 python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"
+SLO_STATUS=$?
+set -e
+if (( SLO_STATUS != 0 )); then
+  preserve_failed_macro_evidence "$MACRO_REMOTE"
+  exit "$SLO_STATUS"
+fi
 find "$RESULT_ROOT/macro" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
 
 # The SLO gate no longer needs per-iteration traces after the JSON is safely on the host. Free them

@@ -129,10 +129,13 @@ jobs:
           grep -q 'open10MiBTxt' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
           grep -q 'open100MiBTxt' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
           grep -q 'androidx.benchmark.suppressErrors.*EMULATOR' apps/android/macrobenchmark/build.gradle
+          grep -q 'preserve_failed_macro_evidence' scripts/run-android-macrobenchmark-ci.sh
 
   android-performance:
     needs: android
-    runs-on: ubuntu-latest
+    # Pin the performance gate away from the moving Ubuntu 24.04 hosted image. The Android 35
+    # emulator, KVM, SwiftShader, journey, FrameTimingMetric and 40/80 SLO remain unchanged.
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -143,7 +146,7 @@ jobs:
           cache: gradle
       - name: Run Reader V3 hosted Macrobenchmark and enforce frame SLO
         run: bash ./scripts/run-android-macrobenchmark-ci.sh
-      - name: Preserve Macrobenchmark JSON and Perfetto traces
+      - name: Preserve Macrobenchmark evidence and failure Perfetto traces
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
