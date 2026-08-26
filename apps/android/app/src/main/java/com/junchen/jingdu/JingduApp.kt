@@ -23,10 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
@@ -107,41 +105,16 @@ fun JingduApp(
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
-                AppScreen.READER -> {
-                    ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
-
-                    // Canonical persistent routes (single implementation each):
-                    // ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet
-                    // ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel
-                    // High-frequency reader panels keep one composition instance. Hidden layers are
-                    // behind the reader and expose no accessibility semantics; opening changes only
-                    // layer placement/visibility instead of constructing a Material panel tree.
-                    val quickState = remember(state.settings, state.motion) {
-                        AppUiState(settings = state.settings, motion = state.motion)
-                    }
-                    val chaptersActive = state.panel == ReaderPanel.CHAPTERS
-                    val chapterPosition = if (chaptersActive) state.position else 0L
-                    val chapterState = remember(state.currentBook, state.length, state.chapters, state.chaptersLoaded, chapterPosition) {
-                        AppUiState(
-                            currentBook = state.currentBook,
-                            length = state.length,
-                            position = chapterPosition,
-                            chapters = state.chapters,
-                            chaptersLoaded = state.chaptersLoaded,
-                        )
-                    }
-                    Box(Modifier.fillMaxSize().readerPanelLayer(state.panel == ReaderPanel.QUICK_SETTINGS)) {
-                        ReaderQuickSettingsSheet(quickState, trackedActions)
-                    }
-                    Box(Modifier.fillMaxSize().readerPanelLayer(chaptersActive)) {
-                        ReaderSmartChaptersPanel(chapterState, trackedActions)
-                    }
-                }
+                AppScreen.READER -> ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
             }
             state.busyLabel?.let { BusyOverlay(it) }
+            // High-frequency panels keep their derived data in dedicated caches, but their UI nodes
+            // exist only while visible. Invisible Quick/Chapters trees must not participate in every
+            // reader measure/layout pass.
             when (state.panel) {
-                ReaderPanel.QUICK_SETTINGS, ReaderPanel.CHAPTERS -> Unit
+                ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(state, trackedActions)
                 ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
+                ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel(state, trackedActions)
                 ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
                 ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
                 ReaderPanel.READING_MAP -> ReaderReadingMapV3Panel(state, trackedActions)
@@ -164,11 +137,6 @@ fun JingduApp(
         )
     }
 }
-
-private fun Modifier.readerPanelLayer(active: Boolean): Modifier =
-    zIndex(if (active) 10f else -1f)
-        .alpha(if (active) 1f else 0f)
-        .then(if (active) Modifier else Modifier.clearAndSetSemantics { })
 
 @Composable private fun BusyOverlay(label: String) {
     Box(Modifier.fillMaxSize().zIndex(20f).background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.24f)), contentAlignment = Alignment.Center) {
