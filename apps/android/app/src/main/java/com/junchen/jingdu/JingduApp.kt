@@ -24,7 +24,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
@@ -80,6 +82,7 @@ fun JingduApp(
         val latestPosition = rememberUpdatedState(state.position)
         val latestLength = rememberUpdatedState(state.length)
         val latestTrackLocation = rememberUpdatedState(onTrackLocation)
+        val currentReaderPosition = remember { { latestPosition.value } }
         val trackedActions = remember(actions) {
             actions.copy(
                 onJump = { target ->
@@ -105,16 +108,35 @@ fun JingduApp(
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
-                AppScreen.READER -> ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
+                AppScreen.READER -> {
+                    ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
+
+                    // High-frequency panels keep one composition instance so chapter/quick models are
+                    // warm, but an inactive host does not measure or place its subtree. Page/scroll
+                    // frames therefore pay neither first-open composition nor hidden layout cost.
+                    val quickState = remember(state.settings, state.motion) {
+                        AppUiState(settings = state.settings, motion = state.motion)
+                    }
+                    val chapterState = remember(state.currentBook, state.length, state.chapters, state.chaptersLoaded) {
+                        AppUiState(
+                            currentBook = state.currentBook,
+                            length = state.length,
+                            chapters = state.chapters,
+                            chaptersLoaded = state.chaptersLoaded,
+                        )
+                    }
+                    ReaderPanelHost(active = state.panel == ReaderPanel.QUICK_SETTINGS) {
+                        ReaderQuickSettingsSheet(quickState, trackedActions)
+                    }
+                    ReaderPanelHost(active = state.panel == ReaderPanel.CHAPTERS) {
+                        ReaderSmartChaptersPanel(chapterState, trackedActions, currentReaderPosition)
+                    }
+                }
             }
             state.busyLabel?.let { BusyOverlay(it) }
-            // High-frequency panels keep their derived data in dedicated caches, but their UI nodes
-            // exist only while visible. Invisible Quick/Chapters trees must not participate in every
-            // reader measure/layout pass.
             when (state.panel) {
-                ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(state, trackedActions)
+                ReaderPanel.QUICK_SETTINGS, ReaderPanel.CHAPTERS -> Unit
                 ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
-                ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel(state, trackedActions)
                 ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
                 ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
                 ReaderPanel.READING_MAP -> ReaderReadingMapV3Panel(state, trackedActions)
@@ -135,6 +157,25 @@ fun JingduApp(
             confirmButton = { TextButton(onClick = actions.onConfirmDeleteCurrent) { Text(stringResource(R.string.delete)) } },
             dismissButton = { TextButton(onClick = actions.onDismissDelete) { Text(stringResource(R.string.cancel)) } },
         )
+    }
+}
+
+@Composable
+private fun ReaderPanelHost(active: Boolean, content: @Composable () -> Unit) {
+    Layout(
+        content = content,
+        modifier = Modifier
+            .zIndex(if (active) 10f else -1f)
+            .then(if (active) Modifier else Modifier.clearAndSetSemantics { }),
+    ) { measurables, constraints ->
+        if (!active) {
+            layout(0, 0) { }
+        } else {
+            val placeable = measurables.firstOrNull()?.measure(constraints)
+            val width = placeable?.width ?: constraints.minWidth
+            val height = placeable?.height ?: constraints.minHeight
+            layout(width, height) { placeable?.placeRelative(0, 0) }
+        }
     }
 }
 

@@ -56,10 +56,15 @@ private object TocPanelCache {
 /**
  * Performance-oriented canonical target for the chapters route. It renders in the app composition
  * tree and retains the derived quality report, so reopening the panel never reevaluates the same
- * chapter collection or recreates a modal window.
+ * chapter collection or recreates a modal window. Current reader position is read through a stable
+ * callback so background page turns do not invalidate the hidden chapter composition.
  */
 @Composable
-internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions) {
+internal fun ReaderSmartChaptersPanel(
+    state: AppUiState,
+    actions: JingduActions,
+    currentPosition: () -> Long,
+) {
     val context = LocalContext.current
     val book = state.currentBook
     val store = remember { TocOverrideStore(context) }
@@ -149,7 +154,7 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions)
         title = { Text(stringResource(R.string.toc_add_here)) },
         text = { OutlinedTextField(value = title, onValueChange = { title = it.take(80) }, label = { Text(stringResource(R.string.toc_custom_title)) }) },
         confirmButton = { TextButton(onClick = {
-            store.add(book.id, state.position, title, state.length)
+            store.add(book.id, currentPosition(), title, state.length)
             val updated = base?.let { store.apply(it, store.load(book.id, state.length)) }
             report = updated
             val currentBase = base
