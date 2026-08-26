@@ -136,7 +136,7 @@ if ! "$EMULATOR" -list-avds | grep -Fxq "$AVD_NAME"; then
   exit 1
 fi
 
-GPU_MODE="swiftshader_indirect"
+GPU_MODE="software"
 : >"$EMULATOR_LOG"
 if [[ -e /dev/kvm ]]; then
   "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot \
