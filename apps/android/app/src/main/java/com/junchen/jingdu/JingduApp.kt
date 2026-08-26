@@ -77,12 +77,16 @@ fun JingduApp(
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
 
-        // Keep the action object stable while its location values track the latest reader state.
-        // Rebuilding actions.copy() for every page/scroll position invalidates the whole reader tree.
+        // Keep the action and navigation callback identities stable while values track current state.
+        // Panel-only state changes can then skip the entire ReaderRoute subtree under strong skipping.
         val latestPosition = rememberUpdatedState(state.position)
         val latestLength = rememberUpdatedState(state.length)
         val latestTrackLocation = rememberUpdatedState(onTrackLocation)
+        val latestLocationBack = rememberUpdatedState(onLocationBack)
+        val latestLocationForward = rememberUpdatedState(onLocationForward)
         val currentReaderPosition = remember { { latestPosition.value } }
+        val stableLocationBack = remember { { latestLocationBack.value() } }
+        val stableLocationForward = remember { { latestLocationForward.value() } }
         val trackedActions = remember(actions) {
             actions.copy(
                 onJump = { target ->
@@ -97,11 +101,39 @@ fun JingduApp(
                 },
             )
         }
+        val readerState = remember(
+            state.currentBook,
+            state.pageText,
+            state.position,
+            state.length,
+            state.cleanMode,
+            state.chapters,
+            state.chaptersLoaded,
+            state.annotations,
+            state.motion,
+            state.tts,
+            state.settings,
+        ) {
+            AppUiState(
+                screen = AppScreen.READER,
+                currentBook = state.currentBook,
+                pageText = state.pageText,
+                position = state.position,
+                length = state.length,
+                cleanMode = state.cleanMode,
+                chapters = state.chapters,
+                chaptersLoaded = state.chaptersLoaded,
+                annotations = state.annotations,
+                motion = state.motion,
+                tts = state.tts,
+                settings = state.settings,
+            )
+        }
 
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
             when {
                 state.panel != null -> actions.onClosePanel()
-                location.canBack -> onLocationBack()
+                location.canBack -> stableLocationBack()
                 else -> trackedActions.onBackToLibrary()
             }
         }
@@ -109,7 +141,7 @@ fun JingduApp(
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
                 AppScreen.READER -> {
-                    ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
+                    ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
 
                     // Canonical routes remain unique: ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet
                     // and ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel.
