@@ -17,6 +17,8 @@ AVD_HOME="${ANDROID_AVD_HOME:-$TEMP_DIR/jingdu-avd-home}"
 BOOT_TIMEOUT_SECONDS="${JINGDU_EMULATOR_BOOT_TIMEOUT_SECONDS:-240}"
 EMULATOR_LOG="$TEMP_DIR/jingdu-emulator.log"
 EMULATOR_PID=""
+REMOTE_RESULT_ROOT="/sdcard/Download/jingdu-reader-v3-ci"
+RESULT_ROOT="$ANDROID_DIR/macrobenchmark/build/outputs/direct-instrumentation"
 export ANDROID_AVD_HOME="$AVD_HOME"
 
 cleanup() {
@@ -44,6 +46,31 @@ fail_emulator() {
   echo "===== Android emulator log =====" >&2
   tail -n 240 "$EMULATOR_LOG" >&2 || true
   exit 1
+}
+
+run_instrumentation() {
+  local rule="$1"
+  local remote_dir="$2"
+  local log_file="$3"
+  "$ADB" shell rm -rf "$remote_dir"
+  "$ADB" shell mkdir -p "$remote_dir"
+
+  set +e
+  "$ADB" shell am instrument -w -r \
+    -e no-isolated-storage true \
+    -e additionalTestOutputDir "$remote_dir" \
+    -e androidx.benchmark.suppressErrors EMULATOR \
+    -e listener androidx.benchmark.macro.junit4.SideEffectRunListener \
+    -e androidx.benchmark.enabledRules "$rule" \
+    "$INSTRUMENTATION" | tee "$log_file"
+  local status=${PIPESTATUS[0]}
+  set -e
+
+  if (( status != 0 )) || grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=Process crashed|Process crashed' "$log_file" || ! grep -q 'INSTRUMENTATION_CODE: -1' "$log_file"; then
+    echo "Reader V3 ${rule} instrumentation failed" >&2
+    cat "$log_file" >&2
+    exit 1
+  fi
 }
 
 cd "$ROOT"
@@ -146,19 +173,28 @@ fi
 "$ADB" shell getprop ro.build.version.release
 "$ADB" shell getprop ro.product.cpu.abi
 
-# Macrobenchmark CI is deliberately split into build -> install -> run. AGP connectedCheck can
-# select the debug test variant after a successful benchmark run; that variant is not a product
-# performance target and can produce a false red gate because the benchmark target APK is absent.
-# Build and install the real benchmark target explicitly, then run only the benchmark test variant.
+# Build both signed APKs, then install them explicitly. Gradle's connected-test UTP host plugin
+# automatically copies every Perfetto trace and benchmark report after the run. On hosted emulators
+# that 80+MiB fan-out can make adb go offline after all benchmarks have already succeeded. Running
+# instrumentation directly keeps the exact same Macrobenchmark metrics on-device and lets CI pull
+# only the machine-readable evidence it gates on.
 cd "$ANDROID_DIR"
 ./gradlew --no-daemon --warning-mode all :app:assembleBenchmark :macrobenchmark:assembleBenchmark
 TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
+TEST_APK="$(find "$ANDROID_DIR/macrobenchmark/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
 if [[ -z "$TARGET_APK" || ! -f "$TARGET_APK" ]]; then
   echo "Benchmark target APK was not produced" >&2
   exit 1
 fi
+if [[ -z "$TEST_APK" || ! -f "$TEST_APK" ]]; then
+  echo "Macrobenchmark test APK was not produced" >&2
+  exit 1
+fi
+
 echo "Installing Macrobenchmark target: $TARGET_APK"
 "$ADB" install -r "$TARGET_APK"
+echo "Installing Macrobenchmark tests: $TEST_APK"
+"$ADB" install -r "$TEST_APK"
 TARGET_PATH="$("$ADB" shell pm path "$TARGET_PACKAGE" 2>/dev/null | tr -d '\r')"
 if [[ "$TARGET_PATH" != package:* ]]; then
   echo "Macrobenchmark target package is not installed: $TARGET_PACKAGE" >&2
@@ -167,18 +203,47 @@ if [[ "$TARGET_PATH" != package:* ]]; then
 fi
 echo "Macrobenchmark target installed: $TARGET_PATH"
 
-./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedBenchmarkAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark
+INSTRUMENTATION="$("$ADB" shell pm list instrumentation | tr -d '\r' | sed -n 's/^instrumentation:\([^ ]*\).*$/\1/p' | grep 'com.junchen.jingdu.macrobenchmark' | head -n 1)"
+if [[ -z "$INSTRUMENTATION" ]]; then
+  echo "Macrobenchmark instrumentation component was not registered" >&2
+  "$ADB" shell pm list instrumentation >&2 || true
+  exit 1
+fi
+echo "Macrobenchmark instrumentation: $INSTRUMENTATION"
+
+rm -rf "$RESULT_ROOT"
+mkdir -p "$RESULT_ROOT/macro" "$RESULT_ROOT/profile"
+"$ADB" shell rm -rf "$REMOTE_RESULT_ROOT"
+"$ADB" shell mkdir -p "$REMOTE_RESULT_ROOT"
+
+MACRO_REMOTE="$REMOTE_RESULT_ROOT/macro"
+run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation.log"
+REMOTE_JSON="$("$ADB" shell "ls -1 $MACRO_REMOTE/*-benchmarkData.json 2>/dev/null | head -n 1" | tr -d '\r')"
+if [[ -z "$REMOTE_JSON" ]]; then
+  echo "Macrobenchmark completed without benchmarkData.json" >&2
+  "$ADB" shell "ls -lah $MACRO_REMOTE" >&2 || true
+  exit 1
+fi
+"$ADB" pull "$REMOTE_JSON" "$RESULT_ROOT/macro/"
 
 cd "$ROOT"
-RESULT_ROOT="$ANDROID_DIR/macrobenchmark/build/outputs"
-python3 scripts/check-android-performance-slo.py "$RESULT_ROOT"
-find "$RESULT_ROOT" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
+python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"
+find "$RESULT_ROOT/macro" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
 
-# Execute the Baseline Profile CUJ separately on the same signed benchmark variant so performance
-# evidence and profile evidence are both real without invoking any debug-variant instrumentation.
-cd "$ANDROID_DIR"
-./gradlew --no-daemon --warning-mode all :macrobenchmark:connectedBenchmarkAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile
-cd "$ROOT"
-find "$RESULT_ROOT" -type f \( -name '*baseline-prof.txt' -o -name '*startup-prof.txt' \) -print -quit | grep -q .
+# The SLO gate no longer needs per-iteration traces after the JSON is safely on the host. Free them
+# before running the profile journey so hosted emulator storage/adb transport stays bounded.
+"$ADB" shell rm -rf "$MACRO_REMOTE"
+
+PROFILE_REMOTE="$REMOTE_RESULT_ROOT/profile"
+run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log"
+REMOTE_BASELINE="$("$ADB" shell "ls -1 $PROFILE_REMOTE/*baseline-prof.txt 2>/dev/null | head -n 1" | tr -d '\r')"
+REMOTE_STARTUP="$("$ADB" shell "ls -1 $PROFILE_REMOTE/*startup-prof.txt 2>/dev/null | head -n 1" | tr -d '\r')"
+if [[ -z "$REMOTE_BASELINE" || -z "$REMOTE_STARTUP" ]]; then
+  echo "Baseline Profile journey did not produce both baseline and startup profiles" >&2
+  "$ADB" shell "ls -lah $PROFILE_REMOTE" >&2 || true
+  exit 1
+fi
+"$ADB" pull "$REMOTE_BASELINE" "$RESULT_ROOT/profile/"
+"$ADB" pull "$REMOTE_STARTUP" "$RESULT_ROOT/profile/"
+find "$RESULT_ROOT/profile" -type f -name '*baseline-prof.txt' -print -quit | grep -q .
+find "$RESULT_ROOT/profile" -type f -name '*startup-prof.txt' -print -quit | grep -q .
