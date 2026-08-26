@@ -35,7 +35,9 @@ internal data class ReaderDisplayWindow(
 
 /** Bounded read/presentation pipeline shared by paged and continuous modes. */
 internal class ReaderViewportEngine(context: Context, private val bookId: String) : Closeable {
-    private val reader = ReaderController()
+    // Continuous mode owns its own aligned display windows; the page-turn cache would only duplicate
+    // memory and I/O here, so this controller explicitly disables it.
+    private val reader = ReaderController(false)
     private val cache = object : LinkedHashMap<WindowKey, ReaderDisplayWindow>(8, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<WindowKey, ReaderDisplayWindow>?): Boolean = size > MAX_WINDOWS
     }
@@ -101,9 +103,9 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         const val MAX_WINDOWS = 8
         const val PAGE_ALIGN_CHARS = 512L
         const val PAGE_BACK_BUFFER_CHARS = 384L
-        const val CONTINUOUS_WINDOW_CHARS = 6144L
-        const val CONTINUOUS_ALIGN_CHARS = 2048L
-        const val CONTINUOUS_BACK_BUFFER_CHARS = 2048L
+        const val CONTINUOUS_WINDOW_CHARS = 4096L
+        const val CONTINUOUS_ALIGN_CHARS = 1024L
+        const val CONTINUOUS_BACK_BUFFER_CHARS = 1024L
     }
 }
 

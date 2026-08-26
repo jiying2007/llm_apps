@@ -16,6 +16,8 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewModel.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurface.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
@@ -39,11 +41,15 @@ for path in "${required[@]}"; do test -f "$path" || { echo "Reader V3 asset miss
 prefs=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
 screen=apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
 engine=apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt
+controller=apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
 pipeline=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt
 annotations=apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt
 stats=apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt
 settings=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
 app=apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
+quick_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
+panel_surface=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurface.kt
+smart_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
 service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 player=apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
 navigator=apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
@@ -57,7 +63,6 @@ benchmark_manifest=apps/android/app/src/benchmark/AndroidManifest.xml
 macrobenchmark_gradle=apps/android/macrobenchmark/build.gradle
 benchmark_runner=scripts/run-android-macrobenchmark-ci.sh
 smart_toc=apps/android/app/src/main/java/com/junchen/jingdu/SmartToc.kt
-competitive_sheets=apps/android/app/src/main/java/com/junchen/jingdu/CompetitiveSheets.kt
 index_cache=core/native/src/index_cache.cpp
 cached_core=core/native/src/core_api_cached.cpp
 core_test=core/native/tests/core_api_test.cpp
@@ -83,16 +88,21 @@ grep -q 'SourceDisplayMap.compose' "$pipeline"
 grep -q 'typographyFingerprint = spec.fingerprint' "$engine"
 grep -q 'androidLayoutText' "$engine"
 grep -q 'BREAK_STRATEGY_SIMPLE' "$engine"
-grep -q 'WINDOW_CHARS = 1536' apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
-grep -q 'CONTINUOUS_WINDOW_CHARS = 6144L' "$engine"
+grep -q 'WINDOW_CHARS = 1536' "$controller"
+grep -q 'PAGE_CACHE_CHARS = 64 \* 1024L' "$controller"
+grep -q 'PAGE_CACHE_PREFETCH_MARGIN_CHARS = 8192L' "$controller"
+grep -q 'jingdu-page-prefetch' "$controller"
+grep -q 'ReaderController(false)' "$engine"
+grep -q 'CONTINUOUS_WINDOW_CHARS = 4096L' "$engine"
+grep -q 'CONTINUOUS_ALIGN_CHARS = 1024L' "$engine"
 grep -q 'MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC = 20' "$smart_toc"
 grep -q 'if (merged.size < MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC)' "$smart_toc"
 grep -q 'PARAGRAPH_SPACER' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt
 
 # Rendering work is bounded on every interaction path. NONE never mutates animation direction;
 # paged mode slices to the measured visible prefix before heading/TTS/highlight/selection annotation;
-# manual continuous scrolling commits position after the gesture settles; chapter ticks have a fixed
-# draw bound; the chapter sheet reuses the single MainActivity TOC state.
+# page turns are served from a bounded in-memory window with asynchronous native refill; manual
+# continuous scrolling commits position after the gesture settles and uses a 4K Compose window.
 grep -q 'val slideAnimation = settings.pageAnimation == ReaderPageAnimation.SLIDE' "$screen"
 grep -q 'pageDirection = if (settings.pageAnimation == ReaderPageAnimation.SLIDE' "$screen"
 grep -q 'state.position, state.pageText, state, adaptiveLayout' "$screen"
@@ -105,8 +115,20 @@ grep -q 'AUTO_SCROLL_COMMIT_CHARS = 512L' "$screen"
 ! grep -q 'abs(absolute - lastCommitted) >= 192' "$screen"
 grep -q 'MAX_CHAPTER_TICKS = 96' "$screen"
 grep -q 'take(MAX_CHAPTER_TICKS)' "$screen"
-grep -q 'SmartToc.evaluate(state.chapters.map' "$competitive_sheets"
-! grep -q 'SmartToc.analyze(reader)' "$competitive_sheets"
+
+# Reader actions stay referentially stable across page/scroll position updates. Quick/chapters are
+# canonical in-tree bottom overlays rather than ModalBottomSheet/Dialog windows.
+grep -q 'val latestPosition = rememberUpdatedState(state.position)' "$app"
+grep -q 'val trackedActions = remember(actions)' "$app"
+grep -q 'ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet' "$app"
+grep -q 'ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel' "$app"
+grep -q 'ReaderPanelSurface(onDismiss = actions.onClosePanel)' "$quick_panel"
+grep -q 'ReaderPanelSurface(onDismiss = actions.onClosePanel)' "$smart_panel"
+grep -q 'TocPanelCache' "$smart_panel"
+grep -q 'SmartToc.evaluate(state.chapters.map' "$smart_panel"
+! grep -q 'SmartToc.analyze(reader)' "$smart_panel"
+grep -q 'same composition tree' "$panel_surface"
+test ! -e apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotPanels.kt
 
 # The native sparse index remains JDX1-compatible and upgrades lazily to JDX2 only after the first
 # authoritative chapter scan. Once upgraded, subsequent chapter reads enumerate the persisted table
@@ -140,9 +162,6 @@ grep -q 'MutableStateFlow' apps/android/app/src/main/java/com/junchen/jingdu/Rea
 grep -q 'ReaderSettingsScreen' "$app"
 grep -q 'ReaderAnnotationsV3Panel' "$app"
 grep -q 'ReaderReadingMapV3Panel' "$app"
-grep -q 'ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet' "$app"
-grep -q 'ReaderPanel.CHAPTERS -> SmartChaptersSheet' "$app"
-test ! -e apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotPanels.kt
 grep -q 'ReaderScreenV3' apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
 
 # All requested prelaunch controls are reachable and functional.

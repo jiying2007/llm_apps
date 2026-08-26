@@ -20,8 +20,8 @@ import kotlin.math.roundToInt
 @Composable
 internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions) {
     val s = state.settings
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    ReaderPanelSurface(onDismiss = actions.onClosePanel) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(stringResource(R.string.reader_quick_settings), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
             Text(stringResource(R.string.reader_quick_settings_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

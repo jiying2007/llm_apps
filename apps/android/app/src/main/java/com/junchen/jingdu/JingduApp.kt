@@ -20,6 +20,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,14 +74,25 @@ fun JingduApp(
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
 
-        val trackedActions = actions.copy(
-            onJump = { target -> onTrackLocation(state.position, target, state.length); actions.onJump(target) },
-            onSeekFraction = { fraction ->
-                val target = (state.length.toDouble() * fraction.coerceIn(0f, 1f)).toLong()
-                onTrackLocation(state.position, target, state.length)
-                actions.onSeekFraction(fraction)
-            },
-        )
+        // Keep the action object stable while its location values track the latest reader state.
+        // Rebuilding actions.copy() for every page/scroll position invalidates the whole reader tree.
+        val latestPosition = rememberUpdatedState(state.position)
+        val latestLength = rememberUpdatedState(state.length)
+        val latestTrackLocation = rememberUpdatedState(onTrackLocation)
+        val trackedActions = remember(actions) {
+            actions.copy(
+                onJump = { target ->
+                    latestTrackLocation.value(latestPosition.value, target, latestLength.value)
+                    actions.onJump(target)
+                },
+                onSeekFraction = { fraction ->
+                    val length = latestLength.value
+                    val target = (length.toDouble() * fraction.coerceIn(0f, 1f)).toLong()
+                    latestTrackLocation.value(latestPosition.value, target, length)
+                    actions.onSeekFraction(fraction)
+                },
+            )
+        }
 
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
             when {
@@ -95,22 +107,22 @@ fun JingduApp(
                 AppScreen.READER -> ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
             }
             state.busyLabel?.let { BusyOverlay(it) }
-        }
-        when (state.panel) {
-            ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(state, trackedActions)
-            ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
-            ReaderPanel.CHAPTERS -> SmartChaptersSheet(state, trackedActions)
-            ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
-            ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
-            ReaderPanel.READING_MAP -> ReaderReadingMapV3Panel(state, trackedActions)
-            ReaderPanel.READING_HISTORY -> ReaderReadingHistoryPanel(state, trackedActions)
-            ReaderPanel.CLEAN -> CleanSheet(state, trackedActions)
-            ReaderPanel.SETTINGS -> ReaderSettingsScreen(state, trackedActions)
-            ReaderPanel.ENCODING -> EncodingSheet(state, trackedActions)
-            ReaderPanel.DOCTOR -> DoctorSheet(state, trackedActions)
-            ReaderPanel.SMART_CLEAN_LAB -> SmartCleanLabSheet(state, trackedActions)
-            ReaderPanel.PRIVACY -> PrivacySheet(state, trackedActions)
-            null -> Unit
+            when (state.panel) {
+                ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(state, trackedActions)
+                ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
+                ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel(state, trackedActions)
+                ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
+                ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
+                ReaderPanel.READING_MAP -> ReaderReadingMapV3Panel(state, trackedActions)
+                ReaderPanel.READING_HISTORY -> ReaderReadingHistoryPanel(state, trackedActions)
+                ReaderPanel.CLEAN -> CleanSheet(state, trackedActions)
+                ReaderPanel.SETTINGS -> ReaderSettingsScreen(state, trackedActions)
+                ReaderPanel.ENCODING -> EncodingSheet(state, trackedActions)
+                ReaderPanel.DOCTOR -> DoctorSheet(state, trackedActions)
+                ReaderPanel.SMART_CLEAN_LAB -> SmartCleanLabSheet(state, trackedActions)
+                ReaderPanel.PRIVACY -> PrivacySheet(state, trackedActions)
+                null -> Unit
+            }
         }
         if (state.screen == AppScreen.READER) ReaderGestureCoach(state.settings, trackedActions)
         if (state.deleteConfirmation) AlertDialog(
