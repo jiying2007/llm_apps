@@ -1,5 +1,6 @@
 package com.junchen.jingdu
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -118,11 +120,14 @@ internal fun ReaderSmartChaptersPanel(
                 LazyColumn(Modifier.heightIn(max = 560.dp)) {
                     items(value.chapters, key = { it.offset }) { chapter ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { actions.onJump(chapter.offset) }, modifier = Modifier.weight(1f)) {
-                                Column(Modifier.fillMaxWidth()) {
-                                    Text(chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    if (chapter.source != "core") Text(stringResource(R.string.toc_source_user_or_special), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                }
+                            Column(
+                                Modifier
+                                    .weight(1f)
+                                    .clickable(role = Role.Button) { actions.onJump(chapter.offset) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                            ) {
+                                Text(chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (chapter.source != "core") Text(stringResource(R.string.toc_source_user_or_special), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                             }
                             IconButton(onClick = {
                                 val currentBook = book ?: return@IconButton
