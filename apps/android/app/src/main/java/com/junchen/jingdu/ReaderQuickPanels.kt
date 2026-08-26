@@ -16,6 +16,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
+private val QUICK_PALETTES = listOf(
+    ReaderPalette.PAPER,
+    ReaderPalette.SEPIA,
+    ReaderPalette.LIGHT,
+    ReaderPalette.NIGHT,
+    ReaderPalette.OLED,
+)
+
 /** Low-friction reading controls. Advanced/rare controls live in ReaderSettingsScreen. */
 @Composable
 internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions) {
@@ -28,7 +36,7 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                listOf(ReaderPalette.PAPER, ReaderPalette.SEPIA, ReaderPalette.LIGHT, ReaderPalette.NIGHT, ReaderPalette.OLED).forEach { palette ->
+                QUICK_PALETTES.forEach { palette ->
                     FilterChip(s.palette == palette, { actions.onSettingsChanged(s.copy(palette = palette, preset = ReaderPreset.CUSTOM, activeThemeId = "")) }, label = { Text(quickPaletteLabel(palette)) })
                 }
             }
