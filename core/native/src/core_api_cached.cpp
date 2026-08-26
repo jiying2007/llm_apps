@@ -3,12 +3,14 @@
 
 #define jd_core_version jd_core_version_legacy_internal
 #define jd_open_utf8 jd_open_utf8_uncached_internal
+#define jd_chapters jd_chapters_uncached_internal
 #define jd_export_rules jd_export_rules_legacy_internal
 // Intentional translation-unit composition: this wrapper replaces selected public entry points
 // while keeping the ABI v2 implementation private to one compiled translation unit.
 // NOLINTNEXTLINE(bugprone-suspicious-include)
 #include "core_api.cpp"
 #undef jd_export_rules
+#undef jd_chapters
 #undef jd_open_utf8
 #undef jd_core_version
 
@@ -217,6 +219,46 @@ bool lineGlobMatches(const std::string& text, const std::string& pattern) {
   while (patternIndex < pattern.size() && pattern[patternIndex] == '*') ++patternIndex;
   return patternIndex == pattern.size();
 }
+
+std::vector<jingdu::IndexPoint> indexPoints(const Document& document) {
+  std::vector<jingdu::IndexPoint> points;
+  points.reserve(document.index.size());
+  for (const SparsePoint& point : document.index) points.emplace_back(point.chars, point.bytes);
+  return points;
+}
+
+std::vector<jingdu::ChapterPoint> parseChapters(const std::string& packed) {
+  std::vector<jingdu::ChapterPoint> chapters;
+  std::istringstream input(packed);
+  std::string line;
+  uint64_t previous = 0;
+  while (chapters.size() < 20000 && std::getline(input, line)) {
+    const size_t tab = line.find('\t');
+    if (tab == std::string::npos || tab == 0 || tab + 1 >= line.size()) continue;
+    try {
+      const uint64_t offset = std::stoull(line.substr(0, tab));
+      if (!chapters.empty() && offset <= previous) continue;
+      std::string title = line.substr(tab + 1);
+      if (!title.empty() && title.back() == '\r') title.pop_back();
+      if (title.empty()) continue;
+      chapters.push_back({offset, std::move(title)});
+      previous = offset;
+    } catch (const std::exception&) {
+    }
+  }
+  return chapters;
+}
+
+std::string packChapters(const std::vector<jingdu::ChapterPoint>& chapters, uint32_t limit) {
+  if (limit == 0) limit = 20000;
+  limit = std::min<uint32_t>(limit, 20000);
+  std::ostringstream output;
+  const size_t count = std::min<size_t>(chapters.size(), limit);
+  for (size_t index = 0; index < count; ++index) {
+    output << chapters[index].offset << '\t' << chapters[index].title << '\n';
+  }
+  return output.str();
+}
 }  // namespace
 
 extern "C" const char* jd_core_version(void) {
@@ -252,14 +294,38 @@ extern "C" jd_status jd_open_utf8(const char* path, jd_handle* out_handle) {
 
   const auto document = getDocument(*out_handle);
   if (document != nullptr) {
-    std::vector<jingdu::IndexPoint> generated;
-    generated.reserve(document->index.size());
-    for (const SparsePoint& point : document->index) {
-      generated.emplace_back(point.chars, point.bytes);
-    }
-    jingdu::save_index_cache(path, kIndexStride, document->bytes, document->chars, generated);
+    jingdu::save_index_cache(path, kIndexStride, document->bytes, document->chars,
+                             indexPoints(*document));
   }
   return JD_OK;
+}
+
+extern "C" jd_status jd_chapters(jd_handle handle, uint32_t limit, jd_buffer* out) {
+  const auto document = getDocument(handle);
+  if (!document) return JD_EHANDLE;
+  if (out == nullptr) return JD_EINVAL;
+
+  std::vector<jingdu::ChapterPoint> chapters;
+  if (jingdu::load_chapter_cache(document->path, kIndexStride, &chapters)) {
+    return setBuffer(packChapters(chapters, limit), out);
+  }
+
+  // JDX1 intentionally remains index-only. The first real chapter request runs the authoritative
+  // Core scan once, then atomically upgrades that same cache to JDX2. Subsequent opens/processes
+  // enumerate the persisted table and never rescan the TXT for chapter headings.
+  jd_buffer scanned{};
+  const jd_status status = jd_chapters_uncached_internal(handle, 20000, &scanned);
+  if (status != JD_OK) {
+    jd_buffer_free(&scanned);
+    return status;
+  }
+  const std::string packed(scanned.data == nullptr ? "" : scanned.data,
+                           static_cast<size_t>(scanned.size));
+  jd_buffer_free(&scanned);
+  chapters = parseChapters(packed);
+  jingdu::save_index_cache_with_chapters(document->path, kIndexStride, document->bytes,
+                                         document->chars, indexPoints(*document), chapters);
+  return setBuffer(packChapters(chapters, limit), out);
 }
 
 extern "C" jd_status jd_noise_candidates(jd_handle handle, uint32_t limit, jd_buffer* out) {

@@ -97,9 +97,9 @@ fun JingduApp(
             state.busyLabel?.let { BusyOverlay(it) }
         }
         when (state.panel) {
-            ReaderPanel.QUICK_SETTINGS -> ReaderFastQuickSettingsSheet(state, trackedActions)
+            ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(state, trackedActions)
             ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
-            ReaderPanel.CHAPTERS -> ReaderFastChaptersSheet(state, trackedActions)
+            ReaderPanel.CHAPTERS -> SmartChaptersSheet(state, trackedActions)
             ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
             ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
             ReaderPanel.READING_MAP -> ReaderReadingMapV3Panel(state, trackedActions)

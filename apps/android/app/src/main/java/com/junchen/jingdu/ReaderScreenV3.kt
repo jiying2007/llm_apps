@@ -188,8 +188,16 @@ internal fun ReaderScreenV3(
     }
 
     fun tick() { if (settings.hapticEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
-    fun previous() { selection?.clearNative?.invoke(); selection = null; tick(); pageDirection = -1; actions.onNavigatePrevious() }
-    fun next() { selection?.clearNative?.invoke(); selection = null; tick(); pageDirection = 1; actions.onNavigateNext() }
+    fun previous() {
+        selection?.clearNative?.invoke(); selection = null; tick()
+        pageDirection = if (settings.pageAnimation == ReaderPageAnimation.SLIDE && settings.preset != ReaderPreset.LOW_VISION) -1 else 0
+        actions.onNavigatePrevious()
+    }
+    fun next() {
+        selection?.clearNative?.invoke(); selection = null; tick()
+        pageDirection = if (settings.pageAnimation == ReaderPageAnimation.SLIDE && settings.preset != ReaderPreset.LOW_VISION) 1 else 0
+        actions.onNavigateNext()
+    }
     fun updateBrightness(delta: Float) {
         val value = (settings.readerBrightness + delta).coerceIn(0.03f, 1f)
         if (abs(value - settings.readerBrightness) >= 0.005f) {
@@ -406,10 +414,15 @@ private fun PagedReaderPageV3(
             value = withContext(Dispatchers.Default) { ReaderPageLayoutCache.measure(sourceText, displayText, widthPx, heightPx, columns, settings, density, typeface, map) }
         }
     }
-    LaunchedEffect(snapshot) { snapshot?.sourceCodePoints?.takeIf { it >= ReaderController.MIN_PAGE_CHARS }?.let(onVisibleCharsChanged) }
+    val snapshotValue = snapshot
+    LaunchedEffect(snapshotValue) { snapshotValue?.sourceCodePoints?.takeIf { it >= ReaderController.MIN_PAGE_CHARS }?.let(onVisibleCharsChanged) }
 
-    val annotated = remember(sourceStart, displayText, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
-        ReaderSelectionController.annotatedForSelection(sourceStart, readerAnnotatedTextV3(sourceStart, displayText, map, state), map)
+    val visibleEnd = snapshotValue?.displayedEndUtf16?.coerceIn(0, displayText.length) ?: 0
+    val visibleText = remember(displayText, visibleEnd) {
+        if (visibleEnd <= 0) "" else displayText.substring(0, visibleEnd)
+    }
+    val annotated = remember(sourceStart, visibleText, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
+        ReaderSelectionController.annotatedForSelection(sourceStart, readerAnnotatedTextV3(sourceStart, visibleText, map, state), map)
     }
     val selectionState = rememberSelectionState()
     LaunchedEffect(selectionState.selectedTexts) {
@@ -423,16 +436,14 @@ private fun PagedReaderPageV3(
 
     SelectionContainer(state = selectionState) {
         Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures), contentAlignment = Alignment.TopCenter) {
-            if (columns == 2 && snapshot != null) {
-                val firstEnd = snapshot!!.firstColumnEndUtf16.coerceIn(0, annotated.length)
-                val fullEnd = snapshot!!.displayedEndUtf16.coerceIn(firstEnd, annotated.length)
+            if (columns == 2 && snapshotValue != null && annotated.isNotEmpty()) {
+                val firstEnd = snapshotValue.firstColumnEndUtf16.coerceIn(0, annotated.length)
                 Row(Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
                     Text(annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
-                    Text(annotated.subSequence(firstEnd, fullEnd), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
+                    Text(annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
                 }
-            } else if (snapshot != null) {
-                val visibleEnd = snapshot!!.displayedEndUtf16.coerceIn(0, annotated.length)
-                Text(annotated.subSequence(0, visibleEnd), Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), style = style, overflow = TextOverflow.Clip)
+            } else if (snapshotValue != null && annotated.isNotEmpty()) {
+                Text(annotated, Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), style = style, overflow = TextOverflow.Clip)
             }
         }
     }

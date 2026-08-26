@@ -28,6 +28,13 @@ std::string detect(const uint8_t* data, size_t size, uint32_t flags = 0) {
         "encoding detection status");
   return name;
 }
+
+std::string cacheMagic(const std::string& path) {
+  std::ifstream cache(path);
+  std::string magic;
+  std::getline(cache, magic);
+  return magic;
+}
 }  // namespace
 
 int main() {
@@ -93,6 +100,7 @@ int main() {
   check(jd_open_utf8(path, &handle) == JD_OK && handle != 0, "open");
   check(jd_char_count(handle) > 20, "char count");
   check(std::ifstream(cachePath).good(), "index cache created after first open");
+  check(cacheMagic(cachePath) == "JDX1", "first open keeps index-only JDX1");
 
   jd_buffer buffer{};
   check(jd_read(handle, 0, 6, &buffer) == JD_OK && !take(&buffer).empty(), "read");
@@ -104,6 +112,7 @@ int main() {
   check(chapters.find("第一章") != std::string::npos &&
             chapters.find("Chapter 2") != std::string::npos,
         "chapters content");
+  check(cacheMagic(cachePath) == "JDX2", "first chapter scan upgrades cache to JDX2");
   check(jd_noise_candidates(handle, 20, &buffer) == JD_OK, "noise analysis status");
   const std::string noise = take(&buffer);
   check(noise.find("请收藏本站 www.example.com") != std::string::npos,
@@ -138,6 +147,12 @@ int main() {
         "whole-line glob preserves ordinary content");
 
   jd_close(handle);
+  handle = 0;
+  check(jd_open_utf8(path, &handle) == JD_OK && handle != 0, "reopen from JDX2 index");
+  check(jd_chapters(handle, 100, &buffer) == JD_OK, "cached chapters status");
+  check(take(&buffer) == chapters, "JDX2 chapters preserve authoritative output");
+  jd_close(handle);
+
   {
     std::ofstream broken(cachePath, std::ios::trunc);
     broken << "corrupt\n";
@@ -148,12 +163,7 @@ int main() {
   check(jd_read(handle, 0, 6, &buffer) == JD_OK && !take(&buffer).empty(),
         "read after cache recovery");
   jd_close(handle);
-  {
-    std::ifstream repairedCache(cachePath);
-    std::string magic;
-    std::getline(repairedCache, magic);
-    check(magic == "JDX1", "index cache repaired after fallback");
-  }
+  check(cacheMagic(cachePath) == "JDX1", "index cache repaired as JDX1 before chapter demand");
 
   std::remove(path);
   std::remove(cachePath.c_str());
