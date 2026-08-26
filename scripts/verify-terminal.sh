@@ -19,7 +19,7 @@ required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md .github/workflows/ci.yml
   docs/PRODUCT.md docs/ARCHITECTURE.md docs/PERFORMANCE.md docs/TESTING.md docs/RELEASE.md docs/READER_V3_PRELAUNCH_FINAL.md
-  scripts/verify-play-store.sh scripts/verify-android-i18n.py scripts/verify-release-version.py scripts/verify-reader-v3.sh
+  scripts/verify-play-store.sh scripts/verify-android-i18n.py scripts/verify-release-version.py scripts/verify-reader-v3.sh scripts/verify-reader-profile-contract.py
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
   apps/android/readerproto/src/main/proto/reader_settings.proto
   apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
@@ -57,6 +57,7 @@ done
 
 python3 ./scripts/verify-android-i18n.py
 python3 ./scripts/verify-release-version.py
+python3 ./scripts/verify-reader-profile-contract.py
 bash ./scripts/verify-reader-v3.sh
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
@@ -82,4 +83,4 @@ grep -q 'DocumentViewPicker' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'gradle-9.5.0-bin.zip' apps/android/gradle/wrapper/gradle-wrapper.properties
 echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/android/gradle/wrapper/gradle-wrapper.jar' | sha256sum --check --strict
 
-echo 'Terminal prelaunch Reader V3 architecture/product/localization contract OK'
+echo 'Terminal prelaunch Reader V3 architecture/product/localization/profile contract OK'
