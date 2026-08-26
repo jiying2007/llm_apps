@@ -235,16 +235,16 @@ std::vector<jingdu::ChapterPoint> parseChapters(const std::string& packed) {
   while (chapters.size() < 20000 && std::getline(input, line)) {
     const size_t tab = line.find('\t');
     if (tab == std::string::npos || tab == 0 || tab + 1 >= line.size()) continue;
-    try {
-      const uint64_t offset = std::stoull(line.substr(0, tab));
-      if (!chapters.empty() && offset <= previous) continue;
-      std::string title = line.substr(tab + 1);
-      if (!title.empty() && title.back() == '\r') title.pop_back();
-      if (title.empty()) continue;
-      chapters.push_back({offset, std::move(title)});
-      previous = offset;
-    } catch (const std::exception&) {
-    }
+    uint64_t offset = 0;
+    char extra = '\0';
+    std::istringstream offset_input(line.substr(0, tab));
+    if (!(offset_input >> offset) || (offset_input >> extra)) continue;
+    if (!chapters.empty() && offset <= previous) continue;
+    std::string title = line.substr(tab + 1);
+    if (!title.empty() && title.back() == '\r') title.pop_back();
+    if (title.empty()) continue;
+    chapters.push_back({offset, std::move(title)});
+    previous = offset;
   }
   return chapters;
 }
