@@ -231,18 +231,26 @@ internal fun ReaderScreenV3(
                 { tick(); actions.onAddBookmark() }, ::acceptSelection,
             )
         } else {
-            AnimatedContent(
-                targetState = state.position to state.pageText,
-                transitionSpec = {
-                    val animate = settings.pageAnimation == ReaderPageAnimation.SLIDE && settings.preset != ReaderPreset.LOW_VISION && pageDirection != 0
-                    if (animate) (slideInHorizontally { pageDirection * it } + fadeIn()) togetherWith (slideOutHorizontally { -pageDirection * it } + fadeOut())
-                    else fadeIn() togetherWith fadeOut()
-                },
-                label = "reader-v3-page",
-                modifier = Modifier.fillMaxSize(),
-            ) { (position, text) ->
+            val slideAnimation = settings.pageAnimation == ReaderPageAnimation.SLIDE && settings.preset != ReaderPreset.LOW_VISION && pageDirection != 0
+            if (slideAnimation) {
+                AnimatedContent(
+                    targetState = state.position to state.pageText,
+                    transitionSpec = {
+                        (slideInHorizontally { pageDirection * it } + fadeIn()) togetherWith
+                            (slideOutHorizontally { -pageDirection * it } + fadeOut())
+                    },
+                    label = "reader-v3-page",
+                    modifier = Modifier.fillMaxSize(),
+                ) { (position, text) ->
+                    PagedReaderPageV3(
+                        position, text, state, adaptiveLayout, fontFamily, textColor, touchExploration,
+                        actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
+                        ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
+                    )
+                }
+            } else {
                 PagedReaderPageV3(
-                    position, text, state, adaptiveLayout, fontFamily, textColor, touchExploration,
+                    state.position, state.pageText, state, adaptiveLayout, fontFamily, textColor, touchExploration,
                     actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
                     ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                 )
@@ -422,8 +430,9 @@ private fun PagedReaderPageV3(
                     Text(annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
                     Text(annotated.subSequence(firstEnd, fullEnd), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
                 }
-            } else {
-                Text(annotated, Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), style = style, overflow = TextOverflow.Clip)
+            } else if (snapshot != null) {
+                val visibleEnd = snapshot!!.displayedEndUtf16.coerceIn(0, annotated.length)
+                Text(annotated.subSequence(0, visibleEnd), Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), style = style, overflow = TextOverflow.Clip)
             }
         }
     }
@@ -488,8 +497,8 @@ private fun ContinuousReaderPageV3(
         val line = layout.getLineForOffset(utf.coerceIn(0, (w.displayText.length - 1).coerceAtLeast(0)))
         scrollState.scrollTo(layout.getLineTop(line).roundToInt().coerceIn(0, scrollState.maxValue))
     }
-    LaunchedEffect(scrollState, layoutResult, window, viewportHeight) {
-        snapshotFlow { scrollState.value }.distinctUntilChanged().collect { y ->
+    LaunchedEffect(scrollState, layoutResult, window, viewportHeight, state.autoScrolling) {
+        snapshotFlow { scrollState.value to scrollState.isScrollInProgress }.distinctUntilChanged().collect { (y, scrolling) ->
             val w = window ?: return@collect
             val layout = layoutResult ?: return@collect
             if (w.displayText.isEmpty() || layout.lineCount <= 0) return@collect
@@ -497,11 +506,19 @@ private fun ContinuousReaderPageV3(
             val utf = layout.getLineStart(line).coerceIn(0, w.displayText.length)
             val absolute = (w.start + w.map.sourceForDisplay(w.displayText.codePointCount(0, utf).toLong())).coerceIn(0L, (w.documentLength - 1).coerceAtLeast(0L))
             localPosition = absolute
-            if (abs(absolute - lastCommitted) >= 192) { lastCommitted = absolute; actions.onSyncTtsPosition(absolute) }
+            val shouldCommit = if (state.autoScrolling) {
+                abs(absolute - lastCommitted) >= AUTO_SCROLL_COMMIT_CHARS
+            } else {
+                !scrolling && absolute != lastCommitted
+            }
+            if (shouldCommit) {
+                lastCommitted = absolute
+                actions.onSyncTtsPosition(absolute)
+            }
             val edge = (viewportHeight * 0.25f).roundToInt()
             val nearTop = y <= edge && w.start > 0
             val nearBottom = scrollState.maxValue > 0 && scrollState.maxValue - y <= edge && w.start + w.map.sourceCodePoints < w.documentLength - 1
-            if (!loading && (nearTop || nearBottom)) loadAround(absolute)
+            if (!loading && !scrolling && (nearTop || nearBottom)) loadAround(absolute)
         }
     }
     LaunchedEffect(state.autoScrolling, settings.autoScrollSpeedDpPerSecond, window) {
@@ -683,7 +700,7 @@ private fun ReaderTopBarV3(state: AppUiState, chapter: String?, actions: JingduA
             } },
             actions = {
                 TextButton({ actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }) { Text("Aa") }
-                IconButton({ actions.onOpenPanel(ReaderPanel.CHAPTERS); actions.onEnsureChapters() }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
+                IconButton({ actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
                 IconButton(onMore) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools)) }
             },
         )
@@ -747,10 +764,17 @@ private fun ReaderBottomBarV3(
 private fun ReaderChapterTicksV3(state: AppUiState, fraction: Float) {
     val primary = MaterialTheme.colorScheme.primary
     val outline = MaterialTheme.colorScheme.outlineVariant
+    val tickOffsets = remember(state.chapters, state.length) {
+        if (state.length <= 0 || state.chapters.isEmpty()) emptyList()
+        else {
+            val stride = ((state.chapters.size + MAX_CHAPTER_TICKS - 1) / MAX_CHAPTER_TICKS).coerceAtLeast(1)
+            state.chapters.filterIndexed { index, _ -> index % stride == 0 }.map { it.offset }.take(MAX_CHAPTER_TICKS)
+        }
+    }
     Canvas(Modifier.fillMaxWidth().height(12.dp)) {
         drawLine(outline, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), strokeWidth = 1.dp.toPx())
-        if (state.length > 0) state.chapters.forEach { chapter ->
-            val x = (chapter.offset.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f) * size.width
+        if (state.length > 0) tickOffsets.forEach { offset ->
+            val x = (offset.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f) * size.width
             drawLine(primary.copy(alpha = 0.55f), Offset(x, 1f), Offset(x, size.height - 1f), strokeWidth = 1.dp.toPx())
         }
         val x = fraction.coerceIn(0f, 1f) * size.width
@@ -862,6 +886,9 @@ private fun ReaderHudV3(text: String, modifier: Modifier = Modifier) {
         Text(text, Modifier.padding(horizontal = 18.dp, vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
     }
 }
+
+private const val MAX_CHAPTER_TICKS = 96
+private const val AUTO_SCROLL_COMMIT_CHARS = 512L
 
 private fun highlightColorV3(style: ReaderHighlightStyle): Color = when (style) {
     ReaderHighlightStyle.YELLOW -> Color(0x55FFD54F)
