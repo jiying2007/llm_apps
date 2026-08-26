@@ -56,6 +56,7 @@ benchmark_manifest=apps/android/app/src/benchmark/AndroidManifest.xml
 macrobenchmark_gradle=apps/android/macrobenchmark/build.gradle
 benchmark_runner=scripts/run-android-macrobenchmark-ci.sh
 smart_toc=apps/android/app/src/main/java/com/junchen/jingdu/SmartToc.kt
+competitive_sheets=apps/android/app/src/main/java/com/junchen/jingdu/CompetitiveSheets.kt
 
 # Typed settings; key/value V2 schema is not retained.
 grep -q 'DataStore<ReaderSettingsProto>' "$prefs"
@@ -83,6 +84,22 @@ grep -q 'CONTINUOUS_WINDOW_CHARS = 6144L' "$engine"
 grep -q 'MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC = 20' "$smart_toc"
 grep -q 'if (merged.size < MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC)' "$smart_toc"
 grep -q 'PARAGRAPH_SPACER' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt
+
+# Rendering work is bounded on every interaction path. NONE means no dual-page composition;
+# paged mode lays out only the measured visible slice; manual continuous scrolling commits position
+# after the gesture settles; chapter ticks have a fixed draw bound; the chapter sheet reuses the
+# single MainActivity TOC state instead of reopening and rescanning the document.
+grep -q 'val slideAnimation = settings.pageAnimation == ReaderPageAnimation.SLIDE' "$screen"
+grep -q 'state.position, state.pageText, state, adaptiveLayout' "$screen"
+grep -q 'annotated.subSequence(0, visibleEnd)' "$screen"
+grep -q 'scrollState.isScrollInProgress' "$screen"
+grep -q '!scrolling && absolute != lastCommitted' "$screen"
+grep -q 'AUTO_SCROLL_COMMIT_CHARS = 512L' "$screen"
+! grep -q 'abs(absolute - lastCommitted) >= 192' "$screen"
+grep -q 'MAX_CHAPTER_TICKS = 96' "$screen"
+grep -q 'take(MAX_CHAPTER_TICKS)' "$screen"
+grep -q 'SmartToc.evaluate(state.chapters.map' "$competitive_sheets"
+! grep -q 'SmartToc.analyze(reader)' "$competitive_sheets"
 
 # Room is the retained annotation/stat persistence backend.
 grep -q '@Database' apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt
