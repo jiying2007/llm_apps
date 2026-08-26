@@ -4,6 +4,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
 import java.text.BreakIterator
 import java.util.Locale
+import java.util.WeakHashMap
 
 data class ReaderSelectionRange(
     val sourceStart: Long,
@@ -15,22 +16,53 @@ data class ReaderSelectionRange(
 
 /** Pure bounded selection logic. UI handles only provide display offsets. */
 internal object ReaderSelectionController {
-    private const val SOURCE_TAG = "jingdu.source.range"
+    private const val SOURCE_TAG = "jingdu.source.relative-range"
+    private const val SOURCE_BASE_TAG = "jingdu.source.base"
+    private val preparedSelectionMaps = WeakHashMap<SourceDisplayMap, AnnotatedString>()
+
+    /**
+     * Builds the per-code-point source map on the same worker that prepares the display projection.
+     * Selection remains exact, but normal reader frames no longer allocate thousands of annotations
+     * on the main thread for every new page/window.
+     */
+    fun prewarmSelectionMap(displayText: String, map: SourceDisplayMap) {
+        synchronized(preparedSelectionMaps) {
+            if (preparedSelectionMaps.containsKey(map)) return
+        }
+        val prepared = selectionMap(displayText, map)
+        synchronized(preparedSelectionMaps) { preparedSelectionMaps[map] = prepared }
+    }
 
     fun annotatedForSelection(
         sourceBase: Long,
         displayText: AnnotatedString,
         map: SourceDisplayMap,
-    ): AnnotatedString = buildAnnotatedString {
+    ): AnnotatedString {
+        if (displayText.isEmpty()) return displayText
+        val prepared = synchronized(preparedSelectionMaps) { preparedSelectionMaps[map] }
+            ?.takeIf { it.text.startsWith(displayText.text) }
+            ?: selectionMap(displayText.text, map).also { value ->
+                synchronized(preparedSelectionMaps) { preparedSelectionMaps[map] = value }
+            }
+        val selection = if (prepared.length == displayText.length) prepared else prepared.subSequence(0, displayText.length)
+        return buildAnnotatedString {
+            append(selection)
+            displayText.spanStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            displayText.paragraphStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            addStringAnnotation(SOURCE_BASE_TAG, sourceBase.toString(), 0, displayText.length)
+        }
+    }
+
+    private fun selectionMap(displayText: String, map: SourceDisplayMap): AnnotatedString = buildAnnotatedString {
         append(displayText)
         if (displayText.isEmpty()) return@buildAnnotatedString
         var utfStart = 0
         var displayCp = 0L
         while (utfStart < displayText.length) {
-            val cp = Character.codePointAt(displayText.text, utfStart)
+            val cp = Character.codePointAt(displayText, utfStart)
             val utfEnd = utfStart + Character.charCount(cp)
-            val sourceStart = sourceBase + map.sourceForDisplay(displayCp)
-            val sourceEnd = sourceBase + map.sourceForDisplay(displayCp + 1).coerceAtLeast(map.sourceForDisplay(displayCp) + 1)
+            val sourceStart = map.sourceForDisplay(displayCp)
+            val sourceEnd = map.sourceForDisplay(displayCp + 1).coerceAtLeast(sourceStart + 1)
             addStringAnnotation(SOURCE_TAG, "$sourceStart:$sourceEnd", utfStart, utfEnd)
             utfStart = utfEnd
             displayCp++
@@ -46,12 +78,14 @@ internal object ReaderSelectionController {
             if (selected.isEmpty()) return@forEach
             if (excerpt.isNotEmpty()) excerpt.append('\n')
             excerpt.append(selected.text.replace(ReaderTypographySpec.PARAGRAPH_SPACER.toString(), ""))
+            val sourceBase = selected.getStringAnnotations(SOURCE_BASE_TAG, 0, selected.length)
+                .firstOrNull()?.item?.toLongOrNull() ?: return@forEach
             selected.getStringAnnotations(SOURCE_TAG, 0, selected.length).forEach { annotation ->
                 val parts = annotation.item.split(':', limit = 2)
                 val a = parts.getOrNull(0)?.toLongOrNull() ?: return@forEach
                 val b = parts.getOrNull(1)?.toLongOrNull() ?: return@forEach
-                start = minOf(start, a)
-                end = maxOf(end, b)
+                start = minOf(start, sourceBase + a)
+                end = maxOf(end, sourceBase + b)
             }
         }
         if (start == Long.MAX_VALUE || end <= start) return null

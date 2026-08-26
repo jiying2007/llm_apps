@@ -23,10 +23,14 @@ internal object ReaderPresentationPipeline {
         val sourceToIntermediate = TextProjection.between(source, intermediate)
         val display = ChineseDisplayConverter.convert(intermediate, settings.chineseMode, settings.chineseOverrides)
         val intermediateToDisplay = TextProjection.between(intermediate, display)
+        val map = SourceDisplayMap.compose(sourceToIntermediate, intermediateToDisplay)
+        // All present() callers are already on bounded worker/IO paths. Build selection source ranges
+        // here so normal reader frames only merge the prepared annotations with visual spans.
+        ReaderSelectionController.prewarmSelectionMap(display, map)
         return ReaderPresentedText(
             sourceText = source,
             displayText = display,
-            map = SourceDisplayMap.compose(sourceToIntermediate, intermediateToDisplay),
+            map = map,
         )
     }
 }
