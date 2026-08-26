@@ -111,6 +111,8 @@ fun JingduApp(
                 AppScreen.READER -> {
                     ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
 
+                    // Canonical routes remain unique: ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet
+                    // and ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel.
                     // High-frequency panels keep one composition instance so chapter/quick models are
                     // warm, but an inactive host does not measure or place its subtree. Page/scroll
                     // frames therefore pay neither first-open composition nor hidden layout cost.
