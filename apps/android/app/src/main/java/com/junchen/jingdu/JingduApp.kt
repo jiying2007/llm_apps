@@ -19,13 +19,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.ReusableContentHost
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -82,16 +77,11 @@ fun JingduApp(
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
 
-        // Keep the action/callback objects stable while their current values track reader state.
-        // Panel-only state changes can then skip the entire ReaderRoute subtree under strong skipping.
+        // Keep the action object stable while its location values track the latest reader state.
+        // Rebuilding actions.copy() for every page/scroll position invalidates the whole reader tree.
         val latestPosition = rememberUpdatedState(state.position)
         val latestLength = rememberUpdatedState(state.length)
         val latestTrackLocation = rememberUpdatedState(onTrackLocation)
-        val latestLocationBack = rememberUpdatedState(onLocationBack)
-        val latestLocationForward = rememberUpdatedState(onLocationForward)
-        val stableLocationBack = remember { { latestLocationBack.value() } }
-        val stableLocationForward = remember { { latestLocationForward.value() } }
-        val currentReaderPosition = remember { { latestPosition.value } }
         val trackedActions = remember(actions) {
             actions.copy(
                 onJump = { target ->
@@ -106,37 +96,11 @@ fun JingduApp(
                 },
             )
         }
-        val readerState = remember(
-            state.currentBook,
-            state.pageText,
-            state.position,
-            state.length,
-            state.cleanMode,
-            state.chapters,
-            state.annotations,
-            state.motion,
-            state.tts,
-            state.settings,
-        ) {
-            AppUiState(
-                screen = AppScreen.READER,
-                currentBook = state.currentBook,
-                pageText = state.pageText,
-                position = state.position,
-                length = state.length,
-                cleanMode = state.cleanMode,
-                chapters = state.chapters,
-                annotations = state.annotations,
-                motion = state.motion,
-                tts = state.tts,
-                settings = state.settings,
-            )
-        }
 
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
             when {
                 state.panel != null -> actions.onClosePanel()
-                location.canBack -> stableLocationBack()
+                location.canBack -> onLocationBack()
                 else -> trackedActions.onBackToLibrary()
             }
         }
@@ -144,36 +108,33 @@ fun JingduApp(
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
                 AppScreen.READER -> {
-                    ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
+                    ReaderRoute(state, trackedActions, snackbar, location.canBack, location.canForward, onLocationBack, onLocationForward)
 
-                    // Canonical retained routes (single implementation each):
+                    // Canonical persistent routes (single implementation each):
                     // ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet
                     // ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel
-                    // Each panel is composed/measured once while hidden after its warm key changes,
-                    // then deactivated. Reopening reuses the Compose nodes without keeping a heavy
-                    // hidden panel in every reader measure/layout pass.
+                    // High-frequency reader panels keep one composition instance. Hidden layers are
+                    // behind the reader and expose no accessibility semantics; opening changes only
+                    // layer placement/visibility instead of constructing a Material panel tree.
                     val quickState = remember(state.settings, state.motion) {
                         AppUiState(settings = state.settings, motion = state.motion)
                     }
-                    val chapterState = remember(state.currentBook, state.length, state.chapters, state.chaptersLoaded) {
+                    val chaptersActive = state.panel == ReaderPanel.CHAPTERS
+                    val chapterPosition = if (chaptersActive) state.position else 0L
+                    val chapterState = remember(state.currentBook, state.length, state.chapters, state.chaptersLoaded, chapterPosition) {
                         AppUiState(
                             currentBook = state.currentBook,
                             length = state.length,
+                            position = chapterPosition,
                             chapters = state.chapters,
                             chaptersLoaded = state.chaptersLoaded,
                         )
                     }
-                    RetainedReaderPanelHost(
-                        active = state.panel == ReaderPanel.QUICK_SETTINGS,
-                        warmKey = quickState,
-                    ) {
+                    Box(Modifier.fillMaxSize().readerPanelLayer(state.panel == ReaderPanel.QUICK_SETTINGS)) {
                         ReaderQuickSettingsSheet(quickState, trackedActions)
                     }
-                    RetainedReaderPanelHost(
-                        active = state.panel == ReaderPanel.CHAPTERS,
-                        warmKey = chapterState,
-                    ) {
-                        ReaderSmartChaptersPanel(chapterState, trackedActions, currentReaderPosition)
+                    Box(Modifier.fillMaxSize().readerPanelLayer(chaptersActive)) {
+                        ReaderSmartChaptersPanel(chapterState, trackedActions)
                     }
                 }
             }
@@ -204,29 +165,10 @@ fun JingduApp(
     }
 }
 
-@Composable
-private fun RetainedReaderPanelHost(
-    active: Boolean,
-    warmKey: Any?,
-    content: @Composable () -> Unit,
-) {
-    var warmed by remember(warmKey) { mutableStateOf(false) }
-    LaunchedEffect(warmKey) {
-        // The reader-open setup waits for idle, so the hidden warm frame is outside interaction SLO.
-        withFrameNanos { }
-        warmed = true
-    }
-    val hostActive = active || !warmed
-    Box(
-        Modifier
-            .fillMaxSize()
-            .zIndex(if (active) 10f else -1f)
-            .alpha(if (active) 1f else 0f)
-            .then(if (active) Modifier else Modifier.clearAndSetSemantics { }),
-    ) {
-        ReusableContentHost(active = hostActive) { content() }
-    }
-}
+private fun Modifier.readerPanelLayer(active: Boolean): Modifier =
+    zIndex(if (active) 10f else -1f)
+        .alpha(if (active) 1f else 0f)
+        .then(if (active) Modifier else Modifier.clearAndSetSemantics { })
 
 @Composable private fun BusyOverlay(label: String) {
     Box(Modifier.fillMaxSize().zIndex(20f).background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.24f)), contentAlignment = Alignment.Center) {
