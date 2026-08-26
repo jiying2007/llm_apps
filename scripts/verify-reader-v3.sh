@@ -31,7 +31,8 @@ required=(
   scripts/check-android-performance-slo.py
   scripts/test-android-performance-slo.py
   scripts/run-android-macrobenchmark-ci.sh
-  core/native/tests/core_performance_gate_test.cpp
+  core/native/src/index_cache.h core/native/src/index_cache.cpp core/native/src/core_api_cached.cpp
+  core/native/tests/core_api_test.cpp core/native/tests/core_performance_gate_test.cpp
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "Reader V3 asset missing: $path" >&2; exit 1; }; done
 
@@ -57,6 +58,9 @@ macrobenchmark_gradle=apps/android/macrobenchmark/build.gradle
 benchmark_runner=scripts/run-android-macrobenchmark-ci.sh
 smart_toc=apps/android/app/src/main/java/com/junchen/jingdu/SmartToc.kt
 competitive_sheets=apps/android/app/src/main/java/com/junchen/jingdu/CompetitiveSheets.kt
+index_cache=core/native/src/index_cache.cpp
+cached_core=core/native/src/core_api_cached.cpp
+core_test=core/native/tests/core_api_test.cpp
 
 # Typed settings; key/value V2 schema is not retained.
 grep -q 'DataStore<ReaderSettingsProto>' "$prefs"
@@ -85,13 +89,16 @@ grep -q 'MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC = 20' "$smart_toc"
 grep -q 'if (merged.size < MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC)' "$smart_toc"
 grep -q 'PARAGRAPH_SPACER' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt
 
-# Rendering work is bounded on every interaction path. NONE means no dual-page composition;
-# paged mode lays out only the measured visible slice; manual continuous scrolling commits position
-# after the gesture settles; chapter ticks have a fixed draw bound; the chapter sheet reuses the
-# single MainActivity TOC state instead of reopening and rescanning the document.
+# Rendering work is bounded on every interaction path. NONE never mutates animation direction;
+# paged mode slices to the measured visible prefix before heading/TTS/highlight/selection annotation;
+# manual continuous scrolling commits position after the gesture settles; chapter ticks have a fixed
+# draw bound; the chapter sheet reuses the single MainActivity TOC state.
 grep -q 'val slideAnimation = settings.pageAnimation == ReaderPageAnimation.SLIDE' "$screen"
+grep -q 'pageDirection = if (settings.pageAnimation == ReaderPageAnimation.SLIDE' "$screen"
 grep -q 'state.position, state.pageText, state, adaptiveLayout' "$screen"
-grep -q 'annotated.subSequence(0, visibleEnd)' "$screen"
+grep -q 'val visibleText = remember(displayText, visibleEnd)' "$screen"
+grep -q 'readerAnnotatedTextV3(sourceStart, visibleText' "$screen"
+! grep -q 'annotated.subSequence(0, visibleEnd)' "$screen"
 grep -q 'scrollState.isScrollInProgress' "$screen"
 grep -q '!scrolling && absolute != lastCommitted' "$screen"
 grep -q 'AUTO_SCROLL_COMMIT_CHARS = 512L' "$screen"
@@ -100,6 +107,19 @@ grep -q 'MAX_CHAPTER_TICKS = 96' "$screen"
 grep -q 'take(MAX_CHAPTER_TICKS)' "$screen"
 grep -q 'SmartToc.evaluate(state.chapters.map' "$competitive_sheets"
 ! grep -q 'SmartToc.analyze(reader)' "$competitive_sheets"
+
+# The native sparse index remains JDX1-compatible and upgrades lazily to JDX2 only after the first
+# authoritative chapter scan. Once upgraded, subsequent chapter reads enumerate the persisted table
+# instead of scanning the TXT again.
+grep -q 'kMagicV1 = "JDX1"' "$index_cache"
+grep -q 'kMagicV2 = "JDX2"' "$index_cache"
+grep -q 'load_chapter_cache' "$index_cache"
+grep -q 'save_index_cache_with_chapters' "$index_cache"
+grep -q 'jd_chapters_uncached_internal' "$cached_core"
+grep -q 'load_chapter_cache(document->path' "$cached_core"
+grep -q 'save_index_cache_with_chapters' "$cached_core"
+grep -q 'first chapter scan upgrades cache to JDX2' "$core_test"
+grep -q 'JDX2 chapters preserve authoritative output' "$core_test"
 
 # Room is the retained annotation/stat persistence backend.
 grep -q '@Database' apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt
@@ -120,6 +140,9 @@ grep -q 'MutableStateFlow' apps/android/app/src/main/java/com/junchen/jingdu/Rea
 grep -q 'ReaderSettingsScreen' "$app"
 grep -q 'ReaderAnnotationsV3Panel' "$app"
 grep -q 'ReaderReadingMapV3Panel' "$app"
+grep -q 'ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet' "$app"
+grep -q 'ReaderPanel.CHAPTERS -> SmartChaptersSheet' "$app"
+test ! -e apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotPanels.kt
 grep -q 'ReaderScreenV3' apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
 
 # All requested prelaunch controls are reachable and functional.
