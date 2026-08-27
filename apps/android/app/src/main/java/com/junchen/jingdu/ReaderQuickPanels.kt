@@ -30,15 +30,8 @@ import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-private val QUICK_PALETTES = listOf(
-    ReaderPalette.PAPER,
-    ReaderPalette.SEPIA,
-    ReaderPalette.LIGHT,
-    ReaderPalette.NIGHT,
-    ReaderPalette.OLED,
-)
+private val QUICK_PALETTES = listOf(ReaderPalette.PAPER, ReaderPalette.SEPIA, ReaderPalette.LIGHT, ReaderPalette.NIGHT, ReaderPalette.OLED)
 
-/** One fixed Canvas for the normal Quick Settings path; dialogs remain ordinary Material UI. */
 @Composable
 internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions) {
     val s = state.settings
@@ -49,10 +42,10 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
     val bookmark = stringResource(R.string.reader_access_bookmark)
     val advanced = stringResource(R.string.reader_advanced_settings)
     val autoLabel = stringResource(if (state.autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll)
+    val speedLabel = stringResource(R.string.reader_auto_scroll_speed_value, s.autoScrollSpeedDpPerSecond.roundToInt())
     val paletteLabels = QUICK_PALETTES.map { quickPaletteLabel(it) }
     val colors = MaterialTheme.colorScheme
     val paints = rememberReaderCanvasTextPaint(colors.onSurface, colors.onSurfaceVariant, colors.primary)
-    val h = with(density) { QUICK_PANEL_HEIGHT.toPx() }
     val row1 = with(density) { 78.dp.toPx() }
     val row2 = with(density) { 132.dp.toPx() }
     val row3 = with(density) { 188.dp.toPx() }
@@ -83,10 +76,8 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                 onTap = { point, width, _ ->
                     when {
                         point.y in row1 - buttonH / 2f..row1 + buttonH / 2f -> {
-                            val usable = width - edge * 2f
-                            val slot = (usable / QUICK_PALETTES.size).coerceAtLeast(1f)
-                            val index = ((point.x - edge) / slot).toInt().coerceIn(0, QUICK_PALETTES.lastIndex)
-                            setPalette(QUICK_PALETTES[index])
+                            val slot = ((width - edge * 2f) / QUICK_PALETTES.size).coerceAtLeast(1f)
+                            setPalette(QUICK_PALETTES[((point.x - edge) / slot).toInt().coerceIn(0, QUICK_PALETTES.lastIndex)])
                         }
                         point.y in row2 - buttonH / 2f..row2 + buttonH / 2f -> when {
                             point.x < width * 0.16f -> font(-1f)
@@ -104,33 +95,27 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                         s.readingMode == ReaderMode.CONTINUOUS && point.y in row4 - buttonH / 2f..row4 + buttonH / 2f -> when {
                             point.x < width * 0.24f -> speed(-8f)
                             point.x > width * 0.76f -> speed(8f)
-                            else -> {
-                                actions.onClosePanel()
-                                actions.onSettingsChanged(s.copy(readingMode = ReaderMode.CONTINUOUS, autoScrollEnabled = !state.autoScrolling))
-                            }
+                            else -> { actions.onClosePanel(); actions.onSettingsChanged(s.copy(readingMode = ReaderMode.CONTINUOUS, autoScrollEnabled = !state.autoScrolling)) }
                         }
                         point.y >= row5 - buttonH / 2f -> { actions.onClosePanel(); actions.onOpenPanel(ReaderPanel.SETTINGS) }
                     }
                 },
             ) {
                 drawReaderText(title, paints.title, edge, 30.dp.toPx(), size.width - edge * 2f)
-                val usable = size.width - edge * 2f
-                val slot = usable / QUICK_PALETTES.size
+                val slot = (size.width - edge * 2f) / QUICK_PALETTES.size
                 QUICK_PALETTES.forEachIndexed { index, palette ->
                     val x = edge + slot * (index + 0.5f)
-                    val selected = s.palette == palette
-                    drawCircle(quickPaletteSwatch(palette), radius = 13.dp.toPx(), center = Offset(x, row1))
-                    if (selected) drawCircle(colors.primary, radius = 17.dp.toPx(), center = Offset(x, row1), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+                    drawCircle(quickPaletteSwatch(palette), 13.dp.toPx(), Offset(x, row1))
+                    if (s.palette == palette) drawCircle(colors.primary, 17.dp.toPx(), Offset(x, row1), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
                 }
                 drawReaderButton(Rect(edge, row2 - 19.dp.toPx(), edge + 48.dp.toPx(), row2 + 19.dp.toPx()), "−", paints.action, colors.primary, outline = colors.outlineVariant)
                 drawReaderText("${s.fontSizeSp.roundToInt()}sp", paints.normal, edge + 54.dp.toPx(), row2, 62.dp.toPx(), centered = true)
                 drawReaderButton(Rect(edge + 120.dp.toPx(), row2 - 19.dp.toPx(), edge + 168.dp.toPx(), row2 + 19.dp.toPx()), "+", paints.action, colors.primary, outline = colors.outlineVariant)
                 val trackLeft = (edge + 184.dp.toPx()).coerceAtMost(size.width - 80.dp.toPx())
                 val trackRight = size.width - edge
-                val fraction = ((s.lineHeightMultiplier - 1.15f) / 1.05f).coerceIn(0f, 1f)
+                val lineFraction = ((s.lineHeightMultiplier - 1.15f) / 1.05f).coerceIn(0f, 1f)
                 drawRoundRect(colors.surfaceVariant, Offset(trackLeft, row2 - 2.dp.toPx()), androidx.compose.ui.geometry.Size(trackRight - trackLeft, 4.dp.toPx()), CornerRadius(2.dp.toPx()))
-                val thumbX = trackLeft + (trackRight - trackLeft) * fraction
-                drawCircle(colors.primary, 7.dp.toPx(), Offset(thumbX, row2))
+                drawCircle(colors.primary, 7.dp.toPx(), Offset(trackLeft + (trackRight - trackLeft) * lineFraction, row2))
                 val modeWidth = (size.width - edge * 2f) * 0.27f
                 val pagedRect = Rect(edge, row3 - 19.dp.toPx(), edge + modeWidth, row3 + 19.dp.toPx())
                 val continuousRect = Rect(edge + modeWidth + 8.dp.toPx(), row3 - 19.dp.toPx(), edge + modeWidth * 2f + 8.dp.toPx(), row3 + 19.dp.toPx())
@@ -139,25 +124,16 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                 drawReaderButton(Rect(size.width - edge - 70.dp.toPx(), row3 - 19.dp.toPx(), size.width - edge, row3 + 19.dp.toPx()), "★", paints.action, colors.primary, outline = colors.outlineVariant)
                 if (s.readingMode == ReaderMode.CONTINUOUS) {
                     drawReaderButton(Rect(edge, row4 - 19.dp.toPx(), edge + 48.dp.toPx(), row4 + 19.dp.toPx()), "−", paints.action, colors.primary, outline = colors.outlineVariant)
-                    drawReaderText(stringResource(R.string.reader_auto_scroll_speed_value, s.autoScrollSpeedDpPerSecond.roundToInt()), paints.small, edge + 56.dp.toPx(), row4, size.width - edge * 2f - 112.dp.toPx(), centered = true)
                     drawReaderButton(Rect(size.width - edge - 48.dp.toPx(), row4 - 19.dp.toPx(), size.width - edge, row4 + 19.dp.toPx()), "+", paints.action, colors.primary, outline = colors.outlineVariant)
-                    drawReaderText(autoLabel, paints.action, edge + 56.dp.toPx(), row4, size.width - edge * 2f - 112.dp.toPx(), centered = true)
+                    drawReaderText("$speedLabel · $autoLabel", paints.small, edge + 56.dp.toPx(), row4, size.width - edge * 2f - 112.dp.toPx(), centered = true)
                 }
                 drawReaderButton(Rect(edge, row5 - 20.dp.toPx(), size.width - edge, row5 + 20.dp.toPx()), advanced, paints.action, colors.primary, outline = colors.outlineVariant)
             }
-            ReaderCanvasSemanticTarget(
-                description = continuous,
-                x = 116.dp,
-                y = 160.dp,
-                width = 120.dp,
-                height = 44.dp,
-                onClickAction = ::setContinuous,
-            )
+            ReaderCanvasSemanticTarget(continuous, 116.dp, 160.dp, 120.dp, 44.dp, ::setContinuous)
         }
     }
 }
 
-/** Fixed-cost Canvas slider retained for reader progress and non-panel hot paths. */
 @Composable
 internal fun ReaderLinearSlider(
     value: Float,
@@ -173,39 +149,27 @@ internal fun ReaderLinearSlider(
     val fraction = if (range <= 0f) 0f else ((value - valueRange.start) / range).coerceIn(0f, 1f)
     val primary = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.surfaceVariant
-    Canvas(
-        modifier
-            .height(36.dp)
-            .pointerInput(valueRange.start, valueRange.endInclusive) {
-                awaitEachGesture {
-                    val down = awaitFirstDown()
-                    fun update(x: Float) {
-                        val f = (x / size.width.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
-                        latestChange.value(valueRange.start + range * f)
-                    }
-                    update(down.position.x)
-                    var pressed = true
-                    while (pressed) {
-                        val event = awaitPointerEvent()
-                        event.changes.firstOrNull()?.let { change ->
-                            update(change.position.x)
-                            pressed = change.pressed
-                            change.consume()
-                        } ?: run { pressed = false }
-                    }
-                    latestFinished.value()
-                }
+    Canvas(modifier.height(36.dp).pointerInput(valueRange.start, valueRange.endInclusive) {
+        awaitEachGesture {
+            val down = awaitFirstDown()
+            fun update(x: Float) { latestChange.value(valueRange.start + range * (x / size.width.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)) }
+            update(down.position.x)
+            var pressed = true
+            while (pressed) {
+                val event = awaitPointerEvent()
+                event.changes.firstOrNull()?.let { change -> update(change.position.x); pressed = change.pressed; change.consume() } ?: run { pressed = false }
             }
-            .semantics {
-                if (contentDescription != null) this.contentDescription = contentDescription
-                progressBarRangeInfo = ProgressBarRangeInfo(value.coerceIn(valueRange), valueRange)
-                setProgress { target -> latestChange.value(target.coerceIn(valueRange)); latestFinished.value(); true }
-            },
-    ) {
+            latestFinished.value()
+        }
+    }.semantics {
+        if (contentDescription != null) this.contentDescription = contentDescription
+        progressBarRangeInfo = ProgressBarRangeInfo(value.coerceIn(valueRange), valueRange)
+        setProgress { target -> latestChange.value(target.coerceIn(valueRange)); latestFinished.value(); true }
+    }) {
         val y = size.height / 2f
-        drawRoundRect(track, topLeft = Offset(0f, y - 2.dp.toPx()), size = androidx.compose.ui.geometry.Size(size.width, 4.dp.toPx()), cornerRadius = CornerRadius(2.dp.toPx()))
+        drawRoundRect(track, Offset(0f, y - 2.dp.toPx()), androidx.compose.ui.geometry.Size(size.width, 4.dp.toPx()), CornerRadius(2.dp.toPx()))
         val x = size.width * fraction
-        if (x > 0f) drawRoundRect(primary, topLeft = Offset(0f, y - 2.dp.toPx()), size = androidx.compose.ui.geometry.Size(x, 4.dp.toPx()), cornerRadius = CornerRadius(2.dp.toPx()))
+        if (x > 0f) drawRoundRect(primary, Offset(0f, y - 2.dp.toPx()), androidx.compose.ui.geometry.Size(x, 4.dp.toPx()), CornerRadius(2.dp.toPx()))
         drawCircle(primary, 7.dp.toPx(), Offset(x, y))
     }
 }
@@ -229,13 +193,7 @@ private fun quickPaletteLabel(palette: ReaderPalette): String = when (palette) {
     ReaderPalette.NIGHT -> stringResource(R.string.night)
     ReaderPalette.OLED -> stringResource(R.string.reader_oled)
 }
-
 private fun quickPaletteSwatch(palette: ReaderPalette): Color = when (palette) {
-    ReaderPalette.PAPER -> Color(0xFFF7F0DE)
-    ReaderPalette.SEPIA -> Color(0xFFF3E5C8)
-    ReaderPalette.LIGHT -> Color(0xFFFFFBFF)
-    ReaderPalette.NIGHT -> Color(0xFF151713)
-    ReaderPalette.OLED -> Color.Black
+    ReaderPalette.PAPER -> Color(0xFFF7F0DE); ReaderPalette.SEPIA -> Color(0xFFF3E5C8); ReaderPalette.LIGHT -> Color(0xFFFFFBFF); ReaderPalette.NIGHT -> Color(0xFF151713); ReaderPalette.OLED -> Color.Black
 }
-
 private val QUICK_PANEL_HEIGHT = 324.dp
