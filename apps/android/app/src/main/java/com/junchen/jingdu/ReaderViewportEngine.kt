@@ -177,7 +177,8 @@ internal object ReaderPageLayoutCache {
         val columnWidth = ((boundedWidth - horizontalPadding - gap) / safeColumns).coerceAtLeast(1)
         val contentHeight = (heightPx - verticalPadding).coerceAtLeast(1)
         val spec = ReaderTypographySpec.from(settings)
-        val layoutFingerprint = 31 * spec.fingerprint + settings.emphasizeHeadings.hashCode()
+        val typographyFingerprint = spec.fingerprint
+        val layoutFingerprint = 31 * typographyFingerprint + settings.emphasizeHeadings.hashCode()
         val key = PageLayoutKey(
             textHash = 31 * sourceText.hashCode() + displayText.hashCode(),
             widthPx = columnWidth,
