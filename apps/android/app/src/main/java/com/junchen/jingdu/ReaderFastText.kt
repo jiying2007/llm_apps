@@ -68,7 +68,6 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
         androidx.compose.material3.Text(text = text, modifier = modifier, style = style, overflow = overflow)
         return
     }
-
     val density = LocalDensity.current
     val resolver = LocalFontFamilyResolver.current
     val nativeTypeface by resolver.resolveAsTypeface(
@@ -80,16 +79,7 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     val resolvedColor = if (style.color == Color.Unspecified) MaterialTheme.colorScheme.onBackground else style.color
     BoxWithConstraints(modifier.fillMaxWidth().armSelectionOnLongPress(text.text) { selectionMode = true }) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
-        val layout by produceState<StaticLayout?>(
-            null,
-            text,
-            style,
-            widthPx,
-            density.density,
-            density.fontScale,
-            nativeTypeface,
-            resolvedColor,
-        ) {
+        val layout by produceState<StaticLayout?>(null, text, style, widthPx, density.density, density.fontScale, nativeTypeface, resolvedColor) {
             value = null
             value = withContext(Dispatchers.Default) { buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx) }
         }
@@ -102,7 +92,7 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     }
 }
 
-/** Continuous keeps the 4K window/TextLayoutResult authority and caches one measured layout. */
+/** Continuous keeps the 4K window and TextLayoutResult authority, but measures off the frame thread. */
 @Composable
 internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow, onTextLayout: (TextLayoutResult) -> Unit) {
     val context = LocalContext.current
@@ -116,11 +106,16 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     val measurer = rememberTextMeasurer(cacheSize = 4)
     BoxWithConstraints(modifier.armSelectionOnLongPress(text.text) { selectionMode = true }) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
-        val layout = remember(text, style, overflow, widthPx, density.density, density.fontScale) {
-            measurer.measure(text = text, style = style, overflow = overflow, constraints = Constraints(maxWidth = widthPx))
+        val layout by produceState<TextLayoutResult?>(null, text, style, overflow, widthPx, density.density, density.fontScale) {
+            value = null
+            value = withContext(Dispatchers.Default) {
+                measurer.measure(text = text, style = style, overflow = overflow, constraints = Constraints(maxWidth = widthPx))
+            }
         }
-        LaunchedEffect(layout) { onTextLayout(layout) }
-        Canvas(Modifier.fillMaxWidth().height(with(density) { layout.size.height.toDp() })) { drawText(layout) }
+        LaunchedEffect(layout) { layout?.let(onTextLayout) }
+        layout?.let { ready ->
+            Canvas(Modifier.fillMaxWidth().height(with(density) { ready.size.height.toDp() })) { drawText(ready) }
+        }
     }
 }
 
