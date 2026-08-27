@@ -74,8 +74,8 @@ fun JingduApp(
     MaterialTheme(colorScheme = scheme) {
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
-        // Chapter data is a Reader lifecycle concern, not a hidden panel side effect. Keep the JDX3/Core
-        // table warm before a likely Chapters open while the panel UI itself remains completely absent.
+        // Chapter data is a Reader lifecycle concern, not a hidden panel side effect. Keep the Core
+        // table warm before a likely Chapters open while the hot overlay itself stays layout-stable.
         LaunchedEffect(state.screen, state.currentBook?.id, state.chaptersLoaded) {
             if (state.screen == AppScreen.READER && state.currentBook != null && !state.chaptersLoaded) actions.onEnsureChapters()
         }
@@ -143,14 +143,17 @@ fun JingduApp(
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
                 AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
             }
+
+            // One full-size child remains mounted for the entire Reader lifetime. Hot panel state
+            // changes draw/input/semantics only, so Quick/Chapters open/close does not mutate the
+            // root ComposeView measure tree measured by the hosted frame SLO.
+            if (state.screen == AppScreen.READER) {
+                ReaderHotPanelHost(state, trackedActions, currentReaderPosition)
+            }
+
             state.busyLabel?.let { BusyOverlay(it) }
             when (state.panel) {
-                ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(AppUiState(settings = state.settings, motion = state.motion), trackedActions)
-                ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel(
-                    AppUiState(currentBook = state.currentBook, length = state.length, chapters = state.chapters, chaptersLoaded = state.chaptersLoaded),
-                    trackedActions,
-                    currentReaderPosition,
-                )
+                ReaderPanel.QUICK_SETTINGS, ReaderPanel.CHAPTERS -> Unit
                 ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
                 ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
                 ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
