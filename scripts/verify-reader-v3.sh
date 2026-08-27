@@ -53,7 +53,6 @@ index_cache=core/native/src/index_cache.cpp
 cached_core=core/native/src/core_api_cached.cpp
 core_test=core/native/tests/core_api_test.cpp
 
-# Typed Reader V3 settings only.
 grep -q 'DataStore<ReaderSettingsProto>' "$prefs"
 grep -q 'reader-v3-settings.pb' "$prefs"
 grep -q 'pending.debounce(350L)' "$prefs"
@@ -64,7 +63,6 @@ grep -q 'double_tap_action' "$proto"
 ! grep -q 'preferencesDataStore' "$prefs"
 ! grep -q 'jingdu_reader_v2' "$prefs"
 
-# Exact source/display projection and bounded reader windows stay authoritative.
 grep -q 'class TextProjection' apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt
 grep -q 'ReaderPresentationPipeline.present' "$engine"
 grep -q 'SourceDisplayMap.compose' "$pipeline"
@@ -80,13 +78,13 @@ grep -q 'scrollState.isScrollInProgress' "$screen"
 grep -q '!scrolling && absolute != lastCommitted' "$screen"
 grep -q 'AUTO_SCROLL_COMMIT_CHARS = 512L' "$screen"
 
-# Heavy normal-reading text layout is off the frame thread.
 grep -q 'produceState<StaticLayout?>' "$fast_text"
 grep -q 'produceState<TextLayoutResult?>' "$fast_text"
 grep -q 'withContext(Dispatchers.Default)' "$fast_text"
 
-# Hot Quick/Chapters route through one full-size host that remains mounted for Reader lifetime.
-grep -q 'ReaderHotPanelHost(state, trackedActions, currentReaderPosition)' "$app"
+# One full-size hot host remains mounted; its remembered state excludes pageText/position.
+grep -q 'val hotPanelState = remember' "$app"
+grep -q 'ReaderHotPanelHost(hotPanelState, trackedActions, currentReaderPosition)' "$app"
 grep -q 'ReaderPanel.QUICK_SETTINGS, ReaderPanel.CHAPTERS -> Unit' "$app"
 ! grep -q 'ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet' "$app"
 ! grep -q 'ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel' "$app"
@@ -96,20 +94,17 @@ grep -q 'HOT_CHAPTER_ROWS = 8' "$host"
 grep -q 'SmartToc.evaluate(state.chapters.map' "$host"
 grep -q 'contentDescription = continuousLabel' "$host"
 
-# Current performance iteration keeps the existing cache format and exact native chapter authority.
 grep -q 'kMagicV1 = "JDX1"' "$index_cache"
 grep -q 'kMagicV2 = "JDX2"' "$index_cache"
 grep -q 'load_chapter_cache' "$cached_core"
 grep -q 'save_index_cache_with_chapters' "$cached_core"
 grep -q 'first chapter scan upgrades cache to JDX2' "$core_test"
 
-# Native selection/source annotations remain on the real runtime path.
 grep -q 'rememberSelectionState' "$screen"
 grep -q 'SelectionContainer(state = selectionState)' "$screen"
 grep -q 'ReaderSelectionController.fromSelectedTexts' "$screen"
 grep -q 'extendAcrossBoundary' "$screen"
 
-# Room and Media3 remain the only retained persistence/playback authorities.
 grep -q '@Database' apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt
 grep -q 'ReaderAnnotationEntity' "$annotations"
 grep -q 'ReaderSessionEntity' "$stats"
@@ -120,7 +115,6 @@ grep -q 'previousSentence' "$navigator"
 grep -q 'nextSentence' "$navigator"
 ! grep -q 'android.media.session.MediaSession' "$service"
 
-# Real hosted performance contract remains unchanged and no-profile is still measured first.
 grep -q 'FrameTimingMetric' "$journey"
 grep -q 'StartupTimingMetric' "$journey"
 grep -q 'KEYCODE_VOLUME_DOWN' "$journey"
@@ -134,7 +128,6 @@ grep -q 'run_instrumentation BaselineProfile' "$runner"
 grep -q 'os.environ.get("JINGDU_FRAME_P95_MS", "40")' scripts/check-android-performance-slo.py
 grep -q 'os.environ.get("JINGDU_FRAME_P99_MS", "80")' scripts/check-android-performance-slo.py
 
-# Old Reader implementation files stay deleted.
 for removed in \
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt \
@@ -142,4 +135,4 @@ for removed in \
   test ! -e "$removed" || { echo "Reader V3 residual exists: $removed" >&2; exit 1; }
 done
 
-echo 'Reader V3 performance-candidate contract OK: stable hot panel host, exact Source/Core offsets, bounded windows, 40/80 unchanged'
+echo 'Reader V3 performance-candidate contract OK: stable isolated hot panel host, exact Source/Core offsets, bounded windows, 40/80 unchanged'
