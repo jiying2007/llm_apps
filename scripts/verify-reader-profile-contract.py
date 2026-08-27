@@ -7,6 +7,9 @@ journey = (ROOT / "apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/
 runner = (ROOT / "scripts/run-android-macrobenchmark-ci.sh").read_text(encoding="utf-8")
 checker = (ROOT / "scripts/check-android-performance-slo.py").read_text(encoding="utf-8")
 workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+product_baseline_path = ROOT / "apps/android/app/src/main/baseline-prof.txt"
+product_startup_path = ROOT / "apps/android/app/src/main/startup-prof.txt"
+provenance_path = ROOT / "docs/READER_V3_PROFILE_PROVENANCE.md"
 
 startup_marker = "@Test fun readerV3Startup()"
 runtime_marker = "@Test fun readerV3CriticalJourneys()"
@@ -52,6 +55,45 @@ assert 'sort -u > "$RESULT_ROOT/profile/startup-prof.txt"' in runner
 last_slo_exit = runner.rfind('exit "$SLO_STATUS"')
 assert last_slo_exit > runner.index(profile_call), "red SLO must still fail after profiles are emitted"
 assert 'GPU_MODE="software"' in runner
+
+# An invalid instrumentation run is infrastructure evidence, not a performance result. One bounded
+# guest recovery is allowed; valid measurements and the no-profile compilation mode are unchanged.
+assert "return 1" in runner[runner.index("run_instrumentation()") : runner.index("preserve_failed_macro_evidence()")]
+assert "attempting one bounded guest recovery" in runner
+assert "wait_for_android_ready 120" in runner
+assert "INSTRUMENTATION_ABORTED" in runner and "System has crashed" in runner
+assert runner.count("run_instrumentation Macrobenchmark") == 2, "exactly one Macrobenchmark retry is allowed"
+
+# The generated evidence is curated into compact product assets. Startup stays intentionally narrow
+# so runtime panels/scroll code cannot bloat the primary DEX.
+assert product_baseline_path.is_file() and product_startup_path.is_file(), "product Baseline/Startup Profile assets missing"
+baseline = product_baseline_path.read_text(encoding="utf-8")
+startup = product_startup_path.read_text(encoding="utf-8")
+assert baseline.strip() and startup.strip()
+for marker in (
+    "Lcom/junchen/jingdu/ReaderScreenV3Kt;",
+    "Lcom/junchen/jingdu/ReaderQuickPanelsKt;",
+    "Lcom/junchen/jingdu/ReaderSmartChaptersPanelKt;",
+    "Landroidx/compose/foundation/text/**",
+    "Landroidx/compose/ui/text/**",
+    "Landroidx/compose/ui/layout/**",
+):
+    assert marker in baseline, f"baseline hot path missing: {marker}"
+for marker in (
+    "Lcom/junchen/jingdu/MainActivity;",
+    "Lcom/junchen/jingdu/JingduAppKt;",
+    "Lcom/junchen/jingdu/LibraryScreenKt;",
+    "Lcom/junchen/jingdu/ReaderScreenV3Kt;",
+):
+    assert marker in startup, f"startup funnel missing: {marker}"
+for forbidden in ("ReaderQuickPanelsKt", "ReaderSmartChaptersPanelKt", "foundation/lazy", "continuous"):
+    assert forbidden not in startup, f"runtime-only Startup Profile rule retained: {forbidden}"
+assert len(startup.splitlines()) < len(baseline.splitlines()), "Startup Profile must remain a strict compact subset"
+assert provenance_path.is_file(), "profile provenance missing"
+provenance = provenance_path.read_text(encoding="utf-8")
+assert "32989847747" in provenance and "c98e028bebd1cde06239339bc0222f477da121ac" in provenance
+assert "b5f087a15a354a4ef366e17f85b6ba2a6a63cd581ceb7630a09205c6894632ac" in provenance
+assert "ec605e8e036cccd19c49c3bbc63d022f076a8683c6110b75b6a32f26b9d277af" in provenance
 
 perf_job = workflow[workflow.index("  android-performance:"):workflow.index("  harmony-contract:")]
 assert "runs-on: ubuntu-22.04" in perf_job, "hosted performance image must be pinned"

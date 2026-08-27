@@ -48,6 +48,25 @@ fail_emulator() {
   exit 1
 }
 
+wait_for_android_ready() {
+  local timeout_seconds="${1:-120}"
+  local second adb_state boot_state
+  for ((second = 1; second <= timeout_seconds; second++)); do
+    if [[ -n "$EMULATOR_PID" ]] && ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
+      return 1
+    fi
+    adb_state="$("$ADB" get-state 2>/dev/null || true)"
+    if [[ "$adb_state" == "device" ]]; then
+      boot_state="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+      if [[ "$boot_state" == "1" ]]; then
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 run_instrumentation() {
   local rule="$1"
   local remote_dir="$2"
@@ -66,10 +85,10 @@ run_instrumentation() {
   local status=${PIPESTATUS[0]}
   set -e
 
-  if (( status != 0 )) || grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=Process crashed|Process crashed' "$log_file" || ! grep -q 'INSTRUMENTATION_CODE: -1' "$log_file"; then
+  if (( status != 0 )) || grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|shortMsg=Process crashed|Process crashed|System has crashed' "$log_file" || ! grep -q 'INSTRUMENTATION_CODE: -1' "$log_file"; then
     echo "Reader V3 ${rule} instrumentation failed" >&2
     cat "$log_file" >&2
-    exit 1
+    return 1
   fi
 }
 
@@ -215,7 +234,20 @@ mkdir -p "$RESULT_ROOT/macro" "$RESULT_ROOT/profile"
 "$ADB" shell mkdir -p "$REMOTE_RESULT_ROOT"
 
 MACRO_REMOTE="$REMOTE_RESULT_ROOT/macro"
-run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation.log"
+if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation.log"; then
+  preserve_failed_macro_evidence "$MACRO_REMOTE"
+  echo "Macrobenchmark instrumentation aborted before valid evidence; attempting one bounded guest recovery" >&2
+  if ! wait_for_android_ready 120; then
+    fail_emulator "Android guest did not recover after Macrobenchmark instrumentation abort"
+  fi
+  "$ADB" shell settings put global window_animation_scale 0 || true
+  "$ADB" shell settings put global transition_animation_scale 0 || true
+  "$ADB" shell settings put global animator_duration_scale 0 || true
+  if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation-retry.log"; then
+    preserve_failed_macro_evidence "$MACRO_REMOTE"
+    fail_emulator "Reader V3 Macrobenchmark instrumentation failed after one guest recovery"
+  fi
+fi
 REMOTE_JSON="$("$ADB" shell "ls -1 $MACRO_REMOTE/*-benchmarkData.json 2>/dev/null | head -n 1" | tr -d '\r')"
 if [[ -z "$REMOTE_JSON" ]]; then
   echo "Macrobenchmark completed without benchmarkData.json" >&2
