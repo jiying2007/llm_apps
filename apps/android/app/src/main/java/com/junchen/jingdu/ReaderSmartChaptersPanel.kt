@@ -1,28 +1,25 @@
 package com.junchen.jingdu
 
-import android.content.Context
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
+import android.graphics.Paint
+import android.text.TextPaint
 import android.text.TextUtils
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.BaseAdapter
-import android.widget.ImageButton
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.ListView
-import android.widget.TextView
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -39,12 +36,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.LinkedHashMap
@@ -63,10 +65,10 @@ private object TocPanelCache {
 }
 
 /**
- * Canonical chapters route. Derived TOC quality stays cached while the long list is rendered by a
- * native ListView: one virtualized host replaces the previous Compose LazyColumn/item subtrees,
- * keeping first-open measure/JIT bounded without changing chapter offsets, jump semantics, hide
- * controls, keyboard focus or TalkBack behavior.
+ * Performance-oriented canonical target for the chapters route. It renders in the app composition
+ * tree and retains the derived quality report, so reopening the panel never reevaluates the same
+ * chapter collection or recreates a modal window. Current reader position is read through a stable
+ * callback so background page turns do not invalidate the hidden chapter composition.
  */
 @Composable
 internal fun ReaderSmartChaptersPanel(
@@ -121,62 +123,42 @@ internal fun ReaderSmartChaptersPanel(
                 IconButton(onClick = { addDialog = true }) { Icon(Icons.Default.Add, stringResource(R.string.toc_add_here)) }
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             report?.let { value ->
-                if (value.anomalyCount > 0) {
-                    Text(
-                        stringResource(R.string.smart_toc_anomalies, value.duplicateTitles, value.numericGaps, value.suspiciousTitles),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
-                }
-                val sourceHint = stringResource(R.string.toc_source_user_or_special)
-                val hideDescription = stringResource(R.string.toc_hide_heading)
-                val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
-                val accentColor = MaterialTheme.colorScheme.primary.toArgb()
-                val dividerColor = MaterialTheme.colorScheme.outlineVariant.toArgb()
-                AndroidView(
-                    factory = { NativeChapterListView(it) },
-                    update = { list ->
-                        list.bind(
-                            chapters = value.chapters,
-                            sourceHint = sourceHint,
-                            hideDescription = hideDescription,
-                            textColor = textColor,
-                            accentColor = accentColor,
-                            dividerColor = dividerColor,
-                            onJump = actions.onJump,
-                            onHide = { chapter ->
-                                val currentBook = book
-                                if (currentBook != null) {
-                                    store.hide(currentBook.id, chapter.offset, state.length)
-                                    val updated = base?.let { store.apply(it, store.load(currentBook.id, state.length)) }
-                                    report = updated
-                                    val currentBase = base
-                                    if (currentBase != null && updated != null) {
-                                        TocPanelCache.put(
-                                            TocPanelKey(currentBook.id, state.length, state.chapters.hashCode()),
-                                            TocPanelEntry(currentBase, updated),
-                                        )
-                                    }
+                if (value.anomalyCount > 0) AssistChip(onClick = {}, label = { Text(stringResource(R.string.smart_toc_anomalies, value.duplicateTitles, value.numericGaps, value.suspiciousTitles)) })
+                LazyColumn(Modifier.heightIn(max = 560.dp)) {
+                    items(value.chapters, key = { it.offset }) { chapter ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            val sourceHint = if (chapter.source != "core") stringResource(R.string.toc_source_user_or_special) else null
+                            ChapterTitleCanvas(
+                                title = chapter.title,
+                                special = sourceHint != null,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable(role = Role.Button) { actions.onJump(chapter.offset) }
+                                    .semantics { contentDescription = if (sourceHint == null) chapter.title else "${chapter.title}, $sourceHint" }
+                                    .padding(horizontal = 12.dp),
+                            )
+                            IconButton(onClick = {
+                                val currentBook = book ?: return@IconButton
+                                store.hide(currentBook.id, chapter.offset, state.length)
+                                val updated = base?.let { store.apply(it, store.load(currentBook.id, state.length)) }
+                                report = updated
+                                val currentBase = base
+                                if (currentBase != null && updated != null) {
+                                    TocPanelCache.put(TocPanelKey(currentBook.id, state.length, state.chapters.hashCode()), TocPanelEntry(currentBase, updated))
                                 }
-                            },
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().height(500.dp),
-                )
+                            }) { Icon(Icons.Default.Delete, stringResource(R.string.toc_hide_heading)) }
+                        }
+                        HorizontalDivider()
+                    }
+                }
                 TextButton(onClick = {
                     val currentBook = book ?: return@TextButton
                     store.reset(currentBook.id)
                     report = base
                     val currentBase = base
-                    if (currentBase != null) {
-                        TocPanelCache.put(
-                            TocPanelKey(currentBook.id, state.length, state.chapters.hashCode()),
-                            TocPanelEntry(currentBase, currentBase),
-                        )
-                    }
+                    if (currentBase != null) TocPanelCache.put(TocPanelKey(currentBook.id, state.length, state.chapters.hashCode()), TocPanelEntry(currentBase, currentBase))
                 }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.toc_reset_repairs)) }
             }
         }
@@ -191,12 +173,7 @@ internal fun ReaderSmartChaptersPanel(
             val updated = base?.let { store.apply(it, store.load(book.id, state.length)) }
             report = updated
             val currentBase = base
-            if (currentBase != null && updated != null) {
-                TocPanelCache.put(
-                    TocPanelKey(book.id, state.length, state.chapters.hashCode()),
-                    TocPanelEntry(currentBase, updated),
-                )
-            }
+            if (currentBase != null && updated != null) TocPanelCache.put(TocPanelKey(book.id, state.length, state.chapters.hashCode()), TocPanelEntry(currentBase, updated))
             title = ""
             addDialog = false
         }, enabled = title.isNotBlank()) { Text(stringResource(R.string.toc_add_action)) } },
@@ -204,147 +181,43 @@ internal fun ReaderSmartChaptersPanel(
     )
 }
 
-/** Native virtualization for the hundreds/thousands-of-chapters path. */
-private class NativeChapterListView(context: Context) : ListView(context) {
-    private val chapterAdapter = NativeChapterAdapter(context)
-
-    init {
-        adapter = chapterAdapter
-        isVerticalScrollBarEnabled = true
-        overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-    }
-
-    fun bind(
-        chapters: List<SmartChapter>,
-        sourceHint: String,
-        hideDescription: String,
-        textColor: Int,
-        accentColor: Int,
-        dividerColor: Int,
-        onJump: (Long) -> Unit,
-        onHide: (SmartChapter) -> Unit,
-    ) {
-        divider = ColorDrawable(dividerColor)
-        dividerHeight = dp(1)
-        chapterAdapter.bind(chapters, sourceHint, hideDescription, textColor, accentColor, onJump, onHide)
-        isFastScrollEnabled = chapters.size >= 64
-    }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
-}
-
-private class NativeChapterAdapter(private val context: Context) : BaseAdapter() {
-    private var chapters: List<SmartChapter> = emptyList()
-    private var sourceHint: String = ""
-    private var hideDescription: String = ""
-    private var textColor: Int = android.graphics.Color.DKGRAY
-    private var accentColor: Int = android.graphics.Color.BLUE
-    private var onJump: (Long) -> Unit = {}
-    private var onHide: (SmartChapter) -> Unit = {}
-
-    fun bind(
-        chapters: List<SmartChapter>,
-        sourceHint: String,
-        hideDescription: String,
-        textColor: Int,
-        accentColor: Int,
-        onJump: (Long) -> Unit,
-        onHide: (SmartChapter) -> Unit,
-    ) {
-        val changed = this.chapters !== chapters || this.sourceHint != sourceHint ||
-            this.textColor != textColor || this.accentColor != accentColor
-        this.chapters = chapters
-        this.sourceHint = sourceHint
-        this.hideDescription = hideDescription
-        this.textColor = textColor
-        this.accentColor = accentColor
-        this.onJump = onJump
-        this.onHide = onHide
-        if (changed) notifyDataSetChanged()
-    }
-
-    override fun getCount(): Int = chapters.size
-    override fun getItem(position: Int): SmartChapter = chapters[position]
-    override fun getItemId(position: Int): Long = chapters[position].offset
-    override fun hasStableIds(): Boolean = true
-
-    override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-        val row = convertView as? NativeChapterRow ?: NativeChapterRow(context)
-        row.bind(
-            chapter = chapters[position],
-            sourceHint = sourceHint,
-            hideDescription = hideDescription,
-            textColor = textColor,
-            accentColor = accentColor,
-            onJump = onJump,
-            onHide = onHide,
-        )
-        return row
-    }
-}
-
-private class NativeChapterRow(context: Context) : LinearLayout(context) {
-    private val titleView = TextView(context).apply {
-        isSingleLine = true
-        ellipsize = TextUtils.TruncateAt.END
-        gravity = Gravity.CENTER_VERTICAL
-        setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
-        setPadding(dp(12), 0, dp(8), 0)
-        layoutParams = LayoutParams(0, dp(52), 1f)
-    }
-    private val hideButton = ImageButton(context).apply {
-        setImageResource(android.R.drawable.ic_menu_delete)
-        background = null
-        layoutParams = LayoutParams(dp(48), dp(48))
-        scaleType = ImageView.ScaleType.CENTER
-    }
-
-    init {
-        orientation = HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = dp(52)
-        isClickable = true
-        isFocusable = true
-        addView(titleView)
-        addView(hideButton)
-    }
-
-    fun bind(
-        chapter: SmartChapter,
-        sourceHint: String,
-        hideDescription: String,
-        textColor: Int,
-        accentColor: Int,
-        onJump: (Long) -> Unit,
-        onHide: (SmartChapter) -> Unit,
-    ) {
-        titleView.text = chapter.title
-        titleView.setTextColor(textColor)
-        if (chapter.source != "core") {
-            val marker = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(accentColor)
-                setSize(dp(7), dp(7))
-                setBounds(0, 0, dp(7), dp(7))
-            }
-            titleView.setCompoundDrawablesRelative(marker, null, null, null)
-            titleView.compoundDrawablePadding = dp(8)
-            contentDescription = "${chapter.title}, $sourceHint"
-        } else {
-            titleView.setCompoundDrawablesRelative(null, null, null, null)
-            contentDescription = chapter.title
+/**
+ * Chapter titles are single-line navigation labels. Drawing them directly avoids creating a
+ * StaticLayout/TextAnnotatedStringNode for every visible row while the clickable row remains a
+ * real Role.Button with a localized accessibility description. Core offsets and jump semantics are
+ * untouched; non-core/user headings keep a small primary-color marker and an accessible hint.
+ */
+@Composable
+private fun ChapterTitleCanvas(title: String, special: Boolean, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val markerColor = MaterialTheme.colorScheme.primary.toArgb()
+    val textSizePx = with(density) { 16.sp.toPx() }
+    val horizontalPaddingPx = with(density) { 2.dp.toPx() }
+    val paint = remember(textColor, textSizePx) {
+        TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = textColor
+            textSize = textSizePx
         }
-        setOnClickListener { onJump(chapter.offset) }
-        hideButton.contentDescription = "$hideDescription: ${chapter.title}"
-        hideButton.setColorFilter(accentColor)
-        hideButton.setOnClickListener { onHide(chapter) }
+    }
+    val markerPaint = remember(markerColor) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markerColor }
     }
 
-    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
-        super.onInitializeAccessibilityNodeInfo(info)
-        info.className = "android.widget.Button"
-        info.isClickable = true
+    Canvas(modifier.height(52.dp)) {
+        val markerSpace = if (special) 14.dp.toPx() else 0f
+        val available = (size.width - markerSpace - horizontalPaddingPx * 2f).coerceAtLeast(1f)
+        val shown = TextUtils.ellipsize(title, paint, available, TextUtils.TruncateAt.END).toString()
+        val metrics = paint.fontMetrics
+        val baseline = size.height / 2f - (metrics.ascent + metrics.descent) / 2f
+        drawContext.canvas.nativeCanvas.drawText(shown, horizontalPaddingPx, baseline, paint)
+        if (special) {
+            drawContext.canvas.nativeCanvas.drawCircle(
+                size.width - 6.dp.toPx(),
+                size.height / 2f,
+                3.dp.toPx(),
+                markerPaint,
+            )
+        }
     }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 }

@@ -19,12 +19,17 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.MeasurePolicy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
@@ -144,10 +149,10 @@ fun JingduApp(
                     ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
 
                     // Canonical routes remain unique: ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet
-                    // and ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel.
-                    // High-frequency panels keep one composition instance so chapter/quick models are
-                    // warm, but an inactive host does not measure or place its subtree. Page/scroll
-                    // frames therefore pay neither first-open composition nor hidden layout cost.
+                    // and ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel. The hosts compose once,
+                    // then premeasure off the visible path after two rendered frames. Opening a panel
+                    // subsequently changes placement/semantics only, rather than concentrating first
+                    // measure/text/lazy-layout work into the user's tap frame.
                     val quickState = remember(state.settings, state.motion) {
                         AppUiState(settings = state.settings, motion = state.motion)
                     }
@@ -196,21 +201,35 @@ fun JingduApp(
 
 @Composable
 private fun ReaderPanelHost(active: Boolean, content: @Composable () -> Unit) {
+    var premeasured by remember { mutableStateOf(false) }
+    val activeState = rememberUpdatedState(active)
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        withFrameNanos { }
+        premeasured = true
+    }
+    val shouldMeasure = premeasured || active
+    val measurePolicy = remember(shouldMeasure) {
+        MeasurePolicy { measurables, constraints ->
+            if (!shouldMeasure) {
+                layout(0, 0) { }
+            } else {
+                val placeable = measurables.firstOrNull()?.measure(constraints)
+                val width = placeable?.width ?: constraints.minWidth
+                val height = placeable?.height ?: constraints.minHeight
+                layout(width, height) {
+                    if (activeState.value) placeable?.placeRelative(0, 0)
+                }
+            }
+        }
+    }
     Layout(
         content = content,
         modifier = Modifier
             .zIndex(if (active) 10f else -1f)
             .then(if (active) Modifier else Modifier.clearAndSetSemantics { }),
-    ) { measurables, constraints ->
-        if (!active) {
-            layout(0, 0) { }
-        } else {
-            val placeable = measurables.firstOrNull()?.measure(constraints)
-            val width = placeable?.width ?: constraints.minWidth
-            val height = placeable?.height ?: constraints.minHeight
-            layout(width, height) { placeable?.placeRelative(0, 0) }
-        }
-    }
+        measurePolicy = measurePolicy,
+    )
 }
 
 @Composable private fun BusyOverlay(label: String) {

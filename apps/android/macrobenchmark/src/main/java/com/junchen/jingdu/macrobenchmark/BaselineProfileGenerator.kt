@@ -54,7 +54,7 @@ class BaselineProfileGenerator {
         ensureTopControlsVisible()
         requireClick(By.text("Aa"), "quick reading settings control")
         device.waitForIdle()
-        requireClick(By.textContains("Continuous"), "continuous reading mode")
+        requireContinuousModeClick()
         device.waitForIdle()
         device.pressBack()
         device.waitForIdle()
@@ -116,6 +116,17 @@ class BaselineProfileGenerator {
         check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 baseline $label missing" }
         val target = device.findObject(selector) ?: error("Reader V3 baseline $label unavailable")
         target.click()
+    }
+
+    private fun MacrobenchmarkScope.requireContinuousModeClick() {
+        val selectors = listOf(
+            By.textContains("Continuous"),
+            By.descContains("Continuous"),
+        )
+        for (selector in selectors) {
+            device.findObject(selector)?.let { target -> target.click(); return }
+        }
+        error("Reader V3 baseline continuous reading mode missing")
     }
 
     private fun MacrobenchmarkScope.requireChaptersClick() {

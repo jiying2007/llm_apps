@@ -1,8 +1,6 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.junchen.jingdu
 
-import android.content.Context
-import android.widget.SeekBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -21,7 +19,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.roundToInt
 
 private val QUICK_PALETTES = listOf(
@@ -37,7 +34,7 @@ private val QUICK_PALETTES = listOf(
 internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions) {
     val s = state.settings
     ReaderPanelSurface(onDismiss = actions.onClosePanel) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(stringResource(R.string.reader_quick_settings), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -48,7 +45,13 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                     FilterChip(
                         selected = s.palette == palette,
                         onClick = { actions.onSettingsChanged(s.copy(palette = palette, preset = ReaderPreset.CUSTOM, activeThemeId = "")) },
-                        label = { Box(Modifier.size(24.dp).background(quickPaletteSwatch(palette), CircleShape)) },
+                        label = {
+                            Box(
+                                Modifier
+                                    .size(24.dp)
+                                    .background(quickPaletteSwatch(palette), CircleShape),
+                            )
+                        },
                         modifier = Modifier.semantics { contentDescription = label },
                     )
                 }
@@ -57,26 +60,11 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                 IconButton({ actions.onSettingsChanged(s.copy(fontSizeSp = (s.fontSizeSp - 1).coerceAtLeast(14f), preset = ReaderPreset.CUSTOM, activeThemeId = "")) }) { Icon(Icons.Default.Remove, stringResource(R.string.font_size)) }
                 Text("${s.fontSizeSp.roundToInt()}sp", Modifier.width(58.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 IconButton({ actions.onSettingsChanged(s.copy(fontSizeSp = (s.fontSizeSp + 1).coerceAtMost(40f), preset = ReaderPreset.CUSTOM, activeThemeId = "")) }) { Icon(Icons.Default.Add, stringResource(R.string.font_size)) }
-                val lineHeightDescription = "${stringResource(R.string.reader_quick_settings)} ${"%.2f".format(s.lineHeightMultiplier)}"
-                AndroidView(
-                    factory = { QuickLineHeightSeekBar(it) },
-                    update = { slider ->
-                        slider.bind(s.lineHeightMultiplier, lineHeightDescription) { value ->
-                            actions.onSettingsChanged(s.copy(lineHeightMultiplier = value, preset = ReaderPreset.CUSTOM, activeThemeId = ""))
-                        }
-                    },
-                    modifier = Modifier.weight(1f).height(48.dp),
-                )
+                Slider(s.lineHeightMultiplier, { actions.onSettingsChanged(s.copy(lineHeightMultiplier = it, preset = ReaderPreset.CUSTOM, activeThemeId = "")) }, valueRange = 1.15f..2.2f, modifier = Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconToggleButton(
-                    checked = s.readingMode == ReaderMode.PAGED,
-                    onCheckedChange = { if (it) actions.onSettingsChanged(s.copy(readingMode = ReaderMode.PAGED, autoScrollEnabled = false)) },
-                ) { Icon(Icons.Default.MenuBook, stringResource(R.string.reader_mode_paged)) }
-                IconToggleButton(
-                    checked = s.readingMode == ReaderMode.CONTINUOUS,
-                    onCheckedChange = { if (it) actions.onSettingsChanged(s.copy(readingMode = ReaderMode.CONTINUOUS)) },
-                ) { Icon(Icons.Default.ViewStream, stringResource(R.string.reader_mode_continuous)) }
+                FilterChip(s.readingMode == ReaderMode.PAGED, { actions.onSettingsChanged(s.copy(readingMode = ReaderMode.PAGED, autoScrollEnabled = false)) }, label = { Text(stringResource(R.string.reader_mode_paged)) })
+                FilterChip(s.readingMode == ReaderMode.CONTINUOUS, { actions.onSettingsChanged(s.copy(readingMode = ReaderMode.CONTINUOUS)) }, label = { Text(stringResource(R.string.reader_mode_continuous)) })
                 Spacer(Modifier.weight(1f))
                 FilledTonalIconButton(actions.onAddBookmark) { Icon(Icons.Outlined.BookmarkBorder, stringResource(R.string.reader_access_bookmark)) }
             }
@@ -100,28 +88,6 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
             }
             OutlinedButton({ actions.onClosePanel(); actions.onOpenPanel(ReaderPanel.SETTINGS) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.reader_advanced_settings)) }
         }
-    }
-}
-
-/** Platform SeekBar keeps the high-frequency line-height control out of Compose Slider measure/JIT. */
-private class QuickLineHeightSeekBar(context: Context) : SeekBar(context) {
-    private var onValueChange: (Float) -> Unit = {}
-
-    init {
-        max = 105
-        setOnSeekBarChangeListener(object : OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) onValueChange((1.15f + progress / 100f).coerceIn(1.15f, 2.20f))
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-        })
-    }
-
-    fun bind(value: Float, description: String, onValueChange: (Float) -> Unit) {
-        this.onValueChange = onValueChange
-        contentDescription = description
-        if (!isPressed) progress = ((value.coerceIn(1.15f, 2.20f) - 1.15f) * 100f).roundToInt().coerceIn(0, max)
     }
 }
 

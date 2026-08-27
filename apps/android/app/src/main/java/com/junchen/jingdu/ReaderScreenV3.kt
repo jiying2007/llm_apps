@@ -9,13 +9,11 @@ import android.content.pm.ActivityInfo
 import android.os.BatteryManager
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -60,7 +58,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -241,20 +238,22 @@ internal fun ReaderScreenV3(
         } else {
             val slideAnimation = settings.pageAnimation == ReaderPageAnimation.SLIDE && settings.preset != ReaderPreset.LOW_VISION && pageDirection != 0
             if (slideAnimation) {
-                AnimatedContent(
-                    targetState = state.position to state.pageText,
-                    transitionSpec = {
-                        (slideInHorizontally { pageDirection * it } + fadeIn()) togetherWith
-                            (slideOutHorizontally { -pageDirection * it } + fadeOut())
-                    },
-                    label = "reader-v3-page",
-                    modifier = Modifier.fillMaxSize(),
-                ) { (position, text) ->
-                    PagedReaderPageV3(
-                        position, text, state, adaptiveLayout, fontFamily, textColor, touchExploration,
-                        actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
-                        ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
-                    )
+                val direction = pageDirection
+                key(state.position, state.pageText) {
+                    val pageVisible = remember { MutableTransitionState(false).apply { targetState = true } }
+                    AnimatedVisibility(
+                        visibleState = pageVisible,
+                        enter = slideInHorizontally { direction * it } + fadeIn(),
+                        exit = fadeOut(),
+                        label = "reader-v3-page-in",
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        PagedReaderPageV3(
+                            state.position, state.pageText, state, adaptiveLayout, fontFamily, textColor, touchExploration,
+                            actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
+                            ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
+                        )
+                    }
                 }
             } else {
                 PagedReaderPageV3(
