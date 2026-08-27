@@ -91,7 +91,7 @@ data class ReaderSettings(
     val emphasizeHeadings: Boolean = true,
     val preset: ReaderPreset = ReaderPreset.STANDARD,
     val readingMode: ReaderMode = ReaderMode.PAGED,
-    val pageAnimation: ReaderPageAnimation = ReaderPageAnimation.NONE,
+    val pageAnimation: ReaderPageAnimation = ReaderPageAnimation.SLIDE,
     val tapPagingEnabled: Boolean = true,
     val swipePagingEnabled: Boolean = true,
     val reversePagingGestures: Boolean = false,
@@ -224,7 +224,7 @@ private fun ChineseDisplayModeProto.toModel() = ChineseDisplayMode.entries.getOr
 private fun ReaderMode.toProto() = ReaderModeProto.values()[ordinal]
 private fun ReaderModeProto.toModel() = ReaderMode.entries.getOrElse(ordinal) { ReaderMode.PAGED }
 private fun ReaderPageAnimation.toProto() = ReaderPageAnimationProto.values()[ordinal]
-private fun ReaderPageAnimationProto.toModel() = ReaderPageAnimation.entries.getOrElse(ordinal) { ReaderPageAnimation.NONE }
+private fun ReaderPageAnimationProto.toModel() = ReaderPageAnimation.entries.getOrElse(ordinal) { ReaderPageAnimation.SLIDE }
 private fun ReaderOrientation.toProto() = ReaderOrientationProto.values()[ordinal]
 private fun ReaderOrientationProto.toModel() = ReaderOrientation.entries.getOrElse(ordinal) { ReaderOrientation.SYSTEM }
 private fun ReaderTextAlignment.toProto() = ReaderTextAlignmentProto.values()[ordinal]

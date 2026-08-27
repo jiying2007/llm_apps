@@ -4,9 +4,12 @@ import android.content.Context
 import android.graphics.Typeface
 import android.graphics.text.LineBreaker
 import android.text.Layout
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
+import android.text.style.StyleSpan
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -125,15 +128,34 @@ data class PageLayoutSnapshot(
     val firstColumnEndUtf16: Int,
 )
 
-/** Small LRU used to keep exact page measurement out of repeated Compose layout churn. */
+internal data class PageRenderArtifact(
+    val plainText: String,
+    val renderedText: SpannableString,
+    val layout: StaticLayout,
+)
+
+private data class PageRenderKey(val text: String, val widthPx: Int)
+
+/**
+ * Small LRU used to keep exact page measurement and the matching StaticLayout render artifact out of
+ * repeated Compose churn. Pagination and normal paged drawing now share the same worker-built layout;
+ * the frame thread only applies non-geometric highlight spans and draws it.
+ */
 internal object ReaderPageLayoutCache {
     private val cache = object : LinkedHashMap<PageLayoutKey, PageLayoutSnapshot>(20, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PageLayoutKey, PageLayoutSnapshot>?): Boolean = size > 16
     }
+    private val renderCache = object : LinkedHashMap<PageRenderKey, PageRenderArtifact>(20, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PageRenderKey, PageRenderArtifact>?): Boolean = size > 16
+    }
 
     @Synchronized fun get(key: PageLayoutKey): PageLayoutSnapshot? = cache[key]
     @Synchronized fun put(key: PageLayoutKey, value: PageLayoutSnapshot) { cache[key] = value }
-    @Synchronized fun clear() = cache.clear()
+    @Synchronized fun render(text: String, widthPx: Int): PageRenderArtifact? = renderCache[PageRenderKey(text, widthPx)]
+    @Synchronized private fun putRender(text: String, widthPx: Int, value: PageRenderArtifact) {
+        renderCache[PageRenderKey(text, widthPx)] = value
+    }
+    @Synchronized fun clear() { cache.clear(); renderCache.clear() }
 
     fun measure(
         sourceText: String,
@@ -155,11 +177,12 @@ internal object ReaderPageLayoutCache {
         val columnWidth = ((boundedWidth - horizontalPadding - gap) / safeColumns).coerceAtLeast(1)
         val contentHeight = (heightPx - verticalPadding).coerceAtLeast(1)
         val spec = ReaderTypographySpec.from(settings)
+        val layoutFingerprint = 31 * spec.fingerprint + settings.emphasizeHeadings.hashCode()
         val key = PageLayoutKey(
             textHash = 31 * sourceText.hashCode() + displayText.hashCode(),
             widthPx = columnWidth,
             heightPx = contentHeight,
-            typographyFingerprint = spec.fingerprint,
+            typographyFingerprint = layoutFingerprint,
             columns = safeColumns,
         )
         get(key)?.let { return it }
@@ -172,9 +195,19 @@ internal object ReaderPageLayoutCache {
                 ReaderFontWeight.MEDIUM, ReaderFontWeight.SEMIBOLD -> Typeface.BOLD
             })
         }
-        val layoutText = spec.androidLayoutText(displayText, density)
-        fun endFor(text: CharSequence): Int {
-            if (text.isEmpty()) return 0
+        val layoutText = SpannableString(spec.androidLayoutText(displayText, density))
+        if (settings.emphasizeHeadings && layoutText.isNotEmpty()) {
+            var cursor = 0
+            displayText.lineSequence().forEach { line ->
+                val end = (cursor + line.length).coerceAtMost(layoutText.length)
+                if (end > cursor && ReaderHeadingClassifier.isHeading(line.trim())) {
+                    layoutText.setSpan(StyleSpan(Typeface.BOLD), cursor, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                cursor = (end + 1).coerceAtMost(layoutText.length)
+            }
+        }
+
+        fun build(text: CharSequence): StaticLayout {
             val builder = StaticLayout.Builder.obtain(text, 0, text.length, paint, columnWidth)
                 .setIncludePad(false)
                 .setEllipsize(TextUtils.TruncateAt.END)
@@ -183,15 +216,27 @@ internal object ReaderPageLayoutCache {
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                 .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE)
             if (spec.alignment == ReaderTextAlignment.JUSTIFY) builder.setJustificationMode(LineBreaker.JUSTIFICATION_MODE_INTER_WORD)
-            val layout = builder.build()
-            if (layout.lineCount <= 0) return 0
+            return builder.build()
+        }
+        fun endFor(layout: StaticLayout): Int {
+            if (layout.text.isEmpty() || layout.lineCount <= 0) return 0
             val line = layout.getLineForVertical((contentHeight - 1).coerceAtLeast(0))
-            return layout.getLineEnd(line.coerceIn(0, layout.lineCount - 1)).coerceIn(0, text.length)
+            return layout.getLineEnd(line.coerceIn(0, layout.lineCount - 1)).coerceIn(0, layout.text.length)
         }
 
-        val firstEnd = endFor(layoutText)
+        val firstLayout = build(layoutText)
+        val firstEnd = endFor(firstLayout)
+        val firstPlain = displayText.substring(0, firstEnd.coerceIn(0, displayText.length))
+        if (firstPlain.isNotEmpty()) putRender(firstPlain, columnWidth, PageRenderArtifact(firstPlain, layoutText, firstLayout))
+
         val secondEnd = if (safeColumns == 2 && firstEnd < layoutText.length) {
-            firstEnd + endFor(layoutText.subSequence(firstEnd, layoutText.length))
+            val secondRendered = SpannableString(layoutText.subSequence(firstEnd, layoutText.length))
+            val secondLayout = build(secondRendered)
+            val relativeEnd = endFor(secondLayout)
+            val absoluteEnd = (firstEnd + relativeEnd).coerceIn(firstEnd, displayText.length)
+            val secondPlain = displayText.substring(firstEnd.coerceIn(0, displayText.length), absoluteEnd)
+            if (secondPlain.isNotEmpty()) putRender(secondPlain, columnWidth, PageRenderArtifact(secondPlain, secondRendered, secondLayout))
+            absoluteEnd
         } else firstEnd
         val displayedEnd = secondEnd.coerceIn(0, displayText.length)
         val displayedPoints = displayText.codePointCount(0, displayedEnd).toLong()
