@@ -131,8 +131,8 @@ grep -q 'Benchmark-build only' "$fixture"
 grep -q 'BODY_LINES_PER_CHAPTER = 256' "$fixture"
 grep -q 'run_instrumentation Macrobenchmark' "$runner"
 grep -q 'run_instrumentation BaselineProfile' "$runner"
-grep -q 'JINGDU_FRAME_P95_LIMIT_MS:-40' scripts/check-android-performance-slo.py
-grep -q 'JINGDU_FRAME_P99_LIMIT_MS:-80' scripts/check-android-performance-slo.py
+grep -q 'os.environ.get("JINGDU_FRAME_P95_MS", "40")' scripts/check-android-performance-slo.py
+grep -q 'os.environ.get("JINGDU_FRAME_P99_MS", "80")' scripts/check-android-performance-slo.py
 
 # Old Reader implementation files stay deleted.
 for removed in \
