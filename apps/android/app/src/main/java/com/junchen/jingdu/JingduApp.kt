@@ -74,6 +74,8 @@ fun JingduApp(
     MaterialTheme(colorScheme = scheme) {
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
+        // Chapter data is a Reader lifecycle concern, not a hidden panel side effect. Keep the JDX3/Core
+        // table warm before a likely Chapters open while the panel UI itself remains completely absent.
         LaunchedEffect(state.screen, state.currentBook?.id, state.chaptersLoaded) {
             if (state.screen == AppScreen.READER && state.currentBook != null && !state.chaptersLoaded) actions.onEnsureChapters()
         }
@@ -128,28 +130,6 @@ fun JingduApp(
                 settings = state.settings,
             )
         }
-        // Keep hot-panel recomposition independent from pageText/position. The host reads the live
-        // reader position only through currentReaderPosition when Add Chapter is explicitly used.
-        val hotPanelState = remember(
-            state.panel,
-            state.currentBook,
-            state.length,
-            state.chapters,
-            state.chaptersLoaded,
-            state.motion,
-            state.settings,
-        ) {
-            AppUiState(
-                screen = AppScreen.READER,
-                currentBook = state.currentBook,
-                length = state.length,
-                panel = state.panel,
-                chapters = state.chapters,
-                chaptersLoaded = state.chaptersLoaded,
-                motion = state.motion,
-                settings = state.settings,
-            )
-        }
 
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
             when {
@@ -163,12 +143,14 @@ fun JingduApp(
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
                 AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
             }
-            if (state.screen == AppScreen.READER) {
-                ReaderHotPanelHost(hotPanelState, trackedActions, currentReaderPosition)
-            }
             state.busyLabel?.let { BusyOverlay(it) }
             when (state.panel) {
-                ReaderPanel.QUICK_SETTINGS, ReaderPanel.CHAPTERS -> Unit
+                ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(AppUiState(settings = state.settings, motion = state.motion), trackedActions)
+                ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel(
+                    AppUiState(currentBook = state.currentBook, length = state.length, chapters = state.chapters, chaptersLoaded = state.chaptersLoaded),
+                    trackedActions,
+                    currentReaderPosition,
+                )
                 ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
                 ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
                 ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
