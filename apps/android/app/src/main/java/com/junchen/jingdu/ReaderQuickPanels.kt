@@ -71,7 +71,7 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
         Box(Modifier.fillMaxWidth().height(QUICK_PANEL_HEIGHT)) {
             ReaderCanvasPanel(
                 height = QUICK_PANEL_HEIGHT,
-                description = "$title, $paged, $continuous",
+                description = title,
                 actions = accessibilityActions,
                 onTap = { point, width, _ ->
                     when {
@@ -135,14 +135,7 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
 }
 
 @Composable
-internal fun ReaderLinearSlider(
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-    onValueChangeFinished: () -> Unit = {},
-    contentDescription: String? = null,
-) {
+internal fun ReaderLinearSlider(value: Float, valueRange: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier, onValueChangeFinished: () -> Unit = {}, contentDescription: String? = null) {
     val latestChange = rememberUpdatedState(onValueChange)
     val latestFinished = rememberUpdatedState(onValueChangeFinished)
     val range = valueRange.endInclusive - valueRange.start
