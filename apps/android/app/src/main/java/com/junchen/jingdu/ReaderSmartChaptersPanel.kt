@@ -37,7 +37,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -116,8 +115,20 @@ internal fun ReaderSmartChaptersPanel(
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.smart_toc), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    report?.let { Text(stringResource(R.string.smart_toc_quality, it.score, it.chapters.size, it.anomalyCount), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
+                    ReaderPanelText(
+                        stringResource(R.string.smart_toc),
+                        Modifier.fillMaxWidth().height(34.dp),
+                        fontSizeSp = 22f,
+                        bold = true,
+                    )
+                    report?.let {
+                        ReaderPanelText(
+                            stringResource(R.string.smart_toc_quality, it.score, it.chapters.size, it.anomalyCount),
+                            Modifier.fillMaxWidth().height(24.dp),
+                            fontSizeSp = 12f,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 IconButton(onClick = { addDialog = true }) { Icon(Icons.Default.Add, stringResource(R.string.toc_add_here)) }
             }
@@ -159,21 +170,30 @@ internal fun ReaderSmartChaptersPanel(
                             onClick = { windowStart = (windowStart - CHAPTER_WINDOW_ROWS).coerceAtLeast(0) },
                             enabled = windowStart > 0,
                         ) { Icon(Icons.Default.KeyboardArrowUp, stringResource(R.string.reader_access_previous)) }
-                        Text("${windowStart + 1}–$end / ${chapters.size}", style = MaterialTheme.typography.labelMedium)
+                        ReaderPanelText(
+                            "${windowStart + 1}–$end / ${chapters.size}",
+                            Modifier.weight(1f).height(32.dp),
+                            fontSizeSp = 12f,
+                            centered = true,
+                        )
                         IconButton(
                             onClick = { windowStart = (windowStart + CHAPTER_WINDOW_ROWS).coerceAtMost(maxOf(0, chapters.size - CHAPTER_WINDOW_ROWS)) },
                             enabled = end < chapters.size,
                         ) { Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.reader_access_next)) }
                     }
                 }
-                TextButton(onClick = {
-                    val currentBook = book ?: return@TextButton
-                    store.reset(currentBook.id)
-                    report = base
-                    windowStart = 0
-                    val currentBase = base
-                    if (currentBase != null) TocPanelCache.put(TocPanelKey(currentBook.id, state.length, state.chapters.hashCode()), TocPanelEntry(currentBase, currentBase))
-                }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.toc_reset_repairs)) }
+                ReaderPanelAction(
+                    text = stringResource(R.string.toc_reset_repairs),
+                    onClick = {
+                        val currentBook = book ?: return@ReaderPanelAction
+                        store.reset(currentBook.id)
+                        report = base
+                        windowStart = 0
+                        val currentBase = base
+                        if (currentBase != null) TocPanelCache.put(TocPanelKey(currentBook.id, state.length, state.chapters.hashCode()), TocPanelEntry(currentBase, currentBase))
+                    },
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                )
             }
         }
     }

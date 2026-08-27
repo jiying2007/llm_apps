@@ -26,7 +26,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -44,7 +43,12 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
     val s = state.settings
     ReaderPanelSurface(onDismiss = actions.onClosePanel) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.reader_quick_settings), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            ReaderPanelText(
+                stringResource(R.string.reader_quick_settings),
+                Modifier.fillMaxWidth().height(36.dp),
+                fontSizeSp = 22f,
+                bold = true,
+            )
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -61,7 +65,7 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 IconButton({ actions.onSettingsChanged(s.copy(fontSizeSp = (s.fontSizeSp - 1).coerceAtLeast(14f), preset = ReaderPreset.CUSTOM, activeThemeId = "")) }) { Icon(Icons.Default.Remove, stringResource(R.string.font_size)) }
-                Text("${s.fontSizeSp.roundToInt()}sp", Modifier.width(54.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                ReaderPanelText("${s.fontSizeSp.roundToInt()}sp", Modifier.width(54.dp).height(36.dp), centered = true)
                 IconButton({ actions.onSettingsChanged(s.copy(fontSizeSp = (s.fontSizeSp + 1).coerceAtMost(40f), preset = ReaderPreset.CUSTOM, activeThemeId = "")) }) { Icon(Icons.Default.Add, stringResource(R.string.font_size)) }
                 ReaderLinearSlider(
                     value = s.lineHeightMultiplier,
@@ -86,22 +90,28 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
             if (s.readingMode == ReaderMode.CONTINUOUS) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton({ actions.onSettingsChanged(s.copy(autoScrollSpeedDpPerSecond = (s.autoScrollSpeedDpPerSecond - 8f).coerceAtLeast(12f))) }) { Icon(Icons.Default.Remove, stringResource(R.string.reader_auto_scroll_slow)) }
-                    Text(stringResource(R.string.reader_auto_scroll_speed_value, s.autoScrollSpeedDpPerSecond.roundToInt()), Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    ReaderPanelText(
+                        stringResource(R.string.reader_auto_scroll_speed_value, s.autoScrollSpeedDpPerSecond.roundToInt()),
+                        Modifier.weight(1f).height(36.dp),
+                        centered = true,
+                    )
                     IconButton({ actions.onSettingsChanged(s.copy(autoScrollSpeedDpPerSecond = (s.autoScrollSpeedDpPerSecond + 8f).coerceAtMost(320f))) }) { Icon(Icons.Default.Add, stringResource(R.string.reader_auto_scroll_fast)) }
                 }
-                Button(
+                ReaderPanelAction(
+                    text = stringResource(if (state.autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll),
                     onClick = {
                         actions.onClosePanel()
                         actions.onSettingsChanged(s.copy(readingMode = ReaderMode.CONTINUOUS, autoScrollEnabled = !state.autoScrolling))
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(if (state.autoScrolling) Icons.Default.Pause else Icons.Default.PlayArrow, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(if (state.autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll))
-                }
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    filled = true,
+                )
             }
-            OutlinedButton({ actions.onClosePanel(); actions.onOpenPanel(ReaderPanel.SETTINGS) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.reader_advanced_settings)) }
+            ReaderPanelAction(
+                text = stringResource(R.string.reader_advanced_settings),
+                onClick = { actions.onClosePanel(); actions.onOpenPanel(ReaderPanel.SETTINGS) },
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+            )
         }
     }
 }
