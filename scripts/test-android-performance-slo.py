@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -39,6 +41,19 @@ class AndroidPerformanceSloTest(unittest.TestCase):
             report = root / "ReaderJourneyBenchmark-benchmarkData.json"
             report.write_text(json.dumps({"benchmarks": []}), encoding="utf-8")
             self.assertEqual([report], slo.collect_files([directory]))
+
+    def test_reader_profile_product_contract(self) -> None:
+        contract = pathlib.Path(__file__).with_name("verify-reader-profile-contract.py")
+        result = subprocess.run(
+            [sys.executable, str(contract)],
+            cwd=contract.parent.parent,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertIn("Reader V3 Baseline/Startup Profile contract OK", result.stdout)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,9 @@
 package com.junchen.jingdu
 
+import android.graphics.Paint
+import android.text.TextPaint
+import android.text.TextUtils
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -32,12 +36,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.LinkedHashMap
@@ -120,15 +129,16 @@ internal fun ReaderSmartChaptersPanel(
                 LazyColumn(Modifier.heightIn(max = 560.dp)) {
                     items(value.chapters, key = { it.offset }) { chapter ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(
-                                Modifier
+                            val sourceHint = if (chapter.source != "core") stringResource(R.string.toc_source_user_or_special) else null
+                            ChapterTitleCanvas(
+                                title = chapter.title,
+                                special = sourceHint != null,
+                                modifier = Modifier
                                     .weight(1f)
                                     .clickable(role = Role.Button) { actions.onJump(chapter.offset) }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                            ) {
-                                Text(chapter.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                if (chapter.source != "core") Text(stringResource(R.string.toc_source_user_or_special), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            }
+                                    .semantics { contentDescription = if (sourceHint == null) chapter.title else "${chapter.title}, $sourceHint" }
+                                    .padding(horizontal = 12.dp),
+                            )
                             IconButton(onClick = {
                                 val currentBook = book ?: return@IconButton
                                 store.hide(currentBook.id, chapter.offset, state.length)
@@ -169,4 +179,45 @@ internal fun ReaderSmartChaptersPanel(
         }, enabled = title.isNotBlank()) { Text(stringResource(R.string.toc_add_action)) } },
         dismissButton = { TextButton(onClick = { addDialog = false }) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/**
+ * Chapter titles are single-line navigation labels. Drawing them directly avoids creating a
+ * StaticLayout/TextAnnotatedStringNode for every visible row while the clickable row remains a
+ * real Role.Button with a localized accessibility description. Core offsets and jump semantics are
+ * untouched; non-core/user headings keep a small primary-color marker and an accessible hint.
+ */
+@Composable
+private fun ChapterTitleCanvas(title: String, special: Boolean, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val markerColor = MaterialTheme.colorScheme.primary.toArgb()
+    val textSizePx = with(density) { 16.sp.toPx() }
+    val horizontalPaddingPx = with(density) { 2.dp.toPx() }
+    val paint = remember(textColor, textSizePx) {
+        TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = textColor
+            textSize = textSizePx
+        }
+    }
+    val markerPaint = remember(markerColor) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = markerColor }
+    }
+
+    Canvas(modifier.height(52.dp)) {
+        val markerSpace = if (special) 14.dp.toPx() else 0f
+        val available = (size.width - markerSpace - horizontalPaddingPx * 2f).coerceAtLeast(1f)
+        val shown = TextUtils.ellipsize(title, paint, available, TextUtils.TruncateAt.END).toString()
+        val metrics = paint.fontMetrics
+        val baseline = size.height / 2f - (metrics.ascent + metrics.descent) / 2f
+        drawContext.canvas.nativeCanvas.drawText(shown, horizontalPaddingPx, baseline, paint)
+        if (special) {
+            drawContext.canvas.nativeCanvas.drawCircle(
+                size.width - 6.dp.toPx(),
+                size.height / 2f,
+                3.dp.toPx(),
+                markerPaint,
+            )
+        }
+    }
 }

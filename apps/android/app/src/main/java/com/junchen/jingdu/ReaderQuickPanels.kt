@@ -1,9 +1,11 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.junchen.jingdu
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -11,7 +13,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
@@ -31,13 +36,24 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
     ReaderPanelSurface(onDismiss = actions.onClosePanel) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(stringResource(R.string.reader_quick_settings), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text(stringResource(R.string.reader_quick_settings_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 QUICK_PALETTES.forEach { palette ->
-                    FilterChip(s.palette == palette, { actions.onSettingsChanged(s.copy(palette = palette, preset = ReaderPreset.CUSTOM, activeThemeId = "")) }, label = { Text(quickPaletteLabel(palette)) })
+                    val label = quickPaletteLabel(palette)
+                    FilterChip(
+                        selected = s.palette == palette,
+                        onClick = { actions.onSettingsChanged(s.copy(palette = palette, preset = ReaderPreset.CUSTOM, activeThemeId = "")) },
+                        label = {
+                            Box(
+                                Modifier
+                                    .size(24.dp)
+                                    .background(quickPaletteSwatch(palette), CircleShape),
+                            )
+                        },
+                        modifier = Modifier.semantics { contentDescription = label },
+                    )
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -93,4 +109,12 @@ private fun quickPaletteLabel(palette: ReaderPalette): String = when (palette) {
     ReaderPalette.LIGHT -> stringResource(R.string.light)
     ReaderPalette.NIGHT -> stringResource(R.string.night)
     ReaderPalette.OLED -> stringResource(R.string.reader_oled)
+}
+
+private fun quickPaletteSwatch(palette: ReaderPalette): Color = when (palette) {
+    ReaderPalette.PAPER -> Color(0xFFF7F0DE)
+    ReaderPalette.SEPIA -> Color(0xFFF3E5C8)
+    ReaderPalette.LIGHT -> Color(0xFFFFFBFF)
+    ReaderPalette.NIGHT -> Color(0xFF151713)
+    ReaderPalette.OLED -> Color.Black
 }
