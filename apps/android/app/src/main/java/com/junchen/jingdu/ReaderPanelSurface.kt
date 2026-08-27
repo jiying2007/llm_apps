@@ -10,16 +10,15 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * Lightweight in-tree reader panel host. Unlike ModalBottomSheet/Dialog this does not create a
- * second window or run a sheet transition for every open/close, so reader content stays in the
- * same composition tree while back/outside-tap dismissal semantics remain intact.
+ * In-tree reader panel shell with no Material Surface, elevation or shadow layer. Hot Quick/Chapters
+ * panels render one Canvas below this shell, avoiding the texture uploads and deep Material measure
+ * tree visible in hosted Perfetto while preserving scrim/outside-tap/back behavior.
  */
 @Composable
 internal fun ReaderPanelSurface(
@@ -30,16 +29,21 @@ internal fun ReaderPanelSurface(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f))
                 .clickable(onClick = onDismiss),
         )
-        Surface(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            tonalElevation = 6.dp,
-            shadowElevation = 8.dp,
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surface,
+                    RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                )
+                .navigationBarsPadding()
+                .padding(top = 8.dp),
         ) {
-            Column(Modifier.navigationBarsPadding().padding(top = 8.dp)) { content() }
+            content()
         }
     }
 }
