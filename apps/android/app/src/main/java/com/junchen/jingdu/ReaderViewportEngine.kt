@@ -8,6 +8,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.io.Closeable
 import java.util.LinkedHashMap
@@ -146,12 +147,18 @@ internal object ReaderPageLayoutCache {
         map: SourceDisplayMap? = null,
     ): PageLayoutSnapshot {
         val safeColumns = columns.coerceIn(1, 2)
-        val columnWidth = ((widthPx - if (safeColumns == 2) (28f * density.density).roundToInt() else 0) / safeColumns).coerceAtLeast(1)
+        val maxContentWidth = with(density) { (if (safeColumns == 2) 1200.dp else 760.dp).toPx() }.roundToInt()
+        val horizontalPadding = with(density) { settings.horizontalPaddingDp.dp.toPx() }.roundToInt() * 2
+        val verticalPadding = with(density) { settings.verticalPaddingDp.dp.toPx() }.roundToInt() * 2
+        val boundedWidth = minOf(widthPx, maxContentWidth).coerceAtLeast(1)
+        val gap = if (safeColumns == 2) with(density) { 28.dp.toPx() }.roundToInt() else 0
+        val columnWidth = ((boundedWidth - horizontalPadding - gap) / safeColumns).coerceAtLeast(1)
+        val contentHeight = (heightPx - verticalPadding).coerceAtLeast(1)
         val spec = ReaderTypographySpec.from(settings)
         val key = PageLayoutKey(
             textHash = 31 * sourceText.hashCode() + displayText.hashCode(),
-            widthPx = widthPx,
-            heightPx = heightPx,
+            widthPx = columnWidth,
+            heightPx = contentHeight,
             typographyFingerprint = spec.fingerprint,
             columns = safeColumns,
         )
@@ -178,7 +185,7 @@ internal object ReaderPageLayoutCache {
             if (spec.alignment == ReaderTextAlignment.JUSTIFY) builder.setJustificationMode(LineBreaker.JUSTIFICATION_MODE_INTER_WORD)
             val layout = builder.build()
             if (layout.lineCount <= 0) return 0
-            val line = layout.getLineForVertical((heightPx - 1).coerceAtLeast(0))
+            val line = layout.getLineForVertical((contentHeight - 1).coerceAtLeast(0))
             return layout.getLineEnd(line.coerceIn(0, layout.lineCount - 1)).coerceIn(0, text.length)
         }
 
