@@ -81,7 +81,7 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     BoxWithConstraints(modifier.fillMaxWidth().armSelectionOnLongPress(text.text) { selectionMode = true }) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
         val layout by produceState<StaticLayout?>(
-            initialValue = null,
+            null,
             text,
             style,
             widthPx,
@@ -91,16 +91,12 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
             resolvedColor,
         ) {
             value = null
-            value = withContext(Dispatchers.Default) {
-                buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx)
-            }
+            value = withContext(Dispatchers.Default) { buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx) }
         }
         Canvas(Modifier.fillMaxSize()) {
             layout?.let { ready ->
                 val canvas = drawContext.canvas.nativeCanvas
-                canvas.save()
-                ready.draw(canvas)
-                canvas.restore()
+                canvas.save(); ready.draw(canvas); canvas.restore()
             }
         }
     }
@@ -108,13 +104,7 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
 
 /** Continuous keeps the 4K window/TextLayoutResult authority and caches one measured layout. */
 @Composable
-internal fun Text(
-    text: AnnotatedString,
-    modifier: Modifier,
-    style: TextStyle,
-    overflow: TextOverflow,
-    onTextLayout: (TextLayoutResult) -> Unit,
-) {
+internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow, onTextLayout: (TextLayoutResult) -> Unit) {
     val context = LocalContext.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
     var selectionMode by remember(text.text) { mutableStateOf(false) }
@@ -122,7 +112,6 @@ internal fun Text(
         androidx.compose.material3.Text(text = text, modifier = modifier, style = style, overflow = overflow, onTextLayout = onTextLayout)
         return
     }
-
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer(cacheSize = 4)
     BoxWithConstraints(modifier.armSelectionOnLongPress(text.text) { selectionMode = true }) {
@@ -135,22 +124,11 @@ internal fun Text(
     }
 }
 
-private fun buildFastStaticLayout(
-    text: AnnotatedString,
-    style: TextStyle,
-    density: androidx.compose.ui.unit.Density,
-    nativeTypeface: Typeface,
-    resolvedColor: Color,
-    widthPx: Int,
-): StaticLayout {
+private fun buildFastStaticLayout(text: AnnotatedString, style: TextStyle, density: androidx.compose.ui.unit.Density, nativeTypeface: Typeface, resolvedColor: Color, widthPx: Int): StaticLayout {
     val fontSizePx = with(density) { style.fontSize.toPx() }.coerceAtLeast(1f)
-    val lineHeightMultiplier = if (style.lineHeight == TextUnit.Unspecified || style.lineHeight.value <= 0f || style.fontSize.value <= 0f) 1f
-        else (style.lineHeight.value / style.fontSize.value).coerceAtLeast(1f)
-    val letterSpacingEm = if (style.letterSpacing == TextUnit.Unspecified || style.fontSize.value <= 0f) 0f
-        else style.letterSpacing.value / style.fontSize.value
-    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
-        color = resolvedColor.toArgb(); textSize = fontSizePx; letterSpacing = letterSpacingEm; typeface = nativeTypeface
-    }
+    val lineHeightMultiplier = if (style.lineHeight == TextUnit.Unspecified || style.lineHeight.value <= 0f || style.fontSize.value <= 0f) 1f else (style.lineHeight.value / style.fontSize.value).coerceAtLeast(1f)
+    val letterSpacingEm = if (style.letterSpacing == TextUnit.Unspecified || style.fontSize.value <= 0f) 0f else style.letterSpacing.value / style.fontSize.value
+    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { color = resolvedColor.toArgb(); textSize = fontSizePx; letterSpacing = letterSpacingEm; typeface = nativeTypeface }
     val rendered = fastSpannable(text, style, density, resolvedColor)
     return StaticLayout.Builder.obtain(rendered, 0, rendered.length, paint, widthPx)
         .setIncludePad(false)
