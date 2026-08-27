@@ -24,6 +24,11 @@ android {
             signingConfig = signingConfigs.debug
             matchingFallbacks = ["benchmark"]
         }
+        profile {
+            debuggable = true
+            signingConfig = signingConfigs.debug
+            matchingFallbacks = ["profile"]
+        }
     }
 }
 

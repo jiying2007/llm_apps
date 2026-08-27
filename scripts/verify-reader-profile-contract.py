@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -7,6 +8,9 @@ journey = (ROOT / "apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/
 runner = (ROOT / "scripts/run-android-macrobenchmark-ci.sh").read_text(encoding="utf-8")
 checker = (ROOT / "scripts/check-android-performance-slo.py").read_text(encoding="utf-8")
 workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+app_gradle = (ROOT / "apps/android/app/build.gradle").read_text(encoding="utf-8")
+macro_gradle = (ROOT / "apps/android/macrobenchmark/build.gradle").read_text(encoding="utf-8")
+root_gradle = (ROOT / "apps/android/build.gradle").read_text(encoding="utf-8")
 product_baseline_path = ROOT / "apps/android/app/src/main/baseline-prof.txt"
 product_startup_path = ROOT / "apps/android/app/src/main/startup-prof.txt"
 provenance_path = ROOT / "docs/READER_V3_PROFILE_PROVENANCE.md"
@@ -33,19 +37,38 @@ assert "KEYCODE_VOLUME_DOWN" in runtime_block
 assert "requireChaptersClick" in runtime_block
 assert 'By.textContains("Continuous")' in runtime_block
 
-# Product profiles must never weaken or self-feed the original hosted regression gate.
+# Product profiles must never weaken or self-feed the hosted regression gate.
 assert "BaselineProfileMode.Disable" in journey
 assert "warmupIterations = 1" in journey
-assert 'repeat(6) {' in journey, "Reader journeys must retain six interactions"
 assert journey.count('repeat(6) {') >= 2, "page and continuous journeys must both retain six interactions"
 assert 'os.environ.get("JINGDU_FRAME_P95_MS", "40")' in checker
 assert 'os.environ.get("JINGDU_FRAME_P99_MS", "80")' in checker
 assert 'sampled.get("frameDurationCpuMs")' in checker
 
+# Real frame SLO and profile collection intentionally use different target variants. Macrobenchmark
+# must see production-like R8 code; HRF collection must see a non-obfuscated profileable target.
+benchmark_block = app_gradle[app_gradle.index("        benchmark {"):app_gradle.index("        profile {")]
+profile_block = app_gradle[app_gradle.index("        profile {"):app_gradle.index("    sourceSets {")]
+assert "initWith release" in benchmark_block
+assert "minifyEnabled = true" in benchmark_block and "shrinkResources = true" in benchmark_block
+assert "debuggable = false" in benchmark_block
+assert "initWith release" in profile_block
+assert "minifyEnabled = false" in profile_block and "shrinkResources = false" in profile_block
+assert "debuggable = false" in profile_block
+assert 'java.srcDir "src/benchmark/java"' in app_gradle
+assert 'manifest.srcFile "src/benchmark/AndroidManifest.xml"' in app_gradle
+assert "profile {" in macro_gradle and 'matchingFallbacks = ["profile"]' in macro_gradle
+for task in (":app:assembleBenchmark", ":app:assembleProfile", ":macrobenchmark:assembleBenchmark", ":macrobenchmark:assembleProfile"):
+    assert task in root_gradle, f"androidCheck must compile hosted variant: {task}"
+
 slo_call = 'python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"'
 profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE"'
-assert slo_call in runner and profile_call in runner
-assert runner.index(slo_call) < runner.index(profile_call), "profile generation must happen after measured SLO"
+profile_swap = 'install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFILE_TEST_APK"'
+assert slo_call in runner and profile_call in runner and profile_swap in runner
+assert ':app:assembleBenchmark :macrobenchmark:assembleBenchmark' in runner
+assert ':app:assembleProfile :macrobenchmark:assembleProfile' in runner
+assert 'BENCHMARK_TARGET_APK=' in runner and 'PROFILE_TARGET_APK=' in runner
+assert runner.index(slo_call) < runner.index(profile_swap) < runner.index(profile_call), "R8 SLO must freeze before non-minified profile target is installed"
 assert "SLO_STATUS=$?" in runner, "SLO result must be retained across profile generation"
 assert 'preserve_failed_macro_evidence "$MACRO_REMOTE"' in runner
 assert 'PROFILE_RAW="$RESULT_ROOT/profile/raw"' in runner
@@ -56,16 +79,15 @@ last_slo_exit = runner.rfind('exit "$SLO_STATUS"')
 assert last_slo_exit > runner.index(profile_call), "red SLO must still fail after profiles are emitted"
 assert 'GPU_MODE="software"' in runner
 
-# An invalid instrumentation run is infrastructure evidence, not a performance result. One bounded
-# guest recovery is allowed; valid measurements and the no-profile compilation mode are unchanged.
+# An invalid instrumentation run is infrastructure evidence, not a performance result. Exactly one
+# bounded Macrobenchmark recovery is allowed; valid measurements remain untouched.
 assert "return 1" in runner[runner.index("run_instrumentation()") : runner.index("preserve_failed_macro_evidence()")]
 assert "attempting one bounded guest recovery" in runner
 assert "wait_for_android_ready 120" in runner
 assert "INSTRUMENTATION_ABORTED" in runner and "System has crashed" in runner
 assert runner.count("run_instrumentation Macrobenchmark") == 2, "exactly one Macrobenchmark retry is allowed"
 
-# The generated evidence is curated into compact product assets. Startup stays intentionally narrow
-# so runtime panels/scroll code cannot bloat the primary DEX.
+# The generated evidence is curated into compact product assets. Startup stays intentionally narrow.
 assert product_baseline_path.is_file() and product_startup_path.is_file(), "product Baseline/Startup Profile assets missing"
 baseline = product_baseline_path.read_text(encoding="utf-8")
 startup = product_startup_path.read_text(encoding="utf-8")
@@ -89,11 +111,14 @@ for marker in (
 for forbidden in ("ReaderQuickPanelsKt", "ReaderSmartChaptersPanelKt", "foundation/lazy", "continuous"):
     assert forbidden not in startup, f"runtime-only Startup Profile rule retained: {forbidden}"
 assert len(startup.splitlines()) < len(baseline.splitlines()), "Startup Profile must remain a strict compact subset"
+
+# Provenance is evidence for the exact revision family, not a verifier hard-coded to one historical run.
 assert provenance_path.is_file(), "profile provenance missing"
 provenance = provenance_path.read_text(encoding="utf-8")
-assert "32989847747" in provenance and "c98e028bebd1cde06239339bc0222f477da121ac" in provenance
-assert "b5f087a15a354a4ef366e17f85b6ba2a6a63cd581ceb7630a09205c6894632ac" in provenance
-assert "ec605e8e036cccd19c49c3bbc63d022f076a8683c6110b75b6a32f26b9d277af" in provenance
+assert re.search(r"source head: `?[0-9a-f]{40}`?", provenance), "profile provenance source head missing"
+assert re.search(r"run `?[0-9]{8,}`?", provenance), "profile provenance CI run missing"
+profile_evidence = re.findall(r"generated (?:baseline|startup) source: ([0-9,]+) rules, ([0-9,]+) bytes, SHA-256 `([0-9a-f]{64})`", provenance)
+assert len(profile_evidence) == 2, "baseline/startup profile provenance evidence must include rules, bytes and SHA-256"
 
 perf_job = workflow[workflow.index("  android-performance:"):workflow.index("  harmony-contract:")]
 assert "runs-on: ubuntu-22.04" in perf_job, "hosted performance image must be pinned"

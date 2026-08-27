@@ -19,6 +19,7 @@ EMULATOR_LOG="$TEMP_DIR/jingdu-emulator.log"
 EMULATOR_PID=""
 REMOTE_RESULT_ROOT="/sdcard/Download/jingdu-reader-v3-ci"
 RESULT_ROOT="$ANDROID_DIR/macrobenchmark/build/outputs/direct-instrumentation"
+INSTRUMENTATION=""
 export ANDROID_AVD_HOME="$AVD_HOME"
 
 cleanup() {
@@ -65,6 +66,35 @@ wait_for_android_ready() {
     sleep 1
   done
   return 1
+}
+
+resolve_instrumentation() {
+  INSTRUMENTATION="$("$ADB" shell pm list instrumentation | tr -d '\r' | sed -n 's/^instrumentation:\([^ ]*\).*$/\1/p' | grep 'com.junchen.jingdu.macrobenchmark' | head -n 1)"
+  if [[ -z "$INSTRUMENTATION" ]]; then
+    echo "Macrobenchmark instrumentation component was not registered" >&2
+    "$ADB" shell pm list instrumentation >&2 || true
+    return 1
+  fi
+  echo "Macrobenchmark instrumentation: $INSTRUMENTATION"
+}
+
+install_pair() {
+  local label="$1"
+  local target_apk="$2"
+  local test_apk="$3"
+  echo "Installing ${label} target: $target_apk"
+  "$ADB" install -r "$target_apk"
+  echo "Installing ${label} tests: $test_apk"
+  "$ADB" install -r "$test_apk"
+  local target_path
+  target_path="$("$ADB" shell pm path "$TARGET_PACKAGE" 2>/dev/null | tr -d '\r')"
+  if [[ "$target_path" != package:* ]]; then
+    echo "${label} target package is not installed: $TARGET_PACKAGE" >&2
+    "$ADB" shell pm list packages | grep 'com.junchen.jingdu' >&2 || true
+    return 1
+  fi
+  echo "${label} target installed: $target_path"
+  resolve_instrumentation
 }
 
 run_instrumentation() {
@@ -196,38 +226,28 @@ fi
 "$ADB" shell getprop ro.product.cpu.abi
 
 cd "$ANDROID_DIR"
-./gradlew --no-daemon --warning-mode all :app:assembleBenchmark :macrobenchmark:assembleBenchmark
-TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
-TEST_APK="$(find "$ANDROID_DIR/macrobenchmark/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
-if [[ -z "$TARGET_APK" || ! -f "$TARGET_APK" ]]; then
-  echo "Benchmark target APK was not produced" >&2
-  exit 1
-fi
-if [[ -z "$TEST_APK" || ! -f "$TEST_APK" ]]; then
-  echo "Macrobenchmark test APK was not produced" >&2
-  exit 1
-fi
+./gradlew --no-daemon --warning-mode all \
+  :app:assembleBenchmark :macrobenchmark:assembleBenchmark \
+  :app:assembleProfile :macrobenchmark:assembleProfile
+BENCHMARK_TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
+BENCHMARK_TEST_APK="$(find "$ANDROID_DIR/macrobenchmark/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
+PROFILE_TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/profile" -type f -name '*.apk' -print -quit)"
+PROFILE_TEST_APK="$(find "$ANDROID_DIR/macrobenchmark/build/outputs/apk/profile" -type f -name '*.apk' -print -quit)"
+for pair in \
+  "benchmark target:$BENCHMARK_TARGET_APK" \
+  "benchmark test:$BENCHMARK_TEST_APK" \
+  "profile target:$PROFILE_TARGET_APK" \
+  "profile test:$PROFILE_TEST_APK"; do
+  label="${pair%%:*}"
+  path="${pair#*:}"
+  if [[ -z "$path" || ! -f "$path" ]]; then
+    echo "${label} APK was not produced" >&2
+    exit 1
+  fi
+done
 
-echo "Installing Macrobenchmark target: $TARGET_APK"
-"$ADB" install -r "$TARGET_APK"
-echo "Installing Macrobenchmark tests: $TEST_APK"
-"$ADB" install -r "$TEST_APK"
-TARGET_PATH="$("$ADB" shell pm path "$TARGET_PACKAGE" 2>/dev/null | tr -d '\r')"
-if [[ "$TARGET_PATH" != package:* ]]; then
-  echo "Macrobenchmark target package is not installed: $TARGET_PACKAGE" >&2
-  "$ADB" shell pm list packages | grep 'com.junchen.jingdu' >&2 || true
-  exit 1
-fi
-echo "Macrobenchmark target installed: $TARGET_PATH"
-
-INSTRUMENTATION="$("$ADB" shell pm list instrumentation | tr -d '\r' | sed -n 's/^instrumentation:\([^ ]*\).*$/\1/p' | grep 'com.junchen.jingdu.macrobenchmark' | head -n 1)"
-if [[ -z "$INSTRUMENTATION" ]]; then
-  echo "Macrobenchmark instrumentation component was not registered" >&2
-  "$ADB" shell pm list instrumentation >&2 || true
-  exit 1
-fi
-echo "Macrobenchmark instrumentation: $INSTRUMENTATION"
-
+# Stage 1: production-like R8 target. The SLO must be decided before any generated profile exists.
+install_pair "R8 Macrobenchmark" "$BENCHMARK_TARGET_APK" "$BENCHMARK_TEST_APK"
 rm -rf "$RESULT_ROOT"
 mkdir -p "$RESULT_ROOT/macro" "$RESULT_ROOT/profile"
 "$ADB" shell rm -rf "$REMOTE_RESULT_ROOT"
@@ -267,9 +287,10 @@ if (( SLO_STATUS != 0 )); then
   preserve_failed_macro_evidence "$MACRO_REMOTE"
 fi
 
-# Profile collection runs after measured Macrobenchmark and cannot affect the frame SLO above.
-# Always emit canonical merged baseline/startup assets so a red gate can still produce the product
-# profile needed to eliminate measured JIT on the next independent exact-head run.
+# Stage 2: only after the no-profile R8 SLO is frozen, swap to a separate non-minified target so
+# Baseline/Startup HRF method names remain readable. This target can never feed the measurement above.
+echo "Switching from R8 Macrobenchmark target to non-minified Profile target"
+install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFILE_TEST_APK"
 "$ADB" shell rm -rf "$MACRO_REMOTE"
 PROFILE_REMOTE="$REMOTE_RESULT_ROOT/profile"
 run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log"
@@ -277,7 +298,6 @@ PROFILE_RAW="$RESULT_ROOT/profile/raw"
 rm -rf "$PROFILE_RAW"
 mkdir -p "$PROFILE_RAW"
 "$ADB" pull "$PROFILE_REMOTE" "$PROFILE_RAW/"
-
 mapfile -d '' BASELINE_FILES < <(find "$PROFILE_RAW" -type f -name '*baseline-prof.txt' -print0 | sort -z)
 mapfile -d '' STARTUP_FILES < <(find "$PROFILE_RAW" -type f -name '*startup-prof.txt' -print0 | sort -z)
 if ((${#BASELINE_FILES[@]} == 0 || ${#STARTUP_FILES[@]} == 0)); then

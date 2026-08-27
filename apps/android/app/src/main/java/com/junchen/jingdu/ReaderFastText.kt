@@ -58,11 +58,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
 
-/**
- * Paged normal reading reuses the exact worker StaticLayout already built by ReaderPageLayoutCache.
- * The frame thread only refreshes non-geometric visual spans and draws it. A cache miss retains the
- * bounded background fallback, while long press still switches to the native selectable Text path.
- */
+/** Paged normal reading builds StaticLayout on Dispatchers.Default; the frame thread only draws it. */
 @Composable
 internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow) {
     val context = LocalContext.current
@@ -83,26 +79,14 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     val resolvedColor = if (style.color == Color.Unspecified) MaterialTheme.colorScheme.onBackground else style.color
     BoxWithConstraints(modifier.fillMaxWidth().armSelectionOnLongPress(text.text) { selectionMode = true }) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
-        val cached = remember(text.text, widthPx) { ReaderPageLayoutCache.render(text.text, widthPx) }
-        if (cached != null) {
-            Canvas(Modifier.fillMaxSize()) {
-                synchronized(cached) {
-                    applyFastVisualSpans(cached.renderedText, text)
-                    cached.layout.paint.color = resolvedColor.toArgb()
-                    val canvas = drawContext.canvas.nativeCanvas
-                    canvas.save(); cached.layout.draw(canvas); canvas.restore()
-                }
-            }
-        } else {
-            val layout by produceState<StaticLayout?>(null, text, style, widthPx, density.density, density.fontScale, nativeTypeface, resolvedColor) {
-                value = null
-                value = withContext(Dispatchers.Default) { buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx) }
-            }
-            Canvas(Modifier.fillMaxSize()) {
-                layout?.let { ready ->
-                    val canvas = drawContext.canvas.nativeCanvas
-                    canvas.save(); ready.draw(canvas); canvas.restore()
-                }
+        val layout by produceState<StaticLayout?>(null, text, style, widthPx, density.density, density.fontScale, nativeTypeface, resolvedColor) {
+            value = null
+            value = withContext(Dispatchers.Default) { buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx) }
+        }
+        Canvas(Modifier.fillMaxSize()) {
+            layout?.let { ready ->
+                val canvas = drawContext.canvas.nativeCanvas
+                canvas.save(); ready.draw(canvas); canvas.restore()
             }
         }
     }
@@ -131,23 +115,6 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
         LaunchedEffect(layout) { layout?.let(onTextLayout) }
         layout?.let { ready ->
             Canvas(Modifier.fillMaxWidth().height(with(density) { ready.size.height.toDp() })) { drawText(ready) }
-        }
-    }
-}
-
-private fun applyFastVisualSpans(target: SpannableString, source: AnnotatedString) {
-    target.getSpans(0, target.length, BackgroundColorSpan::class.java).forEach(target::removeSpan)
-    target.getSpans(0, target.length, ForegroundColorSpan::class.java).forEach(target::removeSpan)
-    source.spanStyles.forEach { range ->
-        val start = range.start.coerceIn(0, minOf(source.length, target.length))
-        val end = range.end.coerceIn(start, minOf(source.length, target.length))
-        if (end <= start) return@forEach
-        val span = range.item
-        if (span.background != Color.Unspecified) {
-            target.setSpan(BackgroundColorSpan(span.background.toArgb()), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-        if (span.color != Color.Unspecified) {
-            target.setSpan(ForegroundColorSpan(span.color.toArgb()), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
 }

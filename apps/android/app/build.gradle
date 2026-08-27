@@ -39,12 +39,27 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             if (releaseSigningConfigured) signingConfig = signingConfigs.release
         }
+        // Macrobenchmark SLO target: production-like DEX/resource layout, but debug-signed for hosted CI.
         benchmark {
+            initWith release; signingConfig = signingConfigs.debug; matchingFallbacks = ["release"]
+            debuggable = false; minifyEnabled = true; shrinkResources = true
+        }
+        // Baseline/Startup Profile collection must remain non-obfuscated so HRF method names are stable.
+        // It is deliberately a different target from the R8 benchmark measured above.
+        profile {
             initWith release; signingConfig = signingConfigs.debug; matchingFallbacks = ["release"]
             debuggable = false; minifyEnabled = false; shrinkResources = false
         }
     }
-    sourceSets { main { assets.srcDir rootProject.file("../../third_party") } }
+    sourceSets {
+        main { assets.srcDir rootProject.file("../../third_party") }
+        // Hosted-only fixture/provider/profileable manifest are shared by both CI target variants and
+        // never enter the production release source set.
+        profile {
+            java.srcDir "src/benchmark/java"
+            manifest.srcFile "src/benchmark/AndroidManifest.xml"
+        }
+    }
     buildFeatures { compose = true; buildConfig = false }
     androidResources { generateLocaleConfig = true }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
