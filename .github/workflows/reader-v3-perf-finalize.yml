@@ -1,0 +1,196 @@
+name: Reader V3 perf finalizer
+
+on:
+  push:
+    branches:
+      - feat/reader-v3-prelaunch-final
+    paths:
+      - .github/workflows/reader-v3-perf-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feat/reader-v3-prelaunch-final
+
+      - name: Apply targeted Reader V3 performance fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          fast_path = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt')
+          fast = fast_path.read_text()
+          old = '''        layout?.let { ready ->
+              Layout(
+                  modifier = Modifier.fillMaxSize(),
+                  content = {
+                      Canvas(
+                          Modifier
+                              .fillMaxWidth()
+                              .height(with(density) { ready.size.height.toDp() })
+                              .graphicsLayer { translationY = -scrollOffsetPx().coerceAtLeast(0f) },
+                      ) { drawText(ready) }
+                  },
+              ) { measurables, viewport ->
+                  val width = viewport.maxWidth.coerceAtLeast(1)
+                  val height = viewport.maxHeight.coerceAtLeast(1)
+                  val placeable = measurables.firstOrNull()?.measure(
+                      Constraints(minWidth = 0, maxWidth = width, minHeight = 0, maxHeight = Constraints.Infinity),
+                  )
+                  layout(width, height) { placeable?.place(0, 0) }
+              }
+          }
+          '''
+          if old not in fast:
+              raise SystemExit('ReaderFastText continuous layer block drifted')
+          new = '''        layout?.let { ready ->
+              // Keep the state-phase scroll model, but draw into one viewport-sized Canvas. The
+              // previous full-text-height graphics layer could be tens of thousands of pixels tall;
+              // hosted HWUI repeatedly recording/uploading that layer regressed continuous P95/P99.
+              // Reading scrollOffsetPx from draw invalidates drawing only, not composition/layout.
+              Canvas(Modifier.fillMaxSize()) {
+                  val maxOffset = (ready.size.height - viewportHeightPx).coerceAtLeast(0).toFloat()
+                  val canvas = drawContext.canvas
+                  canvas.save()
+                  canvas.translate(0f, -scrollOffsetPx().coerceIn(0f, maxOffset))
+                  drawText(ready)
+                  canvas.restore()
+              }
+          }
+          '''
+          fast = fast.replace(old, new, 1)
+          for line in (
+              'import androidx.compose.foundation.layout.height\n',
+              'import androidx.compose.ui.graphics.graphicsLayer\n',
+              'import androidx.compose.ui.layout.Layout\n',
+          ):
+              fast = fast.replace(line, '')
+          fast_path.write_text(fast)
+
+          chapters_path = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt')
+          chapters = chapters_path.read_text()
+          chapters = chapters.replace(
+              'package com.junchen.jingdu\n\n',
+              'package com.junchen.jingdu\n\nimport android.content.Context\n',
+              1,
+          )
+          cache_old = '''    @Synchronized fun get(key: TocPanelKey): TocPanelEntry? = entries[key]
+              @Synchronized fun put(key: TocPanelKey, entry: TocPanelEntry) { entries[key] = entry }
+          }
+
+          /** Canonical Smart TOC route with one Canvas and a bounded eight-row viewport. */
+          '''
+          if cache_old not in chapters:
+              raise SystemExit('TocPanelCache block drifted')
+          cache_new = '''    @Synchronized fun get(key: TocPanelKey): TocPanelEntry? = entries[key]
+              @Synchronized fun get(bookId: String, revision: String, length: Long): TocPanelEntry? =
+                  entries.entries.firstOrNull { (key, _) ->
+                      key.bookId == bookId && key.revision == revision && key.length == length
+                  }?.value
+              @Synchronized fun put(key: TocPanelKey, entry: TocPanelEntry) { entries[key] = entry }
+          }
+
+          /**
+           * Promote the already-import-prewarmed Smart TOC disk cache into the tiny in-process panel
+           * cache while the reader itself is opening on a worker. This keeps the first user tap on
+           * Chapters to a single presentation phase without hydrating global reader chapter state.
+           */
+          internal fun prewarmReaderSmartChaptersPanel(
+              context: Context,
+              bookId: String,
+              revision: String,
+              length: Long,
+          ) {
+              if (bookId.isBlank() || revision.isBlank() || length <= 0L) return
+              if (TocPanelCache.get(bookId, revision, length) != null) return
+              val appContext = context.applicationContext
+              val base = SmartTocCacheStore(appContext).load(bookId, revision, length) ?: return
+              val key = TocPanelKey(bookId, revision, length, base.chapters.hashCode())
+              if (TocPanelCache.get(key) != null) return
+              val store = TocOverrideStore(appContext)
+              val computed = store.apply(base, store.load(bookId, length))
+              TocPanelCache.put(key, TocPanelEntry(base, computed))
+          }
+
+          /** Canonical Smart TOC route with one Canvas and a bounded eight-row viewport. */
+          '''
+          chapters = chapters.replace(cache_old, cache_new, 1)
+
+          state_old = '''    val store = remember { TocOverrideStore(context) }
+              val derivedCache = remember { SmartTocCacheStore(context) }
+              var base by remember(book?.id) { mutableStateOf<TocQualityReport?>(null) }
+              var report by remember(book?.id) { mutableStateOf<TocQualityReport?>(null) }
+              var loading by remember(book?.id) { mutableStateOf(!state.chaptersLoaded) }
+          '''
+          if state_old not in chapters:
+              raise SystemExit('ReaderSmartChaptersPanel state block drifted')
+          state_new = '''    val store = remember { TocOverrideStore(context) }
+              val derivedCache = remember { SmartTocCacheStore(context) }
+              val initial = remember(book?.id, book?.normalizedSha256, state.length) {
+                  book?.let { TocPanelCache.get(it.id, it.normalizedSha256, state.length) }
+              }
+              var base by remember(book?.id, book?.normalizedSha256, state.length) { mutableStateOf(initial?.base) }
+              var report by remember(book?.id, book?.normalizedSha256, state.length) { mutableStateOf(initial?.report) }
+              var loading by remember(book?.id, book?.normalizedSha256, state.length) { mutableStateOf(initial == null && !state.chaptersLoaded) }
+          '''
+          chapters = chapters.replace(state_old, state_new, 1)
+          effect_old = '''        if (book == null) { base = null; report = null; loading = false; windowStart = 0; return@LaunchedEffect }
+
+              // Import/re-decode prewarms this revision cache. Paint it first so opening Chapters does not
+          '''
+          if effect_old not in chapters:
+              raise SystemExit('ReaderSmartChaptersPanel effect block drifted')
+          effect_new = '''        if (book == null) { base = null; report = null; loading = false; windowStart = 0; return@LaunchedEffect }
+              if (initial != null) return@LaunchedEffect
+
+              // Import/re-decode prewarms this revision cache. Paint it first so opening Chapters does not
+          '''
+          chapters = chapters.replace(effect_old, effect_new, 1)
+          chapters_path.write_text(chapters)
+
+          activity_path = Path('apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt')
+          activity = activity_path.read_text()
+          open_old = '''                candidate.open(file, restored)
+                          if (token != workGeneration.get() || isDestroyed) { candidate.close(); return@execute }
+                          main.post {
+          '''
+          if open_old not in activity:
+              raise SystemExit('MainActivity openBook block drifted')
+          open_new = '''                candidate.open(file, restored)
+                          if (!clean) {
+                              runCatching {
+                                  prewarmReaderSmartChaptersPanel(
+                                      applicationContext,
+                                      book.id,
+                                      book.normalizedSha256,
+                                      candidate.length(),
+                                  )
+                              }
+                          }
+                          if (token != workGeneration.get() || isDestroyed) { candidate.close(); return@execute }
+                          main.post {
+          '''
+          activity = activity.replace(open_old, open_new, 1)
+          activity_path.write_text(activity)
+          PY
+
+      - name: Commit finalizer result
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-v3-perf-finalize.yml
+          git add \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
+          git diff --cached --check
+          git commit -m 'perf(android): collapse final reader hot paths'
+          git push origin HEAD:feat/reader-v3-prelaunch-final
