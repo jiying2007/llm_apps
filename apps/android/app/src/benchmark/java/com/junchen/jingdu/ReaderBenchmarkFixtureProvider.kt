@@ -41,7 +41,9 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                     preferences.load().copy(
                         readingMode = mode,
                         autoScrollEnabled = false,
-                        controlsAutoHideMs = 60_000L,
+                        // Match the production default. The benchmark must not keep controls resident
+                        // for 60 seconds because that changes the measured reader composition workload.
+                        controlsAutoHideMs = 3500L,
                         gestureCoachDismissed = true,
                         advancedGestureCustomizationEnabled = false,
                         centerTapAction = ReaderGestureAction.CONTROLS,
@@ -52,7 +54,9 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                         hapticEnabled = false,
                     ),
                 )
-                Bundle().apply { putString("mode", mode.name) }
+                // A numeric ACK survives R8 enum optimization and proves the synchronous DataStore
+                // flush above completed. The caller already knows which mode it requested.
+                Bundle().apply { putLong("modeApplied", 1L) }
             }
             "clear" -> {
                 val repository = BookRepository(context)

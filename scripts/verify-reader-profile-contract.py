@@ -11,6 +11,8 @@ workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 app_gradle = (ROOT / "apps/android/app/build.gradle").read_text(encoding="utf-8")
 macro_gradle = (ROOT / "apps/android/macrobenchmark/build.gradle").read_text(encoding="utf-8")
 root_gradle = (ROOT / "apps/android/build.gradle").read_text(encoding="utf-8")
+benchmark_provider = (ROOT / "apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt").read_text(encoding="utf-8")
+proguard = (ROOT / "apps/android/app/proguard-rules.pro").read_text(encoding="utf-8")
 product_baseline_path = ROOT / "apps/android/app/src/main/baseline-prof.txt"
 product_startup_path = ROOT / "apps/android/app/src/main/startup-prof.txt"
 provenance_path = ROOT / "docs/READER_V3_PROFILE_PROVENANCE.md"
@@ -60,6 +62,13 @@ assert 'manifest.srcFile "src/benchmark/AndroidManifest.xml"' in app_gradle
 assert "profile {" in macro_gradle and 'matchingFallbacks = ["profile"]' in macro_gradle
 for task in (":app:assembleBenchmark", ":app:assembleProfile", ":macrobenchmark:assembleBenchmark", ":macrobenchmark:assembleProfile"):
     assert task in root_gradle, f"androidCheck must compile hosted variant: {task}"
+
+# The hosted fixture is a stable R8-safe protocol and must match the real reader environment.
+assert "controlsAutoHideMs = 3500L" in benchmark_provider, "benchmark must use production controls auto-hide"
+assert "controlsAutoHideMs = 60_000L" not in benchmark_provider, "benchmark-only persistent controls bias retained"
+assert 'putLong("modeApplied", 1L)' in benchmark_provider, "R8-stable benchmark mode ACK missing"
+assert 'result.contains("modeApplied=1")' in journey, "Macrobenchmark mode ACK contract missing"
+assert "-keep class com.junchen.jingdu.ReaderBenchmarkFixtureProvider { *; }" in proguard, "hosted fixture provider R8 keep missing"
 
 slo_call = 'python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"'
 profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE"'
