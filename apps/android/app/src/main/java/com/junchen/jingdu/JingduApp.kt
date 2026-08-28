@@ -34,7 +34,7 @@ data class JingduActions(
     val onBackToLibrary: () -> Unit, val onNavigatePrevious: () -> Unit, val onNavigateNext: () -> Unit, val onSeekFraction: (Float) -> Unit,
     val onVisibleCharsChanged: (Long) -> Unit, val onOpenPanel: (ReaderPanel) -> Unit, val onClosePanel: () -> Unit,
     val onSearchQueryChanged: (String) -> Unit, val onSearch: (String) -> Unit, val onJump: (Long) -> Unit, val onSyncTtsPosition: (Long) -> Unit,
-    val onCommitContinuousPosition: (Long) -> Unit, val onEnsureChapters: () -> Unit,
+    val onEnsureChapters: () -> Unit,
     val onAddBookmark: () -> Unit, val onDeleteBookmark: (Long) -> Unit,
     val onAddAnnotation: (Long, Long, ReaderAnnotationKind, ReaderHighlightStyle, String, String) -> Unit,
     val onDeleteAnnotation: (String) -> Unit,
