@@ -83,6 +83,11 @@ install_pair() {
   local label="$1"
   local target_apk="$2"
   local test_apk="$3"
+  # Large evidence transfers can transiently bounce adbd. Every target boundary must first recover
+  # the guest so an SLO failure cannot prevent the independent Baseline/Startup Profile contract.
+  if ! wait_for_android_ready 120; then
+    fail_emulator "Android guest is unavailable before ${label} target installation"
+  fi
   # R8 benchmark and non-minified profile are separate target contracts. Never let package data,
   # running processes, compiled code or a stale instrumentation package cross that boundary.
   "$ADB" uninstall "$TEST_PACKAGE" >/dev/null 2>&1 || true
@@ -297,15 +302,12 @@ python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"
 SLO_STATUS=$?
 set -e
 find "$RESULT_ROOT/macro" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
-if (( SLO_STATUS != 0 )); then
-  preserve_failed_macro_evidence "$MACRO_REMOTE"
-fi
 
 # Stage 2: only after the no-profile R8 SLO is frozen, swap to a separate non-minified target so
-# Baseline/Startup HRF method names remain readable. This target can never feed the measurement above.
+# Baseline/Startup HRF method names remain readable. Keep remote Macro traces untouched until Profile
+# completes; bulk pulling them first can transiently knock adbd offline on hosted emulators.
 echo "Switching from R8 Macrobenchmark target to non-minified Profile target"
 install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFILE_TEST_APK"
-"$ADB" shell rm -rf "$MACRO_REMOTE"
 PROFILE_REMOTE="$REMOTE_RESULT_ROOT/profile"
 PROFILE_CLASS="com.junchen.jingdu.macrobenchmark.BaselineProfileGenerator"
 run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log" "$PROFILE_CLASS"
@@ -328,5 +330,6 @@ echo "Canonical Reader V3 baseline rules: $(wc -l < "$RESULT_ROOT/profile/baseli
 echo "Canonical Reader V3 startup rules: $(wc -l < "$RESULT_ROOT/profile/startup-prof.txt")"
 
 if (( SLO_STATUS != 0 )); then
+  preserve_failed_macro_evidence "$MACRO_REMOTE"
   exit "$SLO_STATUS"
 fi
