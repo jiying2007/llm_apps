@@ -5,8 +5,10 @@ import android.view.KeyEvent
 import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import org.junit.Rule
 import org.junit.Test
@@ -18,84 +20,93 @@ class BaselineProfileGenerator {
     @get:Rule val baselineProfileRule = BaselineProfileRule()
 
     /** Startup Profile contains only the first-display path; runtime CUJs belong in Baseline only. */
-    @Test fun readerV3Startup() = baselineProfileRule.collect(
-        packageName = PACKAGE_NAME,
-        maxIterations = 10,
-        stableIterations = 3,
-        includeInStartupProfile = true,
-        outputFilePrefix = "jingdu-reader-v3-startup",
-    ) {
-        pressHome()
-        seedFixture()
-        setReaderMode("paged")
-        startActivityAndWait()
-        openFixture()
+    @Test fun readerV3Startup() {
+        prepareProfileTarget("paged")
+        baselineProfileRule.collect(
+            packageName = PACKAGE_NAME,
+            maxIterations = 10,
+            stableIterations = 3,
+            includeInStartupProfile = true,
+            outputFilePrefix = "jingdu-reader-v3-startup",
+        ) {
+            pressHome()
+            startActivityAndWait()
+            openFixture()
+        }
     }
 
     /** Page turn, continuous scroll and panel navigation are runtime-critical Baseline Profile CUJs. */
-    @Test fun readerV3CriticalJourneys() = baselineProfileRule.collect(
-        packageName = PACKAGE_NAME,
-        maxIterations = 10,
-        stableIterations = 3,
-        includeInStartupProfile = false,
-        outputFilePrefix = "jingdu-reader-v3-critical",
-    ) {
-        pressHome()
-        seedFixture()
-        setReaderMode("paged")
-        startActivityAndWait()
-        openFixture()
+    @Test fun readerV3CriticalJourneys() {
+        prepareProfileTarget("paged")
+        baselineProfileRule.collect(
+            packageName = PACKAGE_NAME,
+            maxIterations = 10,
+            stableIterations = 3,
+            includeInStartupProfile = false,
+            outputFilePrefix = "jingdu-reader-v3-critical",
+        ) {
+            pressHome()
+            startActivityAndWait()
+            openFixture()
 
-        repeat(10) {
-            check(device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)) { "Reader V3 baseline volume-key page turn was not injected" }
+            repeat(10) {
+                check(device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)) { "Reader V3 baseline volume-key page turn was not injected" }
+                device.waitForIdle()
+            }
+
+            ensureTopControlsVisible()
+            requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
+            requireContinuousModeClick()
+            device.waitForIdle()
+            device.pressBack()
+            device.waitForIdle()
+            SystemClock.sleep(500)
+
+            repeat(4) {
+                check(device.swipe(
+                    device.displayWidth / 2,
+                    (device.displayHeight * 0.80).toInt(),
+                    device.displayWidth / 2,
+                    (device.displayHeight * 0.25).toInt(),
+                    24,
+                )) { "Reader V3 baseline continuous-scroll swipe was not injected" }
+            }
+            device.waitForIdle()
+
+            ensureTopControlsVisible()
+            requireChaptersClick()
+            device.waitForIdle()
+            device.pressBack()
         }
-
-        ensureTopControlsVisible()
-        requireClick(By.text("Aa"), "quick reading settings control")
-        device.waitForIdle()
-        requireContinuousModeClick()
-        device.waitForIdle()
-        device.pressBack()
-        device.waitForIdle()
-        SystemClock.sleep(500)
-
-        repeat(4) {
-            check(device.swipe(
-                device.displayWidth / 2,
-                (device.displayHeight * 0.80).toInt(),
-                device.displayWidth / 2,
-                (device.displayHeight * 0.25).toInt(),
-                24,
-            )) { "Reader V3 baseline continuous-scroll swipe was not injected" }
-        }
-        device.waitForIdle()
-
-        ensureTopControlsVisible()
-        requireChaptersClick()
-        device.waitForIdle()
-        device.pressBack()
     }
 
-    private fun MacrobenchmarkScope.seedFixture() {
-        val result = device.executeShellCommand(
+    /**
+     * Provision fixture state before BaselineProfileRule enters its compilation/reset loop. Provider
+     * startup is test infrastructure, not part of the product CUJ being profiled, and launching it
+     * from inside CompilationMode.Partial made provider publication race the profile compiler on CI.
+     */
+    private fun prepareProfileTarget(mode: String) {
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        device.executeShellCommand("logcat -c")
+        val seed = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 10",
         )
-        check(result.contains("bytes=")) {
-            "Reader V3 baseline fixture seed failed: $result\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics()}"
+        check(seed.contains("bytes=")) {
+            "Reader V3 baseline fixture seed failed before profile collection: $seed\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics(device)}"
         }
-    }
-
-    private fun MacrobenchmarkScope.setReaderMode(mode: String) {
-        val result = device.executeShellCommand(
+        val modeResult = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
-        check(result.contains("Result: Bundle[{}]")) {
-            "Reader V3 baseline mode setup failed: $result\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics()}"
+        check(modeResult.contains("Result: Bundle[{}]")) {
+            "Reader V3 baseline mode setup failed before profile collection: $modeResult\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics(device)}"
         }
+        // BaselineProfileRule owns product-process startup. Leave a fully provisioned but stopped
+        // package so compilation/profile collection begins from a deterministic lifecycle boundary.
+        device.executeShellCommand("am force-stop $PACKAGE_NAME")
     }
 
-    private fun MacrobenchmarkScope.profileDiagnostics(): String = buildString {
+    private fun profileDiagnostics(device: UiDevice): String = buildString {
         append("package-path:\n")
         append(device.executeShellCommand("pm path $PACKAGE_NAME").trim().ifEmpty { "<not-installed>" })
         append("\nprovider:\n")
@@ -104,6 +115,12 @@ class BaselineProfileGenerator {
         append(device.executeShellCommand("pidof $PACKAGE_NAME").trim().ifEmpty { "<not-running>" })
         append("\nexit-info:\n")
         append(device.executeShellCommand("dumpsys activity exit-info $PACKAGE_NAME").takeLast(12_000))
+        append("\nlogcat:\n")
+        append(
+            device.executeShellCommand(
+                "logcat -d -t 300 AndroidRuntime:E ActivityManager:I ActivityTaskManager:I '*:S'",
+            ).takeLast(20_000),
+        )
     }
 
     private fun MacrobenchmarkScope.openFixture() {
