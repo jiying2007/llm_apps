@@ -74,11 +74,6 @@ fun JingduApp(
     MaterialTheme(colorScheme = scheme) {
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
-        // Chapter data is a Reader lifecycle concern, not a hidden panel side effect. Keep the JDX3/Core
-        // table warm before a likely Chapters open while the panel UI itself remains completely absent.
-        LaunchedEffect(state.screen, state.currentBook?.id, state.chaptersLoaded) {
-            if (state.screen == AppScreen.READER && state.currentBook != null && !state.chaptersLoaded) actions.onEnsureChapters()
-        }
 
         val latestPosition = rememberUpdatedState(state.position)
         val latestLength = rememberUpdatedState(state.length)
