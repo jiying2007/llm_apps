@@ -22,6 +22,7 @@ forbid_literal() {
 required=(
   docs/READER_V3_PRELAUNCH_FINAL.md
   apps/android/readerproto/src/main/proto/reader_settings.proto
+  apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
   apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt
@@ -37,6 +38,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurface.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
   apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
@@ -64,6 +66,7 @@ prefs=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
 screen=apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
 engine=apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt
 controller=apps/android/app/src/main/java/com/junchen/jingdu/ReaderController.java
+book_repository=apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.java
 pipeline=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt
 annotations=apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt
 stats=apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt
@@ -74,6 +77,7 @@ quick_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.
 panel_surface=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurface.kt
 smart_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
 smart_toc_cache=apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
+hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
 service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 player=apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
 navigator=apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
@@ -115,9 +119,12 @@ require_literal "$controller" 'PAGE_CACHE_CHARS = 64 * 1024L' 'page cache size'
 require_literal "$controller" 'PAGE_CACHE_PREFETCH_MARGIN_CHARS = 8192L' 'page prefetch margin'
 require_literal "$controller" 'jingdu-page-prefetch' 'page prefetch worker'
 require_literal "$engine" 'ReaderController(false)' 'continuous isolated controller'
-require_literal "$engine" 'CONTINUOUS_WINDOW_CHARS = 3072L' '3K continuous window'
-require_literal "$engine" 'CONTINUOUS_ALIGN_CHARS = 768L' 'continuous alignment'
-require_literal "$engine" 'CONTINUOUS_BACK_BUFFER_CHARS = 768L' 'continuous back buffer'
+require_literal "$engine" 'CONTINUOUS_WINDOW_CHARS = 2048L' '2K continuous window'
+require_literal "$engine" 'CONTINUOUS_ALIGN_CHARS = 512L' 'continuous alignment'
+require_literal "$engine" 'CONTINUOUS_BACK_BUFFER_CHARS = 512L' 'continuous back buffer'
+require_literal "$book_repository" 'prewarmChapterIndex(book);' 'import-time chapter index prewarm'
+require_literal "$book_repository" 'prewarmChapterIndex(updated);' 'redecode chapter index prewarm'
+require_literal "$book_repository" 'source.chapters();' 'authoritative Core chapter prewarm'
 require_literal "$smart_toc" 'MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC = 20' 'sparse TOC threshold'
 require_literal "$smart_toc" 'if (merged.size < MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC)' 'sparse-only TOC enrichment'
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt 'PARAGRAPH_SPACER' 'paragraph spacing sentinel'
@@ -134,6 +141,8 @@ require_literal "$screen" 'AUTO_SCROLL_COMMIT_CHARS = 512L' 'auto-scroll commit 
 forbid_literal "$screen" 'abs(absolute - lastCommitted) >= 192' 'old noisy commit threshold'
 require_literal "$screen" 'MAX_CHAPTER_TICKS = 96' 'chapter tick bound'
 require_literal "$screen" 'take(MAX_CHAPTER_TICKS)' 'bounded chapter ticks'
+require_literal "$hot_controls" 'Exact overload used by ReaderReadingStatusV3' 'Canvas reading status text'
+require_literal "$hot_controls" 'Canvas(modifier.fillMaxWidth().height(22.dp))' 'fixed-cost status drawing'
 
 require_literal "$activity" 'progressWorkers: ExecutorService' 'progress IO worker'
 require_literal "$activity" 'tocWorkers: ExecutorService' 'TOC worker'
@@ -252,6 +261,7 @@ require_literal "$benchmark_runner" 'no-isolated-storage true' 'benchmark eviden
 require_literal "$benchmark_runner" 'androidx.benchmark.enabledRules' 'benchmark rule filter'
 require_literal "$benchmark_runner" 'run_instrumentation Macrobenchmark' 'Macrobenchmark instrumentation'
 require_literal "$benchmark_runner" 'run_instrumentation BaselineProfile' 'BaselineProfile instrumentation'
+require_literal "$benchmark_runner" 'Android guest is unavailable before ${label} target installation' 'target-swap guest readiness'
 require_literal "$benchmark_runner" 'benchmarkData.json' 'benchmarkData evidence'
 require_literal "$benchmark_runner" 'baseline-prof.txt' 'baseline profile evidence'
 require_literal "$benchmark_runner" 'startup-prof.txt' 'startup profile evidence'
