@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if old not in text:
+        raise SystemExit(f"{label} drifted")
+    return text.replace(old, new, 1)
+
+
+# Continuous: keep the state-phase ScrollableState, but make Android StaticLayout the
+# geometry and native draw authority. Layout.draw() uses the Canvas clip to visit only
+# visible lines instead of repainting the full Compose MultiParagraph on every swipe frame.
+fast_path = Path("apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt")
+fast = fast_path.read_text()
+start = fast.index("/** Continuous measures once, records one static text layer, then scrolls by layer translation only. */")
+end = fast.index("\nprivate fun buildFastStaticLayout", start)
+continuous = '''/** Native bounded continuous layout: one worker-built StaticLayout owns geometry and drawing. */
+internal class ReaderContinuousLayout internal constructor(internal val layout: StaticLayout) {
+    val lineCount: Int get() = layout.lineCount
+    val height: Int get() = layout.height
+    fun getLineForOffset(offset: Int): Int = layout.getLineForOffset(offset.coerceAtLeast(0))
+    fun getLineTop(line: Int): Float = layout.getLineTop(line.coerceIn(0, (layout.lineCount - 1).coerceAtLeast(0))).toFloat()
+    fun getLineForVerticalPosition(y: Float): Int = layout.getLineForVertical(y.roundToInt().coerceAtLeast(0))
+    fun getLineStart(line: Int): Int = layout.getLineStart(line.coerceIn(0, (layout.lineCount - 1).coerceAtLeast(0)))
+}
+
+/** Continuous keeps the 4K bounded window; scroll frames draw only clipped native lines. */
+@Composable
+internal fun Text(
+    text: AnnotatedString,
+    modifier: Modifier,
+    style: TextStyle,
+    overflow: TextOverflow,
+    scrollableState: ScrollableState,
+    scrollOffsetPx: () -> Float,
+    onScrollRange: (Int) -> Unit,
+    onTextLayout: (ReaderContinuousLayout) -> Unit,
+) {
+    val context = LocalContext.current
+    val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
+    var selectionMode by remember(text.text) { mutableStateOf(false) }
+    val fallback = selectionMode || accessibility.isTouchExplorationEnabled
+    val density = LocalDensity.current
+    val resolver = LocalFontFamilyResolver.current
+    val nativeTypeface by resolver.resolveAsTypeface(
+        fontFamily = style.fontFamily,
+        fontWeight = style.fontWeight ?: FontWeight.Normal,
+        fontStyle = style.fontStyle ?: FontStyle.Normal,
+        fontSynthesis = style.fontSynthesis ?: FontSynthesis.All,
+    )
+    val resolvedColor = if (style.color == Color.Unspecified) MaterialTheme.colorScheme.onBackground else style.color
+    val baseModifier = modifier
+        .fillMaxSize()
+        .clipToBounds()
+        .armSelectionOnLongPress(text.text) { selectionMode = true }
+    BoxWithConstraints(if (fallback) baseModifier else baseModifier.scrollable(scrollableState, Orientation.Vertical)) {
+        val widthPx = constraints.maxWidth.coerceAtLeast(1)
+        val viewportHeightPx = constraints.maxHeight.coerceAtLeast(1)
+        val layout by produceState<ReaderContinuousLayout?>(
+            null,
+            text,
+            style,
+            overflow,
+            widthPx,
+            density.density,
+            density.fontScale,
+            nativeTypeface,
+            resolvedColor,
+        ) {
+            value = withContext(Dispatchers.Default) {
+                ReaderContinuousLayout(buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx))
+            }
+        }
+        LaunchedEffect(layout, viewportHeightPx) {
+            layout?.let { ready ->
+                onTextLayout(ready)
+                onScrollRange((ready.height - viewportHeightPx).coerceAtLeast(0))
+            }
+        }
+        val ready = layout
+        if (fallback) {
+            val fallbackScroll = rememberScrollState(initial = scrollOffsetPx().roundToInt().coerceAtLeast(0))
+            androidx.compose.material3.Text(
+                text = text,
+                modifier = Modifier.fillMaxSize().verticalScroll(fallbackScroll),
+                style = style,
+                overflow = overflow,
+            )
+        } else if (ready != null) {
+            Canvas(Modifier.fillMaxSize()) {
+                val maxOffset = (ready.height - viewportHeightPx).coerceAtLeast(0).toFloat()
+                ready.layout.paint.color = resolvedColor.toArgb()
+                val canvas = drawContext.canvas.nativeCanvas
+                canvas.save()
+                canvas.clipRect(0f, 0f, size.width, size.height)
+                canvas.translate(0f, -scrollOffsetPx().coerceIn(0f, maxOffset))
+                ready.layout.draw(canvas)
+                canvas.restore()
+            }
+        }
+    }
+}
+'''
+fast = fast[:start] + continuous + fast[end:]
+for line in (
+    "import androidx.compose.ui.text.TextLayoutResult\n",
+    "import androidx.compose.ui.text.drawText\n",
+    "import androidx.compose.ui.text.rememberTextMeasurer\n",
+    "import androidx.compose.ui.unit.Constraints\n",
+):
+    fast = fast.replace(line, "")
+fast_path.write_text(fast)
+
+screen_path = Path("apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt")
+screen = screen_path.read_text()
+screen = screen.replace("import androidx.compose.ui.text.TextLayoutResult\n", "")
+screen = replace_once(
+    screen,
+    "    var layoutResult by remember(book.id) { mutableStateOf<TextLayoutResult?>(null) }\n",
+    "    var layoutResult by remember(book.id) { mutableStateOf<ReaderContinuousLayout?>(null) }\n",
+    "continuous layout state",
+)
+
+# Panel journey spikes appear after controls auto-hide. Keep the production 3.5s policy,
+# exact controls and semantics, but remove reveal fades and Material elevation surfaces.
+screen = replace_once(
+    screen,
+    "        AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {\n",
+    "        if (controlsVisible) Box(Modifier.align(Alignment.TopCenter)) {\n",
+    "top controls visibility",
+)
+screen = replace_once(
+    screen,
+    "        AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {\n",
+    "        if (controlsVisible) Box(Modifier.align(Alignment.BottomCenter)) {\n",
+    "bottom controls visibility",
+)
+screen = replace_once(
+    screen,
+    "    Surface(tonalElevation = 2.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {\n",
+    "    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))) {\n",
+    "top bar surface",
+)
+screen = replace_once(
+    screen,
+    "    Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)) {\n",
+    "    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))) {\n",
+    "bottom bar surface",
+)
+screen_path.write_text(screen)
+
+# Curate the independently generated #701 critical-CUJ evidence into the next fresh install.
+profile_path = Path("apps/android/app/src/main/baseline-prof.txt")
+lines = profile_path.read_text().splitlines()
+additions = [
+    "HPLcom/junchen/jingdu/ReaderFastTextKt;->**(**)**",
+    "HPLcom/junchen/jingdu/ReaderHotControlsKt;->**(**)**",
+    "HPLcom/junchen/jingdu/ReaderHotPanelCanvasKt;->**(**)**",
+    "HPLandroidx/compose/foundation/CanvasKt;->**(**)**",
+    "HPLandroidx/compose/foundation/gestures/**->**(**)**",
+    "HPLandroidx/compose/foundation/layout/**->**(**)**",
+    "HPLandroidx/compose/material3/ButtonKt;->**(**)**",
+    "HPLandroidx/compose/material3/IconButtonKt;->**(**)**",
+    "HPLandroidx/compose/material3/IconKt;->**(**)**",
+]
+for item in additions:
+    if item not in lines:
+        lines.append(item)
+profile_path.write_text("\n".join(lines) + "\n")
+
+verifier_path = Path("scripts/verify-reader-profile-contract.py")
+verifier = verifier_path.read_text()
+app_marker = '    "Lcom/junchen/jingdu/ReaderSmartChaptersPanelKt;",\n'
+if app_marker not in verifier:
+    raise SystemExit("profile verifier app marker drifted")
+verifier = verifier.replace(
+    app_marker,
+    app_marker
+    + '    "Lcom/junchen/jingdu/ReaderFastTextKt;",\n'
+    + '    "Lcom/junchen/jingdu/ReaderHotControlsKt;",\n'
+    + '    "Lcom/junchen/jingdu/ReaderHotPanelCanvasKt;",\n',
+    1,
+)
+framework_marker = '    "Landroidx/compose/ui/layout/**",\n'
+if framework_marker not in verifier:
+    raise SystemExit("profile verifier framework marker drifted")
+verifier = verifier.replace(
+    framework_marker,
+    framework_marker
+    + '    "Landroidx/compose/foundation/CanvasKt;",\n'
+    + '    "Landroidx/compose/foundation/gestures/**",\n'
+    + '    "Landroidx/compose/foundation/layout/**",\n'
+    + '    "Landroidx/compose/material3/ButtonKt;",\n'
+    + '    "Landroidx/compose/material3/IconButtonKt;",\n'
+    + '    "Landroidx/compose/material3/IconKt;",\n',
+    1,
+)
+verifier_path.write_text(verifier)
+
+Path("docs/READER_V3_PROFILE_PROVENANCE.md").write_text('''# Reader V3 profile provenance
+
+The product Baseline/Startup Profile assets are trace-derived, curated HRF rules. They intentionally stay compact instead of committing raw device-wide capture noise from Compose/framework dependencies.
+
+Authoritative generation evidence for this revision family:
+
+- source head: `09e0d7f988c74507d5a6c5442f95e91e8864f9bc`
+- GitHub Actions CI: `#701` / run `33191024009`
+- generated baseline source: 24,466 rules, 2,549,632 bytes, SHA-256 `03ec774b23504e8397980382602a8df6f50f4bb6cbabf569730ab28ec984a426`
+- generated startup source: 22,781 rules, 2,342,202 bytes, SHA-256 `946667b8ea7cd0a156fd75bd449694aae3115ce78a4e9226626d4c251b4048ce`
+
+The committed `src/main/baseline-prof.txt` keeps the app-owned Reader V3 hot classes plus only framework families proven hot by the critical journeys. The #701 capture specifically promoted `ReaderFastTextKt`, `ReaderHotControlsKt`, `ReaderHotPanelCanvasKt`, Canvas/gesture/layout and Material button/icon paths. `src/main/startup-prof.txt` remains deliberately narrower and contains only the launcher/library/reader startup funnel; runtime panel/scroll packages are not wildcarded into Startup Profile.
+
+Performance gating is independent and cannot self-feed: `ReaderJourneyBenchmark` measures the production R8 APK first with `CompilationMode.Partial(BaselineProfileMode.Require, warmupIterations = 0)`, enforcing the 40/80 ms CPU-frame SLO against the profile already packaged in that APK. Fresh profile collection happens only afterwards on the separate non-minified Profile target. A red SLO remains red after profile generation; generated evidence can only be curated into a later commit and therefore a later fresh install.
+
+Raw generated profile files are CI evidence, not source-of-truth product assets; regenerate them after material CUJ/hot-path changes and update this provenance together with the curated rules.
+''')
