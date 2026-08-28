@@ -58,7 +58,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
 
-/** Paged normal reading builds StaticLayout on Dispatchers.Default; the frame thread only draws it. */
+/**
+ * Paged normal reading reuses the exact StaticLayout that established the page boundary whenever
+ * the visible body has no span that changes its appearance. Styled pages deliberately rebuild so
+ * headings, highlights and TTS emphasis remain authoritative. Either way, layout work stays off the
+ * frame thread and the Canvas only draws a ready layout.
+ */
 @Composable
 internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow) {
     val context = LocalContext.current
@@ -79,14 +84,25 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     val resolvedColor = if (style.color == Color.Unspecified) MaterialTheme.colorScheme.onBackground else style.color
     BoxWithConstraints(modifier.fillMaxWidth().armSelectionOnLongPress(text.text) { selectionMode = true }) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
-        val layout by produceState<StaticLayout?>(null, text, style, widthPx, density.density, density.fontScale, nativeTypeface, resolvedColor) {
-            value = null
-            value = withContext(Dispatchers.Default) { buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx) }
+        val heightPx = constraints.maxHeight.coerceAtLeast(1)
+        val reusable = remember(text, widthPx, heightPx) {
+            if (text.spanStyles.isEmpty()) ReaderPageLayoutCache.reusableLayoutFor(text.text, widthPx, heightPx) else null
+        }
+        val layout by produceState<StaticLayout?>(reusable, text, style, widthPx, density.density, density.fontScale, nativeTypeface, resolvedColor, reusable) {
+            if (reusable == null) {
+                value = withContext(Dispatchers.Default) { buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx) }
+            }
         }
         Canvas(Modifier.fillMaxSize()) {
             layout?.let { ready ->
+                // Measurement layouts intentionally carry no palette color. Apply the current reader
+                // color immediately before drawing; all reusable pages are plain-body pages.
+                ready.paint.color = resolvedColor.toArgb()
                 val canvas = drawContext.canvas.nativeCanvas
-                canvas.save(); ready.draw(canvas); canvas.restore()
+                canvas.save()
+                canvas.clipRect(0f, 0f, size.width, size.height)
+                ready.draw(canvas)
+                canvas.restore()
             }
         }
     }
