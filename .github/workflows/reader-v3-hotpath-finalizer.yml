@@ -1,0 +1,179 @@
+name: Reader V3 Hotpath Finalizer
+
+on:
+  push:
+    branches: [feat/reader-v3-prelaunch-final]
+    paths: [.github/workflows/reader-v3-hotpath-finalizer.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reader-v3-prelaunch-final
+          fetch-depth: 0
+      - name: Apply trace-driven Reader V3 hotpath patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, got {count}")
+              return text.replace(old, new, 1)
+
+          screen_path = Path("apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt")
+          screen = screen_path.read_text()
+          screen = replace_once(
+              screen,
+              "import androidx.compose.foundation.gestures.scrollBy\n",
+              "import androidx.compose.foundation.gestures.rememberScrollableState\n",
+              "continuous gesture import",
+          )
+          screen = replace_once(screen, "import androidx.compose.foundation.rememberScrollState\n", "", "legacy continuous scroll state import")
+          screen = replace_once(screen, "import androidx.compose.foundation.verticalScroll\n", "", "legacy continuous verticalScroll import")
+          screen = replace_once(
+              screen,
+              "    val scrollState = rememberScrollState()\n",
+              """    var scrollOffsetPx by remember(book.id) { mutableFloatStateOf(0f) }\n    var maxScrollPx by remember(book.id) { mutableFloatStateOf(0f) }\n    val scrollableState = rememberScrollableState { delta ->\n        val before = scrollOffsetPx\n        val next = (before - delta).coerceIn(0f, maxScrollPx)\n        scrollOffsetPx = next\n        before - next\n    }\n""",
+              "fixed continuous scroll state",
+          )
+          screen = replace_once(
+              screen,
+              "        scrollState.scrollTo(layout.getLineTop(line).roundToInt().coerceIn(0, scrollState.maxValue))\n",
+              "        scrollOffsetPx = layout.getLineTop(line).coerceIn(0f, maxScrollPx)\n",
+              "continuous initial position",
+          )
+          screen = replace_once(
+              screen,
+              "    LaunchedEffect(scrollState, layoutResult, window, viewportHeight, state.autoScrolling) {\n        snapshotFlow { scrollState.value to scrollState.isScrollInProgress }.distinctUntilChanged().collect { (y, scrolling) ->\n",
+              "    LaunchedEffect(scrollableState, layoutResult, window, viewportHeight, state.autoScrolling) {\n        snapshotFlow { scrollOffsetPx.roundToInt() to scrollableState.isScrollInProgress }.distinctUntilChanged().collect { (y, scrolling) ->\n",
+              "continuous draw-only observation",
+          )
+          screen = replace_once(
+              screen,
+              "            val nearBottom = scrollState.maxValue > 0 && scrollState.maxValue - y <= edge && w.start + w.map.sourceCodePoints < w.documentLength - 1\n",
+              "            val nearBottom = maxScrollPx > 0f && maxScrollPx - y.toFloat() <= edge.toFloat() && w.start + w.map.sourceCodePoints < w.documentLength - 1\n",
+              "continuous bottom boundary",
+          )
+          screen = replace_once(
+              screen,
+              "                    scrollState.scrollBy(with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() })\n",
+              "                    val deltaPx = with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() }\n                    scrollOffsetPx = (scrollOffsetPx + deltaPx).coerceIn(0f, maxScrollPx)\n",
+              "continuous auto-scroll draw offset",
+          )
+          screen = replace_once(
+              screen,
+              "            if (scrollState.maxValue > 0 && scrollState.value >= scrollState.maxValue - 1 && w.start + w.map.sourceCodePoints >= w.documentLength - 1) {\n",
+              "            if (maxScrollPx > 0f && scrollOffsetPx >= maxScrollPx - 1f && w.start + w.map.sourceCodePoints >= w.documentLength - 1) {\n",
+              "continuous end boundary",
+          )
+          screen = replace_once(
+              screen,
+              "            Text(annotated, Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp), style = style, overflow = TextOverflow.Clip, onTextLayout = { layoutResult = it })\n",
+              """            Text(\n                annotated,\n                Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp),\n                style = style,\n                overflow = TextOverflow.Clip,\n                scrollableState = scrollableState,\n                scrollOffsetPx = { scrollOffsetPx },\n                onTextLayout = { layout ->\n                    layoutResult = layout\n                    val verticalPaddingPx = with(density) { settings.verticalPaddingDp.dp.toPx() * 2f }\n                    val visibleHeightPx = (viewportHeight.toFloat() - verticalPaddingPx).coerceAtLeast(1f)\n                    maxScrollPx = (layout.size.height.toFloat() - visibleHeightPx).coerceAtLeast(0f)\n                    scrollOffsetPx = scrollOffsetPx.coerceIn(0f, maxScrollPx)\n                },\n            )\n""",
+              "continuous fixed viewport renderer",
+          )
+          screen_path.write_text(screen)
+
+          fast_path = Path("apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt")
+          fast = fast_path.read_text()
+          fast = replace_once(
+              fast,
+              "import androidx.compose.foundation.gestures.awaitFirstDown\n",
+              """import androidx.compose.foundation.gestures.awaitFirstDown\nimport androidx.compose.foundation.gestures.Orientation\nimport androidx.compose.foundation.gestures.ScrollableState\nimport androidx.compose.foundation.gestures.scrollable\nimport androidx.compose.foundation.rememberScrollState\nimport androidx.compose.foundation.verticalScroll\n""",
+              "fast text continuous scroll imports",
+          )
+          fast = replace_once(
+              fast,
+              "import androidx.compose.ui.graphics.toArgb\n",
+              """import androidx.compose.ui.graphics.toArgb\nimport androidx.compose.ui.graphics.drawscope.clipRect\nimport androidx.compose.ui.graphics.drawscope.translate\n""",
+              "fast text draw transform imports",
+          )
+          marker = "/** Continuous keeps the 4K window and TextLayoutResult authority, but measures off the frame thread. */"
+          if marker not in fast:
+              raise SystemExit("continuous fast-text marker missing")
+          before, after = fast.split(marker, 1)
+          after = replace_once(
+              after,
+              "internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow, onTextLayout: (TextLayoutResult) -> Unit) {\n",
+              "internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow, scrollableState: ScrollableState, scrollOffsetPx: () -> Float, onTextLayout: (TextLayoutResult) -> Unit) {\n",
+              "continuous text signature",
+          )
+          after = replace_once(
+              after,
+              """    if (selectionMode || accessibility.isTouchExplorationEnabled) {\n        androidx.compose.material3.Text(text = text, modifier = modifier, style = style, overflow = overflow, onTextLayout = onTextLayout)\n        return\n    }\n""",
+              """    if (selectionMode || accessibility.isTouchExplorationEnabled) {\n        val selectionScrollState = rememberScrollState(initial = scrollOffsetPx().roundToInt().coerceAtLeast(0))\n        androidx.compose.material3.Text(text = text, modifier = modifier.verticalScroll(selectionScrollState), style = style, overflow = overflow, onTextLayout = onTextLayout)\n        return\n    }\n""",
+              "continuous selectable fallback",
+          )
+          after = replace_once(
+              after,
+              "    BoxWithConstraints(modifier.armSelectionOnLongPress(text.text) { selectionMode = true }) {\n",
+              "    BoxWithConstraints(modifier.scrollable(scrollableState, Orientation.Vertical).armSelectionOnLongPress(text.text) { selectionMode = true }) {\n",
+              "continuous scrollable fixed viewport",
+          )
+          after = replace_once(
+              after,
+              """        layout?.let { ready ->\n            Canvas(Modifier.fillMaxWidth().height(with(density) { ready.size.height.toDp() })) { drawText(ready) }\n        }\n""",
+              """        layout?.let { ready ->\n            Canvas(Modifier.fillMaxSize()) {\n                clipRect {\n                    translate(top = -scrollOffsetPx().coerceAtLeast(0f)) { drawText(ready) }\n                }\n            }\n        }\n""",
+              "continuous draw-time translation",
+          )
+          fast = before + "/** Continuous keeps a bounded window and TextLayoutResult authority, but measures off the frame thread. */" + after
+          fast_path.write_text(fast)
+
+          panel_path = Path("apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt")
+          panel = panel_path.read_text()
+          panel = replace_once(
+              panel,
+              """        if (!state.chaptersLoaded) { loading = true; actions.onEnsureChapters(); return@LaunchedEffect }\n        val key = TocPanelKey(book.id, book.normalizedSha256, state.length, state.chapters.hashCode())\n        TocPanelCache.get(key)?.let { cached -> base = cached.base; report = cached.report; loading = false; return@LaunchedEffect }\n\n        // MainActivity persists the authoritative base report before publishing chapters. Reuse that\n        // report here so opening the panel never repeats full quality analysis on a competing CPU.\n        val cachedBase = withContext(Dispatchers.IO) { derivedCache.load(book.id, book.normalizedSha256, state.length) }\n        val computedBase = cachedBase ?: withContext(Dispatchers.Default) {\n""",
+              """        val key = TocPanelKey(book.id, book.normalizedSha256, state.length, state.chapters.hashCode())\n        TocPanelCache.get(key)?.let { cached -> base = cached.base; report = cached.report; loading = false; return@LaunchedEffect }\n\n        // Cache-first: import/re-decode already prewarms the revision-keyed Smart TOC report. Read it\n        // before hydrating global chapter UI state so first panel open does not recompose the Reader.\n        val cachedBase = withContext(Dispatchers.IO) { derivedCache.load(book.id, book.normalizedSha256, state.length) }\n        if (cachedBase == null && !state.chaptersLoaded) { loading = true; actions.onEnsureChapters(); return@LaunchedEffect }\n        val computedBase = cachedBase ?: withContext(Dispatchers.Default) {\n""",
+              "cache-first Smart TOC panel",
+          )
+          panel_path.write_text(panel)
+
+          contract_path = Path("scripts/verify-reader-v3.sh")
+          contract = contract_path.read_text()
+          contract = replace_once(
+              contract,
+              "hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt\n",
+              "hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt\nfast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt\n",
+              "fast text contract path",
+          )
+          contract = replace_once(
+              contract,
+              "require_literal \"$screen\" 'scrollState.isScrollInProgress' 'continuous gesture settling'\n",
+              """require_literal \"$screen\" 'scrollableState = rememberScrollableState' 'continuous fixed viewport scroll state'\nrequire_literal \"$screen\" 'scrollableState.isScrollInProgress' 'continuous gesture settling'\nrequire_literal \"$screen\" 'scrollOffsetPx = (scrollOffsetPx + deltaPx)' 'draw-only continuous auto-scroll'\nforbid_literal \"$screen\" '.verticalScroll(scrollState)' 'layout-driven continuous scrolling'\nrequire_literal \"$fast_text\" 'scrollOffsetPx: () -> Float' 'continuous draw offset input'\nrequire_literal \"$fast_text\" 'translate(top = -scrollOffsetPx()' 'continuous draw-time translation'\n""",
+              "continuous hotpath contract",
+          )
+          contract = replace_once(
+              contract,
+              "require_literal \"$smart_panel\" 'derivedCache.load(book.id, book.normalizedSha256, state.length)' 'derived TOC reuse'\n",
+              """require_literal \"$smart_panel\" 'Cache-first:' 'cache-first Smart TOC panel'\nrequire_literal \"$smart_panel\" 'derivedCache.load(book.id, book.normalizedSha256, state.length)' 'derived TOC reuse'\n""",
+              "Smart TOC cache-first contract",
+          )
+          contract_path.write_text(contract)
+          PY
+
+          bash scripts/verify-reader-v3.sh
+          python3 scripts/verify-reader-profile-contract.py
+          git diff --check
+      - name: Commit trace-driven hotpath patch and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/reader-v3-hotpath-finalizer.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt \
+                  scripts/verify-reader-v3.sh
+          git commit -m "perf(android): keep reader scrolling off layout path"
+          git push origin HEAD:feat/reader-v3-prelaunch-final
