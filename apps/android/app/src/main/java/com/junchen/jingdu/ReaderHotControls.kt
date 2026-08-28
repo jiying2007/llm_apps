@@ -68,7 +68,7 @@ internal fun CenterAlignedTopAppBar(
     }
 }
 
-/** Exact one-line overload used by the reader's hidden-controls status chip. */
+/** Exact overload used by ReaderReadingStatusV3: one-line status text stays on the Canvas hot path. */
 @Composable
 internal fun Text(
     text: String,
