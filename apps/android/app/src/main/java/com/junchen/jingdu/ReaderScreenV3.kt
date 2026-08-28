@@ -79,6 +79,11 @@ import kotlin.math.roundToInt
 
 private data class V3SelectionPayload(val range: ReaderSelectionRange, val clearNative: () -> Unit)
 
+private data class ReaderPreparedPageV3(
+    val snapshot: PageLayoutSnapshot,
+    val annotated: AnnotatedString,
+)
+
 @Composable
 internal fun ReaderScreenV3(
     state: AppUiState,
@@ -250,7 +255,7 @@ internal fun ReaderScreenV3(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         PagedReaderPageV3(
-                            state.position, state.pageText, state, adaptiveLayout, fontFamily, textColor, touchExploration,
+                            state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
                             actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
                             ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                         )
@@ -258,7 +263,7 @@ internal fun ReaderScreenV3(
                 }
             } else {
                 PagedReaderPageV3(
-                    state.position, state.pageText, state, adaptiveLayout, fontFamily, textColor, touchExploration,
+                    state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
                     actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
                     ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                 )
@@ -273,14 +278,17 @@ internal fun ReaderScreenV3(
         )
 
         AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
-            ReaderTopBarV3(state, currentChapter, actions) { more = true }
+            ReaderTopBarV3(book.name, currentChapter, actions) { more = true }
         }
         if (controlsVisible && more) Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)) {
-            ReaderMoreMenuV3(state, actions) { more = false }
+            ReaderMoreMenuV3(state.cleanMode, actions) { more = false }
         }
         AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
             ReaderBottomBarV3(
-                state = state,
+                chapters = state.chapters,
+                length = state.length,
+                autoPaging = state.autoPaging,
+                ttsPlaying = state.ttsPlaying,
                 chapter = currentChapter,
                 fraction = skimFraction,
                 skimPreview = skimPreview,
@@ -373,7 +381,9 @@ internal fun ReaderScreenV3(
 private fun PagedReaderPageV3(
     sourceStart: Long,
     sourceText: String,
-    state: AppUiState,
+    settings: ReaderSettings,
+    annotations: List<ReaderAnnotation>,
+    tts: TtsPlaybackModel,
     adaptiveLayout: ReaderAdaptiveLayout,
     fontFamily: androidx.compose.ui.text.font.FontFamily,
     textColor: Color,
@@ -388,13 +398,6 @@ private fun PagedReaderPageV3(
     onSelection: (V3SelectionPayload?) -> Unit,
 ) {
     val context = LocalContext.current
-    val settings = state.settings
-    val presented by produceState<ReaderPresentedText?>(null, sourceText, settings.chineseMode, settings.chineseOverrides, settings.compressBlankLines, settings.paragraphSpacingEm) {
-        value = withContext(Dispatchers.Default) { ReaderPresentationPipeline.present(sourceText, settings) }
-    }
-    val presentedValue = presented ?: return
-    val displayText = presentedValue.displayText
-    val map = presentedValue.map
     val spec = remember(settings) { ReaderTypographySpec.from(settings) }
     val style = spec.composeTextStyle(textColor, fontFamily)
     val typeface = remember(settings.typeface, settings.customFontId, settings.fontWeight) { spec.androidTypeface(context) }
@@ -409,41 +412,91 @@ private fun PagedReaderPageV3(
         ReaderWideColumns.DOUBLE -> if (adaptiveLayout.width >= ReaderAdaptiveWidth.MEDIUM && !adaptiveLayout.tabletop) 2 else 1
         ReaderWideColumns.AUTO -> if (adaptiveLayout.prefersTwoColumns) 2 else 1
     }
-    val snapshot by produceState<PageLayoutSnapshot?>(null, sourceText, displayText, widthPx, heightPx, columns, spec.fingerprint) {
-        if (widthPx > 0 && heightPx > 0 && displayText.isNotEmpty()) {
-            value = withContext(Dispatchers.Default) { ReaderPageLayoutCache.measure(sourceText, displayText, widthPx, heightPx, columns, settings, density, typeface, map) }
+
+    // One worker result owns projection, pagination and selection metadata. The previous two-stage
+    // presented -> snapshot publication forced multiple Reader recompositions for every page turn.
+    val prepared by produceState<ReaderPreparedPageV3?>(
+        initialValue = null,
+        sourceStart,
+        sourceText,
+        settings,
+        annotations,
+        tts,
+        widthPx,
+        heightPx,
+        columns,
+        spec.fingerprint,
+    ) {
+        if (widthPx <= 0 || heightPx <= 0 || sourceText.isEmpty()) return@produceState
+        value = withContext(Dispatchers.Default) {
+            val presented = ReaderPresentationPipeline.present(sourceText, settings)
+            val snapshot = ReaderPageLayoutCache.measure(
+                sourceText,
+                presented.displayText,
+                widthPx,
+                heightPx,
+                columns,
+                settings,
+                density,
+                typeface,
+                presented.map,
+            )
+            val visibleEnd = snapshot.displayedEndUtf16.coerceIn(0, presented.displayText.length)
+            val visibleText = if (visibleEnd <= 0) "" else presented.displayText.substring(0, visibleEnd)
+            val visual = readerAnnotatedTextV3(sourceStart, visibleText, presented.map, annotations, tts, settings)
+            ReaderPreparedPageV3(
+                snapshot = snapshot,
+                annotated = ReaderSelectionController.annotatedForSelection(sourceStart, visual, presented.map),
+            )
         }
     }
-    val snapshotValue = snapshot
-    LaunchedEffect(snapshotValue) { snapshotValue?.sourceCodePoints?.takeIf { it >= ReaderController.MIN_PAGE_CHARS }?.let(onVisibleCharsChanged) }
+    val preparedValue = prepared
+    LaunchedEffect(preparedValue?.snapshot?.sourceCodePoints) {
+        preparedValue?.snapshot?.sourceCodePoints
+            ?.takeIf { it >= ReaderController.MIN_PAGE_CHARS }
+            ?.let(onVisibleCharsChanged)
+    }
 
-    val visibleEnd = snapshotValue?.displayedEndUtf16?.coerceIn(0, displayText.length) ?: 0
-    val visibleText = remember(displayText, visibleEnd) {
-        if (visibleEnd <= 0) "" else displayText.substring(0, visibleEnd)
-    }
-    val annotated = remember(sourceStart, visibleText, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
-        ReaderSelectionController.annotatedForSelection(sourceStart, readerAnnotatedTextV3(sourceStart, visibleText, map, state), map)
-    }
     val selectionState = rememberSelectionState()
     LaunchedEffect(selectionState.selectedTexts) {
         val range = ReaderSelectionController.fromSelectedTexts(selectionState.selectedTexts)
         onSelection(range?.let { V3SelectionPayload(it) { selectionState.clear() } })
     }
-    val semantics = Modifier.readerAccessibilityActionsV3(onPrevious, onNext, onToggleControls, onBookmark,
-        stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous), stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls), stringResource(R.string.reader_access_bookmark))
-    val gestures = if (touchExploration) Modifier else Modifier.readerGesturesV3(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark)
-        .pointerInput(settings.pinchFontEnabled) { if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) } }
+    val semantics = Modifier.readerAccessibilityActionsV3(
+        onPrevious, onNext, onToggleControls, onBookmark,
+        stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous),
+        stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls),
+        stringResource(R.string.reader_access_bookmark),
+    )
+    val gestures = if (touchExploration) Modifier else Modifier
+        .readerGesturesV3(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark)
+        .pointerInput(settings.pinchFontEnabled) {
+            if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) }
+        }
 
     SelectionContainer(state = selectionState) {
-        Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures), contentAlignment = Alignment.TopCenter) {
-            if (columns == 2 && snapshotValue != null && annotated.isNotEmpty()) {
-                val firstEnd = snapshotValue.firstColumnEndUtf16.coerceIn(0, annotated.length)
-                Row(Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        Box(
+            Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            val ready = preparedValue ?: return@Box
+            val annotated = ready.annotated
+            if (columns == 2 && annotated.isNotEmpty()) {
+                val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
+                Row(
+                    Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                ) {
                     Text(annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
                     Text(annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
                 }
-            } else if (snapshotValue != null && annotated.isNotEmpty()) {
-                Text(annotated, Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), style = style, overflow = TextOverflow.Clip)
+            } else if (annotated.isNotEmpty()) {
+                Text(
+                    annotated,
+                    Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    style = style,
+                    overflow = TextOverflow.Clip,
+                )
             }
         }
     }
@@ -557,7 +610,11 @@ private fun ContinuousReaderPageV3(
     val spec = remember(settings) { ReaderTypographySpec.from(settings) }
     val style = spec.composeTextStyle(textColor, fontFamily)
     val annotated = remember(start, display, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
-        ReaderSelectionController.annotatedForSelection(start, readerAnnotatedTextV3(start, display, map, state), map)
+        ReaderSelectionController.annotatedForSelection(
+            start,
+            readerAnnotatedTextV3(start, display, map, state.annotations, state.tts, settings),
+            map,
+        )
     }
     val selectionState = rememberSelectionState()
     LaunchedEffect(selectionState.selectedTexts) {
@@ -578,23 +635,30 @@ private fun ContinuousReaderPageV3(
     }
 }
 
-private fun readerAnnotatedTextV3(sourceStart: Long, displayText: String, map: SourceDisplayMap, state: AppUiState): AnnotatedString = buildAnnotatedString {
+private fun readerAnnotatedTextV3(
+    sourceStart: Long,
+    displayText: String,
+    map: SourceDisplayMap,
+    annotations: List<ReaderAnnotation>,
+    tts: TtsPlaybackModel,
+    settings: ReaderSettings,
+): AnnotatedString = buildAnnotatedString {
     append(displayText)
     if (displayText.isEmpty()) return@buildAnnotatedString
     fun displayIndex(sourceAbsolute: Long): Int = utf16IndexV3(displayText, map.displayForSource((sourceAbsolute - sourceStart).coerceAtLeast(0))).coerceIn(0, displayText.length)
     val sourceEnd = sourceStart + map.sourceCodePoints
-    state.annotations.forEach { annotation ->
+    annotations.forEach { annotation ->
         if (annotation.sourceEnd <= sourceStart || annotation.sourceStart >= sourceEnd) return@forEach
         val a = displayIndex(annotation.sourceStart)
         val b = displayIndex(annotation.sourceEnd).coerceAtLeast(a)
         if (b > a) addStyle(SpanStyle(background = highlightColorV3(annotation.style)), a, b)
     }
-    if (state.tts.active && state.tts.rangeEnd > state.tts.rangeStart) {
-        val a = displayIndex(state.tts.rangeStart)
-        val b = displayIndex(state.tts.rangeEnd).coerceAtLeast(a)
+    if (tts.active && tts.rangeEnd > tts.rangeStart) {
+        val a = displayIndex(tts.rangeStart)
+        val b = displayIndex(tts.rangeEnd).coerceAtLeast(a)
         if (b > a) addStyle(SpanStyle(background = Color(0x5558A67A)), a, b)
     }
-    if (state.settings.emphasizeHeadings) {
+    if (settings.emphasizeHeadings) {
         var cursor = 0
         displayText.lineSequence().forEach { line ->
             val end = (cursor + line.length).coerceAtMost(displayText.length)
@@ -602,8 +666,8 @@ private fun readerAnnotatedTextV3(sourceStart: Long, displayText: String, map: S
             cursor = (end + 1).coerceAtMost(displayText.length)
         }
     }
-    if (state.settings.paragraphSpacingEm > 0f) {
-        val gap = (state.settings.fontSizeSp * state.settings.paragraphSpacingEm).coerceAtLeast(1f).sp
+    if (settings.paragraphSpacingEm > 0f) {
+        val gap = (settings.fontSizeSp * settings.paragraphSpacingEm).coerceAtLeast(1f).sp
         displayText.forEachIndexed { index, char -> if (char == ReaderTypographySpec.PARAGRAPH_SPACER) addStyle(ParagraphStyle(lineHeight = gap), index, index + 1) }
     }
 }
@@ -699,14 +763,13 @@ private fun Modifier.readerAccessibilityActionsV3(
 }
 
 @Composable
-private fun ReaderTopBarV3(state: AppUiState, chapter: String?, actions: JingduActions, onMore: () -> Unit) {
-    val book = state.currentBook ?: return
+private fun ReaderTopBarV3(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit) {
     Surface(tonalElevation = 2.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
         CenterAlignedTopAppBar(
             modifier = Modifier.statusBarsPadding(),
             navigationIcon = { IconButton(actions.onBackToLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library)) } },
             title = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(book.name.removeSuffix(".txt").removeSuffix(".TXT"), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(bookName.removeSuffix(".txt").removeSuffix(".TXT"), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 chapter?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) }
             } },
             actions = {
@@ -719,7 +782,7 @@ private fun ReaderTopBarV3(state: AppUiState, chapter: String?, actions: JingduA
 }
 
 @Composable
-private fun ReaderMoreMenuV3(state: AppUiState, actions: JingduActions, onDismiss: () -> Unit) {
+private fun ReaderMoreMenuV3(cleanMode: Boolean, actions: JingduActions, onDismiss: () -> Unit) {
     DropdownMenu(true, onDismissRequest = onDismiss) {
         fun close(action: () -> Unit) { onDismiss(); action() }
         DropdownMenuItem({ Text(stringResource(R.string.full_text_search)) }, { close { actions.onOpenPanel(ReaderPanel.SEARCH) } }, leadingIcon = { Icon(Icons.Default.Search, null) })
@@ -730,13 +793,16 @@ private fun ReaderMoreMenuV3(state: AppUiState, actions: JingduActions, onDismis
         DropdownMenuItem({ Text(stringResource(R.string.smart_clean4)) }, { close { actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) } }, leadingIcon = { Icon(Icons.Outlined.Psychology, null) })
         DropdownMenuItem({ Text(stringResource(R.string.clean)) }, { close { actions.onOpenPanel(ReaderPanel.CLEAN) } }, leadingIcon = { Icon(Icons.Outlined.AutoFixHigh, null) })
         DropdownMenuItem({ Text(stringResource(R.string.reading_settings)) }, { close { actions.onOpenPanel(ReaderPanel.SETTINGS) } }, leadingIcon = { Icon(Icons.Default.Settings, null) })
-        if (!state.cleanMode) DropdownMenuItem({ Text(stringResource(R.string.reader_access_bookmark)) }, { close(actions.onAddBookmark) }, leadingIcon = { Icon(Icons.Outlined.BookmarkAdd, null) })
+        if (!cleanMode) DropdownMenuItem({ Text(stringResource(R.string.reader_access_bookmark)) }, { close(actions.onAddBookmark) }, leadingIcon = { Icon(Icons.Outlined.BookmarkAdd, null) })
     }
 }
 
 @Composable
 private fun ReaderBottomBarV3(
-    state: AppUiState,
+    chapters: List<ChapterModel>,
+    length: Long,
+    autoPaging: Boolean,
+    ttsPlaying: Boolean,
     chapter: String?,
     fraction: Float,
     skimPreview: ReaderSkimPreview?,
@@ -758,13 +824,13 @@ private fun ReaderBottomBarV3(
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
             if (skimDragging || (showSkimReturn && skimPreview != null)) ReaderSkimPreviewCardV3(skimPreview, showSkimReturn, onReturnSkim)
             else Text(chapter ?: "", Modifier.align(Alignment.CenterHorizontally), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
-            ReaderChapterTicksV3(state, fraction)
+            ReaderChapterTicksV3(chapters, length, fraction)
             Slider(fraction, onFractionChange, onValueChangeFinished = onFractionCommit, modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressDescription })
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
                 TextButton(onOpenQuick) { Text("Aa") }
-                IconButton(onAutoPage) { Icon(if (state.autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (state.autoPaging) R.string.stop_auto_page else R.string.start_auto_page)) }
-                IconButton(onTts) { Icon(if (state.ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (state.ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud)) }
+                IconButton(onAutoPage) { Icon(if (autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (autoPaging) R.string.stop_auto_page else R.string.start_auto_page)) }
+                IconButton(onTts) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud)) }
                 IconButton(onLocationForward, enabled = canLocationForward) { Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.reader_location_forward)) }
             }
         }
@@ -772,20 +838,20 @@ private fun ReaderBottomBarV3(
 }
 
 @Composable
-private fun ReaderChapterTicksV3(state: AppUiState, fraction: Float) {
+private fun ReaderChapterTicksV3(chapters: List<ChapterModel>, length: Long, fraction: Float) {
     val primary = MaterialTheme.colorScheme.primary
     val outline = MaterialTheme.colorScheme.outlineVariant
-    val tickOffsets = remember(state.chapters, state.length) {
-        if (state.length <= 0 || state.chapters.isEmpty()) emptyList()
+    val tickOffsets = remember(chapters, length) {
+        if (length <= 0 || chapters.isEmpty()) emptyList()
         else {
-            val stride = ((state.chapters.size + MAX_CHAPTER_TICKS - 1) / MAX_CHAPTER_TICKS).coerceAtLeast(1)
-            state.chapters.filterIndexed { index, _ -> index % stride == 0 }.map { it.offset }.take(MAX_CHAPTER_TICKS)
+            val stride = ((chapters.size + MAX_CHAPTER_TICKS - 1) / MAX_CHAPTER_TICKS).coerceAtLeast(1)
+            chapters.filterIndexed { index, _ -> index % stride == 0 }.map { it.offset }.take(MAX_CHAPTER_TICKS)
         }
     }
     Canvas(Modifier.fillMaxWidth().height(12.dp)) {
         drawLine(outline, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), strokeWidth = 1.dp.toPx())
-        if (state.length > 0) tickOffsets.forEach { offset ->
-            val x = (offset.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f) * size.width
+        if (length > 0) tickOffsets.forEach { offset ->
+            val x = (offset.toDouble() / length.toDouble()).toFloat().coerceIn(0f, 1f) * size.width
             drawLine(primary.copy(alpha = 0.55f), Offset(x, 1f), Offset(x, size.height - 1f), strokeWidth = 1.dp.toPx())
         }
         val x = fraction.coerceIn(0f, 1f) * size.width

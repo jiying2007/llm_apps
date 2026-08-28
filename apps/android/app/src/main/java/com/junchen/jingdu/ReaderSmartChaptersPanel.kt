@@ -55,16 +55,31 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
 
     LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {
         if (book == null) { base = null; report = null; loading = false; windowStart = 0; return@LaunchedEffect }
+
+        // Import/re-decode prewarms this revision cache. Paint it first so opening Chapters does not
+        // wait for a global AppUiState chapter hydration and recompose the reader behind the panel.
+        val cachedBase = withContext(Dispatchers.IO) { derivedCache.load(book.id, book.normalizedSha256, state.length) }
+        if (cachedBase != null) {
+            val key = TocPanelKey(book.id, book.normalizedSha256, state.length, cachedBase.chapters.hashCode())
+            TocPanelCache.get(key)?.let { cached ->
+                base = cached.base; report = cached.report; loading = false
+                if (!state.chaptersLoaded) actions.onEnsureChapters()
+                return@LaunchedEffect
+            }
+            val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
+            val computed = withContext(Dispatchers.Default) { store.apply(cachedBase, overrides) }
+            base = cachedBase
+            report = computed
+            TocPanelCache.put(key, TocPanelEntry(cachedBase, computed))
+            loading = false
+            if (!state.chaptersLoaded) actions.onEnsureChapters()
+            return@LaunchedEffect
+        }
+
         if (!state.chaptersLoaded) { loading = true; actions.onEnsureChapters(); return@LaunchedEffect }
         val key = TocPanelKey(book.id, book.normalizedSha256, state.length, state.chapters.hashCode())
         TocPanelCache.get(key)?.let { cached -> base = cached.base; report = cached.report; loading = false; return@LaunchedEffect }
-
-        // MainActivity persists the authoritative base report before publishing chapters. Reuse that
-        // report here so opening the panel never repeats full quality analysis on a competing CPU.
-        val cachedBase = withContext(Dispatchers.IO) { derivedCache.load(book.id, book.normalizedSha256, state.length) }
-        val computedBase = cachedBase ?: withContext(Dispatchers.Default) {
-            // Cache eviction is harmless: this bounded fallback preserves correctness without making
-            // the panel dependent on cache availability.
+        val computedBase = withContext(Dispatchers.Default) {
             SmartToc.evaluate(state.chapters.map { SmartChapter(it.offset, it.title, it.source, it.confidence) })
         }
         val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
@@ -98,7 +113,7 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
     val end = minOf(chapters.size, windowStart + CHAPTER_WINDOW_ROWS)
     val quality = current?.let { stringResource(R.string.smart_toc_quality, it.score, it.chapters.size, it.anomalyCount) }.orEmpty()
 
-    fun panelKey(): TocPanelKey? = book?.let { TocPanelKey(it.id, it.normalizedSha256, state.length, state.chapters.hashCode()) }
+    fun panelKey(): TocPanelKey? = book?.let { TocPanelKey(it.id, it.normalizedSha256, state.length, base?.chapters?.hashCode() ?: state.chapters.hashCode()) }
     fun cache(updated: TocQualityReport?) {
         report = updated
         val b = base
