@@ -91,7 +91,6 @@ index_cache=core/native/src/index_cache.cpp
 cached_core=core/native/src/core_api_cached.cpp
 core_test=core/native/tests/core_api_test.cpp
 
-# Typed settings; key/value V2 schema is not retained.
 require_literal "$prefs" 'DataStore<ReaderSettingsProto>' 'typed settings datastore'
 require_literal "$prefs" 'reader-v3-settings.pb' 'V3 settings store'
 require_literal "$prefs" 'pending.debounce(350L)' 'settings write debounce'
@@ -104,7 +103,6 @@ require_literal "$proto" 'double_tap_action' 'double tap proto'
 forbid_literal "$prefs" 'preferencesDataStore' 'legacy preferencesDataStore'
 forbid_literal "$prefs" 'jingdu_reader_v2' 'legacy reader v2 settings'
 
-# Exact source/display projection and one presentation/typography truth.
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt 'class TextProjection' 'text projection'
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt 'bestCost == Int.MAX_VALUE' 'projection bounded fallback'
 require_literal "$engine" 'ReaderPresentationPipeline.present' 'shared presentation pipeline'
@@ -124,8 +122,6 @@ require_literal "$smart_toc" 'MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC = 20' 'sparse T
 require_literal "$smart_toc" 'if (merged.size < MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC)' 'sparse-only TOC enrichment'
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt 'PARAGRAPH_SPACER' 'paragraph spacing sentinel'
 
-# Rendering work is bounded on every interaction path. NONE never mutates animation direction;
-# paged mode slices to the exact measured prefix, and continuous mode uses a 3K Compose window.
 require_literal "$screen" 'val slideAnimation = settings.pageAnimation == ReaderPageAnimation.SLIDE' 'conditional slide animation'
 require_literal "$screen" 'pageDirection = if (settings.pageAnimation == ReaderPageAnimation.SLIDE' 'slide direction guard'
 require_literal "$screen" 'state.position, state.pageText, state, adaptiveLayout' 'paged route source'
@@ -139,7 +135,6 @@ forbid_literal "$screen" 'abs(absolute - lastCommitted) >= 192' 'old noisy commi
 require_literal "$screen" 'MAX_CHAPTER_TICKS = 96' 'chapter tick bound'
 require_literal "$screen" 'take(MAX_CHAPTER_TICKS)' 'bounded chapter ticks'
 
-# Hot-path persistence and derived TOC work stay off the frame thread.
 require_literal "$activity" 'progressWorkers: ExecutorService' 'progress IO worker'
 require_literal "$activity" 'tocWorkers: ExecutorService' 'TOC worker'
 require_literal "$activity" 'THREAD_PRIORITY_BACKGROUND' 'background TOC priority'
@@ -147,10 +142,8 @@ require_literal "$activity" 'publishPositionOnly(book, bounded)' 'lightweight co
 require_literal "$activity" 'SmartTocCacheStore(this)' 'revision TOC cache'
 require_literal "$activity" 'smartTocCache.load(book.id, revision, length)' 'TOC cache read'
 require_literal "$activity" 'smartTocCache.save(book.id, revision, length, report)' 'TOC cache write'
-require_literal "$smart_toc_cache" 'data class CacheKey' 'revision-keyed TOC cache key'
+require_literal "$smart_toc_cache" 'cacheFile(bookId, revision, sourceLength)' 'revision-keyed TOC cache key'
 
-# Reader actions stay referentially stable across page/scroll position updates. Quick/chapters are
-# canonical in-tree overlays and chapter quality work reuses the persisted authoritative report.
 require_literal "$app" 'val latestPosition = rememberUpdatedState(state.position)' 'stable position closure'
 require_literal "$app" 'val trackedActions = remember(actions)' 'stable reader actions'
 require_literal "$app" 'ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet' 'quick settings route'
@@ -164,7 +157,6 @@ forbid_literal "$smart_panel" 'SmartToc.analyze(reader)' 'full scan inside panel
 require_literal "$panel_surface" 'same composition tree' 'single composition panel surface'
 test ! -e apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotPanels.kt || { echo 'Reader V3 superseded hot panels remain' >&2; exit 1; }
 
-# The native sparse index contract remains authoritative until the final source-cache hard cut.
 require_literal "$index_cache" 'kMagicV1 = "JDX1"' 'JDX1 detector'
 require_literal "$index_cache" 'kMagicV2 = "JDX2"' 'JDX2 detector'
 require_literal "$index_cache" 'load_chapter_cache' 'chapter cache load'
@@ -175,7 +167,6 @@ require_literal "$cached_core" 'save_index_cache_with_chapters' 'chapter cache u
 require_literal "$core_test" 'first chapter scan upgrades cache to JDX2' 'chapter cache upgrade test'
 require_literal "$core_test" 'JDX2 chapters preserve authoritative output' 'chapter cache correctness test'
 
-# Room is the retained annotation/stat persistence backend.
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt '@Database' 'Room database'
 require_literal "$annotations" 'ReaderAnnotationEntity' 'Room annotation entity'
 require_literal "$annotations" 'reanchor(item' 'annotation reanchor'
@@ -183,7 +174,6 @@ require_literal "$stats" 'ReaderSessionEntity' 'Room session entity'
 forbid_literal "$annotations" 'reader-v2-annotations.json' 'legacy annotation JSON'
 forbid_literal "$stats" 'reader-v2-stats.json' 'legacy stats JSON'
 
-# Native selection/skim/UDF are on the actual runtime path.
 require_literal "$screen" 'rememberSelectionState' 'selection state'
 require_literal "$screen" 'SelectionContainer(state = selectionState)' 'selection container'
 require_literal "$screen" 'ReaderSelectionController.fromSelectedTexts' 'selection projection'
@@ -196,7 +186,6 @@ require_literal "$app" 'ReaderAnnotationsV3Panel' 'annotations route'
 require_literal "$app" 'ReaderReadingMapV3Panel' 'reading map route'
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt 'ReaderScreenV3' 'Reader V3 route'
 
-# All requested prelaunch controls are reachable and functional.
 require_literal "$settings" 'ReaderPreset.entries' 'preset selector'
 require_literal "$prefs" 'ReaderPreset.LOW_VISION' 'low vision settings'
 require_literal "$settings" 'NamedThemes' 'named theme controls'
@@ -210,7 +199,6 @@ require_literal "$screen" 'ReaderGestureAction' 'gesture runtime'
 require_literal "$screen" 'ACTION_PROCESS_TEXT' 'dictionary runtime'
 require_literal "$screen" 'WindowInsets.systemGestures' 'system gesture arbitration'
 
-# Media3 is the only Android playback session authority.
 require_literal "$service" 'class TtsPlaybackService : MediaSessionService' 'Media3 session service'
 require_literal "$service" 'MediaSession.Builder' 'Media3 session'
 require_literal "$player" 'class ReaderTtsPlayer' 'Reader TTS player'
@@ -222,7 +210,6 @@ require_literal "$navigator" 'nextParagraph' 'next paragraph'
 require_literal apps/android/app/src/main/AndroidManifest.xml 'androidx.media3.session.MediaSessionService' 'Media3 manifest service'
 forbid_literal "$service" 'android.media.session.MediaSession' 'platform MediaSession authority'
 
-# Correctness and long-run soak contracts are mandatory, deterministic and executable in hosted CI.
 require_literal "$foundations" 'localizedDeletionDoesNotScaleUnchangedSuffix' 'localized projection deletion test'
 require_literal "$foundations" 'randomizedProjectionSoakRemainsBoundedAndMonotonic' 'projection soak'
 require_literal "$foundations" 'map.sourceForDisplay(display.indexOf("world").toLong())' 'projection exactness'
@@ -233,8 +220,6 @@ require_literal "$motion" 'ReaderMotionState.AUTO_SCROLL' 'auto-scroll motion te
 require_literal "$motion" 'ReaderMotionState.AUTO_PAGE' 'auto-page motion test'
 require_literal "$motion" 'ReaderMotionState.TTS' 'TTS motion test'
 
-# Real Android performance contract: benchmark-only fixture/profileability, signed benchmark test APK,
-# 10/100MiB journeys, hosted direct instrumentation, machine-readable P95/P99 SLO and real profiles.
 require_literal "$benchmark_manifest" '<profileable android:shell="true"' 'profileable benchmark target'
 require_literal "$macrobenchmark_gradle" 'signingConfig = signingConfigs.debug' 'benchmark debug signing'
 require_literal "$fixture" 'Benchmark-build only' 'benchmark-only fixture'
@@ -280,12 +265,10 @@ python3 -m py_compile scripts/check-android-performance-slo.py scripts/test-andr
 python3 scripts/test-android-performance-slo.py
 bash -n "$benchmark_runner"
 
-# Near-1GiB native RSS must remain a real CTest, not only prose.
 require_literal core/native/CMakeLists.txt 'JINGDU_PERF_FIXTURE_MIB=960' 'near-1GiB fixture'
 require_literal core/native/CMakeLists.txt 'jingdu_core_near_1gib_rss_gate_test' 'near-1GiB CTest'
 require_literal core/native/tests/core_performance_gate_test.cpp 'rssMiB < 640L' 'native RSS SLO'
 
-# Hard cut: no old runtime/service/gate implementation may survive.
 for legacy in \
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt \
