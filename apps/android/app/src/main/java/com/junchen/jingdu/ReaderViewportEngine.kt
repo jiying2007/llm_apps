@@ -6,7 +6,6 @@ import android.graphics.text.LineBreaker
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.text.TextUtils
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -104,9 +103,11 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         const val MAX_WINDOWS = 8
         const val PAGE_ALIGN_CHARS = 512L
         const val PAGE_BACK_BUFFER_CHARS = 384L
-        const val CONTINUOUS_WINDOW_CHARS = 4096L
-        const val CONTINUOUS_ALIGN_CHARS = 1024L
-        const val CONTINUOUS_BACK_BUFFER_CHARS = 1024L
+        // Three Ki code points keeps several screens of scroll headroom while avoiding the old 4 Ki
+        // Compose paragraph, whose shaping/drawing cost dominated tail frames on low-end targets.
+        const val CONTINUOUS_WINDOW_CHARS = 3072L
+        const val CONTINUOUS_ALIGN_CHARS = 768L
+        const val CONTINUOUS_BACK_BUFFER_CHARS = 768L
     }
 }
 
@@ -198,12 +199,16 @@ internal object ReaderPageLayoutCache {
             })
         }
         val layoutText = spec.androidLayoutText(displayText, density)
+        // A line cannot be shorter than the paint's font box. Capping layout construction to the
+        // maximum number of lines that could physically intersect the viewport keeps exact page
+        // boundaries while preventing measurement/draw work for text that is guaranteed off-screen.
+        val minimumLineHeight = (paint.fontMetricsInt.descent - paint.fontMetricsInt.ascent).coerceAtLeast(1)
+        val maxVisibleLines = ((contentHeight + minimumLineHeight - 1) / minimumLineHeight + 2).coerceAtLeast(2)
         fun buildLayout(text: CharSequence): StaticLayout? {
             if (text.isEmpty()) return null
             val builder = StaticLayout.Builder.obtain(text, 0, text.length, paint, columnWidth)
                 .setIncludePad(false)
-                .setEllipsize(TextUtils.TruncateAt.END)
-                .setMaxLines(Int.MAX_VALUE)
+                .setMaxLines(maxVisibleLines)
                 .setLineSpacing(0f, spec.lineHeightMultiplier.coerceAtLeast(1f))
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                 .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE)
