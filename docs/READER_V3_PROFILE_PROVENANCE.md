@@ -4,13 +4,13 @@ The product Baseline/Startup Profile assets are trace-derived, curated HRF rules
 
 Authoritative generation evidence for this revision family:
 
-- source head: `c98e028bebd1cde06239339bc0222f477da121ac`
-- GitHub Actions CI: `#596` / run `32989847747`
-- generated baseline source: 26,166 rules, 2,753,358 bytes, SHA-256 `b5f087a15a354a4ef366e17f85b6ba2a6a63cd581ceb7630a09205c6894632ac`
-- generated startup source: 24,739 rules, 2,587,595 bytes, SHA-256 `ec605e8e036cccd19c49c3bbc63d022f076a8683c6110b75b6a32f26b9d277af`
+- source head: `09e0d7f988c74507d5a6c5442f95e91e8864f9bc`
+- GitHub Actions CI: `#701` / run `33191024009`
+- generated baseline source: 24,466 rules, 2,549,632 bytes, SHA-256 `03ec774b23504e8397980382602a8df6f50f4bb6cbabf569730ab28ec984a426`
+- generated startup source: 22,781 rules, 2,342,202 bytes, SHA-256 `946667b8ea7cd0a156fd75bd449694aae3115ce78a4e9226626d4c251b4048ce`
 
-The committed `src/main/baseline-prof.txt` keeps the app-owned Reader V3 hot classes plus the Compose text/layout/lazy paths observed in the exact-head trace. `src/main/startup-prof.txt` is deliberately narrower and contains only the launcher/library/reader startup funnel. Runtime panel/scroll packages are not wildcarded into Startup Profile.
+The committed `src/main/baseline-prof.txt` keeps the app-owned Reader V3 hot classes plus only framework families proven hot by the critical journeys. The #701 capture specifically promoted `ReaderFastTextKt`, `ReaderHotControlsKt`, `ReaderHotPanelCanvasKt`, Canvas/gesture/layout and Material button/icon paths. `src/main/startup-prof.txt` remains deliberately narrower and contains only the launcher/library/reader startup funnel; runtime panel/scroll packages are not wildcarded into Startup Profile.
 
-Performance gating remains independent: `ReaderJourneyBenchmark` uses `BaselineProfileMode.Disable` with one warmup iteration, the 40/80 ms CPU-frame SLO runs first, profile collection runs afterwards, and a red SLO remains red after profile generation.
+Performance gating is independent and cannot self-feed: `ReaderJourneyBenchmark` measures the production R8 APK first with `CompilationMode.Partial(BaselineProfileMode.Require, warmupIterations = 0)`, enforcing the 40/80 ms CPU-frame SLO against the profile already packaged in that APK. Fresh profile collection happens only afterwards on the separate non-minified Profile target. A red SLO remains red after profile generation; generated evidence can only be curated into a later commit and therefore a later fresh install.
 
 Raw generated profile files are CI evidence, not source-of-truth product assets; regenerate them after material CUJ/hot-path changes and update this provenance together with the curated rules.

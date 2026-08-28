@@ -45,17 +45,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontSynthesis
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.resolveAsTypeface
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -122,7 +118,17 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     }
 }
 
-/** Continuous measures once, records one static text layer, then scrolls by layer translation only. */
+/** Native bounded continuous layout: one worker-built StaticLayout owns geometry and drawing. */
+internal class ReaderContinuousLayout internal constructor(internal val layout: StaticLayout) {
+    val lineCount: Int get() = layout.lineCount
+    val height: Int get() = layout.height
+    fun getLineForOffset(offset: Int): Int = layout.getLineForOffset(offset.coerceAtLeast(0))
+    fun getLineTop(line: Int): Float = layout.getLineTop(line.coerceIn(0, (layout.lineCount - 1).coerceAtLeast(0))).toFloat()
+    fun getLineForVerticalPosition(y: Float): Int = layout.getLineForVertical(y.roundToInt().coerceAtLeast(0))
+    fun getLineStart(line: Int): Int = layout.getLineStart(line.coerceIn(0, (layout.lineCount - 1).coerceAtLeast(0)))
+}
+
+/** Continuous keeps the 4K bounded window; scroll frames draw only clipped native lines. */
 @Composable
 internal fun Text(
     text: AnnotatedString,
@@ -132,56 +138,67 @@ internal fun Text(
     scrollableState: ScrollableState,
     scrollOffsetPx: () -> Float,
     onScrollRange: (Int) -> Unit,
-    onTextLayout: (TextLayoutResult) -> Unit,
+    onTextLayout: (ReaderContinuousLayout) -> Unit,
 ) {
     val context = LocalContext.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
     var selectionMode by remember(text.text) { mutableStateOf(false) }
-    if (selectionMode || accessibility.isTouchExplorationEnabled) {
-        val fallbackScroll = rememberScrollState(initial = scrollOffsetPx().roundToInt().coerceAtLeast(0))
-        LaunchedEffect(fallbackScroll.maxValue) { onScrollRange(fallbackScroll.maxValue) }
-        androidx.compose.material3.Text(
-            text = text,
-            modifier = modifier.verticalScroll(fallbackScroll),
-            style = style,
-            overflow = overflow,
-            onTextLayout = onTextLayout,
-        )
-        return
-    }
+    val fallback = selectionMode || accessibility.isTouchExplorationEnabled
     val density = LocalDensity.current
-    val measurer = rememberTextMeasurer(cacheSize = 4)
-    BoxWithConstraints(
-        modifier
-            .fillMaxSize()
-            .clipToBounds()
-            .scrollable(scrollableState, Orientation.Vertical)
-            .armSelectionOnLongPress(text.text) { selectionMode = true },
-    ) {
+    val resolver = LocalFontFamilyResolver.current
+    val nativeTypeface by resolver.resolveAsTypeface(
+        fontFamily = style.fontFamily,
+        fontWeight = style.fontWeight ?: FontWeight.Normal,
+        fontStyle = style.fontStyle ?: FontStyle.Normal,
+        fontSynthesis = style.fontSynthesis ?: FontSynthesis.All,
+    )
+    val resolvedColor = if (style.color == Color.Unspecified) MaterialTheme.colorScheme.onBackground else style.color
+    val baseModifier = modifier
+        .fillMaxSize()
+        .clipToBounds()
+        .armSelectionOnLongPress(text.text) { selectionMode = true }
+    BoxWithConstraints(if (fallback) baseModifier else baseModifier.scrollable(scrollableState, Orientation.Vertical)) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
         val viewportHeightPx = constraints.maxHeight.coerceAtLeast(1)
-        val layout by produceState<TextLayoutResult?>(null, text, style, overflow, widthPx, density.density, density.fontScale) {
+        val layout by produceState<ReaderContinuousLayout?>(
+            null,
+            text,
+            style,
+            overflow,
+            widthPx,
+            density.density,
+            density.fontScale,
+            nativeTypeface,
+            resolvedColor,
+        ) {
             value = withContext(Dispatchers.Default) {
-                measurer.measure(text = text, style = style, overflow = overflow, constraints = Constraints(maxWidth = widthPx))
+                ReaderContinuousLayout(buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx))
             }
         }
         LaunchedEffect(layout, viewportHeightPx) {
             layout?.let { ready ->
                 onTextLayout(ready)
-                onScrollRange((ready.size.height - viewportHeightPx).coerceAtLeast(0))
+                onScrollRange((ready.height - viewportHeightPx).coerceAtLeast(0))
             }
         }
-        layout?.let { ready ->
-            // Keep the state-phase scroll model, but draw into one viewport-sized Canvas.
-            // The previous full-text-height layer could be tens of thousands of pixels
-            // tall; hosted HWUI repeatedly recording/uploading it regressed P95/P99.
-            // Reading scrollOffsetPx in draw invalidates draw only, not composition/layout.
+        val ready = layout
+        if (fallback) {
+            val fallbackScroll = rememberScrollState(initial = scrollOffsetPx().roundToInt().coerceAtLeast(0))
+            androidx.compose.material3.Text(
+                text = text,
+                modifier = Modifier.fillMaxSize().verticalScroll(fallbackScroll),
+                style = style,
+                overflow = overflow,
+            )
+        } else if (ready != null) {
             Canvas(Modifier.fillMaxSize()) {
-                val maxOffset = (ready.size.height - viewportHeightPx).coerceAtLeast(0).toFloat()
-                val canvas = drawContext.canvas
+                val maxOffset = (ready.height - viewportHeightPx).coerceAtLeast(0).toFloat()
+                ready.layout.paint.color = resolvedColor.toArgb()
+                val canvas = drawContext.canvas.nativeCanvas
                 canvas.save()
+                canvas.clipRect(0f, 0f, size.width, size.height)
                 canvas.translate(0f, -scrollOffsetPx().coerceIn(0f, maxOffset))
-                drawText(ready)
+                ready.layout.draw(canvas)
                 canvas.restore()
             }
         }

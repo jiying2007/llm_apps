@@ -121,9 +121,18 @@ for marker in (
     "Lcom/junchen/jingdu/ReaderScreenV3Kt;",
     "Lcom/junchen/jingdu/ReaderQuickPanelsKt;",
     "Lcom/junchen/jingdu/ReaderSmartChaptersPanelKt;",
+    "Lcom/junchen/jingdu/ReaderFastTextKt;",
+    "Lcom/junchen/jingdu/ReaderHotControlsKt;",
+    "Lcom/junchen/jingdu/ReaderHotPanelCanvasKt;",
     "Landroidx/compose/foundation/text/**",
     "Landroidx/compose/ui/text/**",
     "Landroidx/compose/ui/layout/**",
+    "Landroidx/compose/foundation/CanvasKt;",
+    "Landroidx/compose/foundation/gestures/**",
+    "Landroidx/compose/foundation/layout/**",
+    "Landroidx/compose/material3/ButtonKt;",
+    "Landroidx/compose/material3/IconButtonKt;",
+    "Landroidx/compose/material3/IconKt;",
 ):
     assert marker in baseline, f"baseline hot path missing: {marker}"
 for marker in (

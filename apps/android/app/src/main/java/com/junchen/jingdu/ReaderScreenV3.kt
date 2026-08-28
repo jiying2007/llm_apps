@@ -58,7 +58,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -278,13 +277,13 @@ internal fun ReaderScreenV3(
                 .align(Alignment.Center).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)),
         )
 
-        AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
+        if (controlsVisible) Box(Modifier.align(Alignment.TopCenter)) {
             ReaderTopBarV3(book.name, currentChapter, actions) { more = true }
         }
         if (controlsVisible && more) Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)) {
             ReaderMoreMenuV3(state.cleanMode, actions) { more = false }
         }
-        AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomCenter)) {
+        if (controlsVisible) Box(Modifier.align(Alignment.BottomCenter)) {
             ReaderBottomBarV3(
                 chapters = state.chapters,
                 length = state.length,
@@ -535,7 +534,7 @@ private fun ContinuousReaderPageV3(
     val systemLeft = WindowInsets.systemGestures.getLeft(density, layoutDirection)
     val systemRight = WindowInsets.systemGestures.getRight(density, layoutDirection)
     var window by remember(book.id) { mutableStateOf<ReaderDisplayWindow?>(null) }
-    var layoutResult by remember(book.id) { mutableStateOf<TextLayoutResult?>(null) }
+    var layoutResult by remember(book.id) { mutableStateOf<ReaderContinuousLayout?>(null) }
     var viewportHeight by remember { mutableIntStateOf(0) }
     var widthPx by remember { mutableIntStateOf(0) }
     var loading by remember(book.id) { mutableStateOf(false) }
@@ -785,7 +784,7 @@ private fun Modifier.readerAccessibilityActionsV3(
 
 @Composable
 private fun ReaderTopBarV3(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit) {
-    Surface(tonalElevation = 2.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)) {
+    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))) {
         CenterAlignedTopAppBar(
             modifier = Modifier.statusBarsPadding(),
             navigationIcon = { IconButton(actions.onBackToLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library)) } },
@@ -841,7 +840,7 @@ private fun ReaderBottomBarV3(
     onReturnSkim: () -> Unit,
 ) {
     val progressDescription = stringResource(R.string.reading_progress)
-    Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)) {
+    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
             if (skimDragging || (showSkimReturn && skimPreview != null)) ReaderSkimPreviewCardV3(skimPreview, showSkimReturn, onReturnSkim)
             else Text(chapter ?: "", Modifier.align(Alignment.CenterHorizontally), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
