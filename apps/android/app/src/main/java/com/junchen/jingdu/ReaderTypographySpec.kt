@@ -65,7 +65,7 @@ internal data class ReaderTypographySpec(
      * Paragraph gaps are represented by a zero-width sentinel line inserted by the presentation
      * pipeline; that sentinel gets an explicit line height instead of abusing global line spacing.
      */
-    fun androidLayoutText(displayText: String, density: Density): CharSequence {
+    fun androidLayoutText(displayText: String, density: Density, emphasizeHeadings: Boolean = false): CharSequence {
         if (displayText.isEmpty()) return displayText
         val value = SpannableString(displayText)
         val gapPx = with(density) { (fontSizeSp * paragraphSpacingEm).sp.toPx() }.roundToInt().coerceAtLeast(1)
@@ -87,6 +87,15 @@ internal data class ReaderTypographySpec(
         }
         if (weight != ReaderFontWeight.NORMAL) {
             value.setSpan(StyleSpan(Typeface.BOLD), 0, value.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } else if (emphasizeHeadings) {
+            var cursor = 0
+            displayText.lineSequence().forEach { line ->
+                val end = (cursor + line.length).coerceAtMost(value.length)
+                if (end > cursor && ReaderHeadingClassifier.isHeading(line.trim())) {
+                    value.setSpan(StyleSpan(Typeface.BOLD), cursor, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                cursor = (end + 1).coerceAtMost(value.length)
+            }
         }
         return value
     }

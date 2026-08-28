@@ -62,8 +62,9 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
         if (cachedBase != null) {
             val key = TocPanelKey(book.id, book.normalizedSha256, state.length, cachedBase.chapters.hashCode())
             TocPanelCache.get(key)?.let { cached ->
+                // A revision-cache hit is authoritative for this panel. Do not hydrate global chapter
+                // state behind the visible panel; that only recomposes the reader and duplicates data.
                 base = cached.base; report = cached.report; loading = false
-                if (!state.chaptersLoaded) actions.onEnsureChapters()
                 return@LaunchedEffect
             }
             val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
@@ -72,7 +73,6 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
             report = computed
             TocPanelCache.put(key, TocPanelEntry(cachedBase, computed))
             loading = false
-            if (!state.chaptersLoaded) actions.onEnsureChapters()
             return@LaunchedEffect
         }
 

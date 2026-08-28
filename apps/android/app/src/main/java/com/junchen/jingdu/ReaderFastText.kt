@@ -18,10 +18,15 @@ import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,10 +37,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
@@ -86,7 +94,16 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
         val heightPx = constraints.maxHeight.coerceAtLeast(1)
         val reusable = remember(text, widthPx, heightPx) {
-            if (text.spanStyles.isEmpty()) ReaderPageLayoutCache.reusableLayoutFor(text.text, widthPx, heightPx) else null
+            val headingOnly = text.spanStyles.isNotEmpty() && text.spanStyles.all { range ->
+                val span = range.item
+                span.background == Color.Unspecified &&
+                    span.color == Color.Unspecified &&
+                    (span.fontWeight ?: FontWeight.Normal) >= FontWeight.SemiBold
+            }
+            val measurementCompatible = text.spanStyles.isEmpty() || headingOnly
+            if (measurementCompatible) {
+                ReaderPageLayoutCache.reusableLayoutFor(text.text, widthPx, heightPx, headingOnly)
+            } else null
         }
         val layout by produceState<StaticLayout?>(reusable, text, style, widthPx, density.density, density.fontScale, nativeTypeface, resolvedColor, reusable) {
             if (reusable == null) {
@@ -108,29 +125,74 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     }
 }
 
-/** Continuous keeps the 4K window and TextLayoutResult authority, but measures off the frame thread. */
+/** Continuous measures once, records one static text layer, then scrolls by layer translation only. */
 @Composable
-internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow, onTextLayout: (TextLayoutResult) -> Unit) {
+internal fun Text(
+    text: AnnotatedString,
+    modifier: Modifier,
+    style: TextStyle,
+    overflow: TextOverflow,
+    scrollableState: ScrollableState,
+    scrollOffsetPx: () -> Float,
+    onScrollRange: (Int) -> Unit,
+    onTextLayout: (TextLayoutResult) -> Unit,
+) {
     val context = LocalContext.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
     var selectionMode by remember(text.text) { mutableStateOf(false) }
     if (selectionMode || accessibility.isTouchExplorationEnabled) {
-        androidx.compose.material3.Text(text = text, modifier = modifier, style = style, overflow = overflow, onTextLayout = onTextLayout)
+        val fallbackScroll = rememberScrollState(initial = scrollOffsetPx().roundToInt().coerceAtLeast(0))
+        LaunchedEffect(fallbackScroll.maxValue) { onScrollRange(fallbackScroll.maxValue) }
+        androidx.compose.material3.Text(
+            text = text,
+            modifier = modifier.verticalScroll(fallbackScroll),
+            style = style,
+            overflow = overflow,
+            onTextLayout = onTextLayout,
+        )
         return
     }
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer(cacheSize = 4)
-    BoxWithConstraints(modifier.armSelectionOnLongPress(text.text) { selectionMode = true }) {
+    BoxWithConstraints(
+        modifier
+            .fillMaxSize()
+            .clipToBounds()
+            .scrollable(scrollableState, Orientation.Vertical)
+            .armSelectionOnLongPress(text.text) { selectionMode = true },
+    ) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
+        val viewportHeightPx = constraints.maxHeight.coerceAtLeast(1)
         val layout by produceState<TextLayoutResult?>(null, text, style, overflow, widthPx, density.density, density.fontScale) {
-            value = null
             value = withContext(Dispatchers.Default) {
                 measurer.measure(text = text, style = style, overflow = overflow, constraints = Constraints(maxWidth = widthPx))
             }
         }
-        LaunchedEffect(layout) { layout?.let(onTextLayout) }
+        LaunchedEffect(layout, viewportHeightPx) {
+            layout?.let { ready ->
+                onTextLayout(ready)
+                onScrollRange((ready.size.height - viewportHeightPx).coerceAtLeast(0))
+            }
+        }
         layout?.let { ready ->
-            Canvas(Modifier.fillMaxWidth().height(with(density) { ready.size.height.toDp() })) { drawText(ready) }
+            Layout(
+                modifier = Modifier.fillMaxSize(),
+                content = {
+                    Canvas(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(with(density) { ready.size.height.toDp() })
+                            .graphicsLayer { translationY = -scrollOffsetPx().coerceAtLeast(0f) },
+                    ) { drawText(ready) }
+                },
+            ) { measurables, viewport ->
+                val width = viewport.maxWidth.coerceAtLeast(1)
+                val height = viewport.maxHeight.coerceAtLeast(1)
+                val placeable = measurables.firstOrNull()?.measure(
+                    Constraints(minWidth = 0, maxWidth = width, minHeight = 0, maxHeight = Constraints.Infinity),
+                )
+                layout(width, height) { placeable?.place(0, 0) }
+            }
         }
     }
 }

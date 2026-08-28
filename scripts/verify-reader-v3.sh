@@ -39,6 +39,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
   apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
@@ -78,6 +79,7 @@ panel_surface=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurfa
 smart_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
 smart_toc_cache=apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
 hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
+fast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt
 service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 player=apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
 navigator=apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
@@ -111,8 +113,8 @@ require_literal apps/android/app/src/main/java/com/junchen/jingdu/TextProjection
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt 'bestCost == Int.MAX_VALUE' 'projection bounded fallback'
 require_literal "$engine" 'ReaderPresentationPipeline.present' 'shared presentation pipeline'
 require_literal "$pipeline" 'SourceDisplayMap.compose' 'projection composition'
-require_literal "$engine" 'typographyFingerprint = spec.fingerprint' 'typography fingerprint'
-require_literal "$engine" 'androidLayoutText' 'android pagination layout text'
+require_literal "$engine" 'typographyFingerprint = 31 * spec.fingerprint + settings.emphasizeHeadings.hashCode()' 'heading-aware typography fingerprint'
+require_literal "$engine" 'androidLayoutText(displayText, density, settings.emphasizeHeadings)' 'heading-aware android pagination layout text'
 require_literal "$engine" 'BREAK_STRATEGY_SIMPLE' 'bounded line breaking'
 require_literal "$controller" 'WINDOW_CHARS = 1536' 'paged window'
 require_literal "$controller" 'PAGE_CACHE_CHARS = 64 * 1024L' 'page cache size'
@@ -140,7 +142,12 @@ require_literal "$screen" 'readerAnnotatedTextV3(sourceStart, visibleText, prese
 forbid_literal "$screen" 'produceState<ReaderPresentedText?>' 'two-stage paged presentation state'
 forbid_literal "$screen" 'produceState<PageLayoutSnapshot?>' 'two-stage paged layout state'
 forbid_literal "$screen" 'annotated.subSequence(0, visibleEnd)' 'post-annotation pagination'
-require_literal "$screen" 'scrollState.isScrollInProgress' 'continuous gesture settling'
+require_literal "$screen" 'rememberScrollableState' 'continuous layer scroll state'
+require_literal "$screen" 'scrollableState.isScrollInProgress' 'continuous gesture settling'
+forbid_literal "$screen" '.verticalScroll(scrollState)' 'layout-driven continuous scrolling'
+require_literal "$fast_text" 'graphicsLayer { translationY = -scrollOffsetPx()' 'continuous cached layer translation'
+require_literal "$fast_text" 'scrollable(scrollableState, Orientation.Vertical)' 'continuous gesture layer'
+require_literal "$engine" 'reusableHasHeadingStyle' 'heading-aware measured layout reuse'
 require_literal "$screen" '!scrolling && absolute != lastCommitted' 'manual continuous commit'
 require_literal "$screen" 'AUTO_SCROLL_COMMIT_CHARS = 512L' 'auto-scroll commit bound'
 forbid_literal "$screen" 'abs(absolute - lastCommitted) >= 192' 'old noisy commit threshold'
@@ -174,6 +181,7 @@ require_literal "$quick_panel" 'ReaderPanelSurface(onDismiss = actions.onClosePa
 require_literal "$smart_panel" 'ReaderPanelSurface(onDismiss = actions.onClosePanel)' 'chapters panel surface'
 require_literal "$smart_panel" 'TocPanelCache' 'bounded panel cache'
 require_literal "$smart_panel" 'derivedCache.load(book.id, book.normalizedSha256, state.length)' 'derived TOC reuse'
+require_literal "$smart_panel" 'A revision-cache hit is authoritative for this panel' 'cache hit avoids global chapter hydration'
 require_literal "$smart_panel" 'Import/re-decode prewarms this revision cache' 'cache-first Chapters panel'
 require_literal "$smart_panel" 'if (cachedBase != null)' 'cache-first Chapters branch'
 require_literal "$smart_panel" 'val overrides = withContext(Dispatchers.IO)' 'panel override IO off main'

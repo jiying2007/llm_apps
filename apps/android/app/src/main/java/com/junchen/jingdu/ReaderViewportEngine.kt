@@ -129,6 +129,7 @@ data class PageLayoutSnapshot(
     val reusableWidthPx: Int = 0,
     val reusableHeightPx: Int = 0,
     val reusableLayout: StaticLayout? = null,
+    val reusableHasHeadingStyle: Boolean = false,
 )
 
 /** Small LRU used to keep exact page measurement out of repeated Compose layout churn. */
@@ -149,14 +150,15 @@ internal object ReaderPageLayoutCache {
      * remain authoritative.
      */
     @Synchronized
-    fun reusableLayoutFor(visibleText: String, widthPx: Int, heightPx: Int): StaticLayout? {
+    fun reusableLayoutFor(visibleText: String, widthPx: Int, heightPx: Int, hasHeadingStyle: Boolean): StaticLayout? {
         if (visibleText.isEmpty() || widthPx <= 0 || heightPx <= 0) return null
         val entries = cache.values.toList()
         for (index in entries.indices.reversed()) {
             val snapshot = entries[index]
             if (snapshot.reusableWidthPx == widthPx &&
                 snapshot.reusableHeightPx == heightPx &&
-                snapshot.reusableVisibleText == visibleText
+                snapshot.reusableVisibleText == visibleText &&
+                snapshot.reusableHasHeadingStyle == hasHeadingStyle
             ) return snapshot.reusableLayout
         }
         return null
@@ -186,7 +188,7 @@ internal object ReaderPageLayoutCache {
             textHash = 31 * sourceText.hashCode() + displayText.hashCode(),
             widthPx = columnWidth,
             heightPx = contentHeight,
-            typographyFingerprint = spec.fingerprint,
+            typographyFingerprint = 31 * spec.fingerprint + settings.emphasizeHeadings.hashCode(),
             columns = safeColumns,
         )
         get(key)?.let { return it }
@@ -199,7 +201,7 @@ internal object ReaderPageLayoutCache {
                 ReaderFontWeight.MEDIUM, ReaderFontWeight.SEMIBOLD -> Typeface.BOLD
             })
         }
-        val layoutText = spec.androidLayoutText(displayText, density)
+        val layoutText = spec.androidLayoutText(displayText, density, settings.emphasizeHeadings)
         // A line cannot be shorter than the paint's font box. Capping layout construction to the
         // maximum number of lines that could physically intersect the viewport keeps exact page
         // boundaries while preventing measurement/draw work for text that is guaranteed off-screen.
@@ -233,15 +235,19 @@ internal object ReaderPageLayoutCache {
         val projection = map ?: SourceDisplayMap.between(sourceText, displayText)
         val sourcePoints = projection.sourceForDisplay(displayedPoints)
         val reusable = if (safeColumns == 1 && firstLayout != null) firstLayout else null
+        val reusableVisible = if (reusable != null) displayText.substring(0, displayedEnd) else ""
+        val reusableHasHeadingStyle = reusable != null && settings.emphasizeHeadings &&
+            reusableVisible.lineSequence().any { ReaderHeadingClassifier.isHeading(it.trim()) }
         return PageLayoutSnapshot(
             displayedEndUtf16 = displayedEnd,
             displayedCodePoints = displayedPoints,
             sourceCodePoints = sourcePoints,
             firstColumnEndUtf16 = firstEnd,
-            reusableVisibleText = if (reusable != null) displayText.substring(0, displayedEnd) else "",
+            reusableVisibleText = reusableVisible,
             reusableWidthPx = if (reusable != null) columnWidth else 0,
             reusableHeightPx = if (reusable != null) contentHeight else 0,
             reusableLayout = reusable,
+            reusableHasHeadingStyle = reusableHasHeadingStyle,
         ).also { put(key, it) }
     }
 }
