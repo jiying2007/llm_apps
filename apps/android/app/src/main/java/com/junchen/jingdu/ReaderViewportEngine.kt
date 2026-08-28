@@ -123,6 +123,10 @@ data class PageLayoutSnapshot(
     val displayedCodePoints: Long,
     val sourceCodePoints: Long,
     val firstColumnEndUtf16: Int,
+    val reusableVisibleText: String = "",
+    val reusableWidthPx: Int = 0,
+    val reusableHeightPx: Int = 0,
+    val reusableLayout: StaticLayout? = null,
 )
 
 /** Small LRU used to keep exact page measurement out of repeated Compose layout churn. */
@@ -134,6 +138,27 @@ internal object ReaderPageLayoutCache {
     @Synchronized fun get(key: PageLayoutKey): PageLayoutSnapshot? = cache[key]
     @Synchronized fun put(key: PageLayoutKey, value: PageLayoutSnapshot) { cache[key] = value }
     @Synchronized fun clear() = cache.clear()
+
+    /**
+     * Paged rendering normally receives exactly the visible prefix measured below. For a plain body
+     * page the measurement StaticLayout is already the authoritative layout, so drawing can reuse it
+     * instead of competing with the frame thread by constructing the same layout a second time.
+     * Styled pages (headings/highlights/TTS) deliberately fall back in ReaderFastText so their spans
+     * remain authoritative.
+     */
+    @Synchronized
+    fun reusableLayoutFor(visibleText: String, widthPx: Int, heightPx: Int): StaticLayout? {
+        if (visibleText.isEmpty() || widthPx <= 0 || heightPx <= 0) return null
+        val entries = cache.values.toList()
+        for (index in entries.indices.reversed()) {
+            val snapshot = entries[index]
+            if (snapshot.reusableWidthPx == widthPx &&
+                snapshot.reusableHeightPx == heightPx &&
+                snapshot.reusableVisibleText == visibleText
+            ) return snapshot.reusableLayout
+        }
+        return null
+    }
 
     fun measure(
         sourceText: String,
@@ -173,8 +198,8 @@ internal object ReaderPageLayoutCache {
             })
         }
         val layoutText = spec.androidLayoutText(displayText, density)
-        fun endFor(text: CharSequence): Int {
-            if (text.isEmpty()) return 0
+        fun buildLayout(text: CharSequence): StaticLayout? {
+            if (text.isEmpty()) return null
             val builder = StaticLayout.Builder.obtain(text, 0, text.length, paint, columnWidth)
                 .setIncludePad(false)
                 .setEllipsize(TextUtils.TruncateAt.END)
@@ -183,20 +208,34 @@ internal object ReaderPageLayoutCache {
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                 .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE)
             if (spec.alignment == ReaderTextAlignment.JUSTIFY) builder.setJustificationMode(LineBreaker.JUSTIFICATION_MODE_INTER_WORD)
-            val layout = builder.build()
-            if (layout.lineCount <= 0) return 0
+            return builder.build()
+        }
+        fun endFor(layout: StaticLayout?, textLength: Int): Int {
+            if (layout == null || layout.lineCount <= 0) return 0
             val line = layout.getLineForVertical((contentHeight - 1).coerceAtLeast(0))
-            return layout.getLineEnd(line.coerceIn(0, layout.lineCount - 1)).coerceIn(0, text.length)
+            return layout.getLineEnd(line.coerceIn(0, layout.lineCount - 1)).coerceIn(0, textLength)
         }
 
-        val firstEnd = endFor(layoutText)
+        val firstLayout = buildLayout(layoutText)
+        val firstEnd = endFor(firstLayout, layoutText.length)
         val secondEnd = if (safeColumns == 2 && firstEnd < layoutText.length) {
-            firstEnd + endFor(layoutText.subSequence(firstEnd, layoutText.length))
+            val secondText = layoutText.subSequence(firstEnd, layoutText.length)
+            firstEnd + endFor(buildLayout(secondText), secondText.length)
         } else firstEnd
         val displayedEnd = secondEnd.coerceIn(0, displayText.length)
         val displayedPoints = displayText.codePointCount(0, displayedEnd).toLong()
         val projection = map ?: SourceDisplayMap.between(sourceText, displayText)
         val sourcePoints = projection.sourceForDisplay(displayedPoints)
-        return PageLayoutSnapshot(displayedEnd, displayedPoints, sourcePoints, firstEnd).also { put(key, it) }
+        val reusable = if (safeColumns == 1 && firstLayout != null) firstLayout else null
+        return PageLayoutSnapshot(
+            displayedEndUtf16 = displayedEnd,
+            displayedCodePoints = displayedPoints,
+            sourceCodePoints = sourcePoints,
+            firstColumnEndUtf16 = firstEnd,
+            reusableVisibleText = if (reusable != null) displayText.substring(0, displayedEnd) else "",
+            reusableWidthPx = if (reusable != null) columnWidth else 0,
+            reusableHeightPx = if (reusable != null) contentHeight else 0,
+            reusableLayout = reusable,
+        ).also { put(key, it) }
     }
 }
