@@ -73,6 +73,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -478,7 +479,7 @@ private fun ContinuousReaderPageV3(
     var widthPx by remember { mutableIntStateOf(0) }
     var loading by remember(book.id) { mutableStateOf(false) }
     var lastCommitted by remember(book.id) { mutableLongStateOf(state.position) }
-    var localPosition by remember(book.id) { mutableLongStateOf(state.position) }
+    val localPosition = remember(book.id) { AtomicLong(state.position) }
 
     suspend fun loadAround(target: Long) {
         if (loading) return
@@ -486,7 +487,7 @@ private fun ContinuousReaderPageV3(
         try {
             val next = withContext(Dispatchers.IO) { engine.readAround(target, settings) }
             window = next
-            localPosition = target.coerceIn(0L, (next.documentLength - 1).coerceAtLeast(0L))
+            localPosition.set(target.coerceIn(0L, (next.documentLength - 1).coerceAtLeast(0L)))
             layoutResult = null
         } finally { loading = false }
     }
@@ -497,13 +498,13 @@ private fun ContinuousReaderPageV3(
         withContext(Dispatchers.IO) { engine.prefetch(state.position, settings) }
     }
     LaunchedEffect(state.tts.offset, state.tts.active) {
-        if (state.tts.active && state.tts.offset >= 0 && abs(state.tts.offset - localPosition) > 128) loadAround(state.tts.offset)
+        if (state.tts.active && state.tts.offset >= 0 && abs(state.tts.offset - localPosition.get()) > 128) loadAround(state.tts.offset)
     }
     LaunchedEffect(window, layoutResult) {
         val w = window ?: return@LaunchedEffect
         val layout = layoutResult ?: return@LaunchedEffect
         if (w.displayText.isEmpty()) return@LaunchedEffect
-        val utf = utf16IndexV3(w.displayText, w.map.displayForSource((localPosition - w.start).coerceAtLeast(0)))
+        val utf = utf16IndexV3(w.displayText, w.map.displayForSource((localPosition.get() - w.start).coerceAtLeast(0)))
         val line = layout.getLineForOffset(utf.coerceIn(0, (w.displayText.length - 1).coerceAtLeast(0)))
         scrollState.scrollTo(layout.getLineTop(line).roundToInt().coerceIn(0, scrollState.maxValue))
     }
@@ -515,7 +516,7 @@ private fun ContinuousReaderPageV3(
             val line = layout.getLineForVerticalPosition(y.toFloat()).coerceIn(0, layout.lineCount - 1)
             val utf = layout.getLineStart(line).coerceIn(0, w.displayText.length)
             val absolute = (w.start + w.map.sourceForDisplay(w.displayText.codePointCount(0, utf).toLong())).coerceIn(0L, (w.documentLength - 1).coerceAtLeast(0L))
-            localPosition = absolute
+            localPosition.set(absolute)
             val shouldCommit = if (state.autoScrolling) {
                 abs(absolute - lastCommitted) >= AUTO_SCROLL_COMMIT_CHARS
             } else {
