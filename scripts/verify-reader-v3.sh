@@ -78,6 +78,7 @@ panel_surface=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurfa
 smart_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
 smart_toc_cache=apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
 hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
+fast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt
 service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 player=apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
 navigator=apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
@@ -135,7 +136,12 @@ require_literal "$screen" 'state.position, state.pageText, state, adaptiveLayout
 require_literal "$screen" 'val visibleText = remember(displayText, visibleEnd)' 'visible prefix slicing'
 require_literal "$screen" 'readerAnnotatedTextV3(sourceStart, visibleText' 'annotation after pagination'
 forbid_literal "$screen" 'annotated.subSequence(0, visibleEnd)' 'post-annotation pagination'
-require_literal "$screen" 'scrollState.isScrollInProgress' 'continuous gesture settling'
+require_literal "$screen" 'scrollableState = rememberScrollableState' 'continuous fixed viewport scroll state'
+require_literal "$screen" 'scrollableState.isScrollInProgress' 'continuous gesture settling'
+require_literal "$screen" 'scrollOffsetPx = (scrollOffsetPx + deltaPx)' 'draw-only continuous auto-scroll'
+forbid_literal "$screen" '.verticalScroll(scrollState)' 'layout-driven continuous scrolling'
+require_literal "$fast_text" 'scrollOffsetPx: () -> Float' 'continuous draw offset input'
+require_literal "$fast_text" 'translate(top = -scrollOffsetPx()' 'continuous draw-time translation'
 require_literal "$screen" '!scrolling && absolute != lastCommitted' 'manual continuous commit'
 require_literal "$screen" 'AUTO_SCROLL_COMMIT_CHARS = 512L' 'auto-scroll commit bound'
 forbid_literal "$screen" 'abs(absolute - lastCommitted) >= 192' 'old noisy commit threshold'
@@ -162,6 +168,7 @@ require_literal "$app" 'ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel' 'chapt
 require_literal "$quick_panel" 'ReaderPanelSurface(onDismiss = actions.onClosePanel)' 'quick panel surface'
 require_literal "$smart_panel" 'ReaderPanelSurface(onDismiss = actions.onClosePanel)' 'chapters panel surface'
 require_literal "$smart_panel" 'TocPanelCache' 'bounded panel cache'
+require_literal "$smart_panel" 'Cache-first:' 'cache-first Smart TOC panel'
 require_literal "$smart_panel" 'derivedCache.load(book.id, book.normalizedSha256, state.length)' 'derived TOC reuse'
 require_literal "$smart_panel" 'SmartToc.evaluate(state.chapters.map' 'bounded cache-eviction fallback'
 forbid_literal "$smart_panel" 'SmartToc.analyze(reader)' 'full scan inside panel'

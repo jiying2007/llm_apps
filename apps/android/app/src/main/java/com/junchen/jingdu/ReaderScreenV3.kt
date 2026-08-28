@@ -19,12 +19,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.rememberSelectionState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -468,7 +466,14 @@ private fun ContinuousReaderPageV3(
     val book = state.currentBook ?: return
     val settings = state.settings
     val engine = remember(book.id) { ReaderViewportEngine(context, book.id) }
-    val scrollState = rememberScrollState()
+    var scrollOffsetPx by remember(book.id) { mutableFloatStateOf(0f) }
+    var maxScrollPx by remember(book.id) { mutableFloatStateOf(0f) }
+    val scrollableState = rememberScrollableState { delta ->
+        val before = scrollOffsetPx
+        val next = (before - delta).coerceIn(0f, maxScrollPx)
+        scrollOffsetPx = next
+        before - next
+    }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val systemLeft = WindowInsets.systemGestures.getLeft(density, layoutDirection)
@@ -506,10 +511,10 @@ private fun ContinuousReaderPageV3(
         if (w.displayText.isEmpty()) return@LaunchedEffect
         val utf = utf16IndexV3(w.displayText, w.map.displayForSource((localPosition.get() - w.start).coerceAtLeast(0)))
         val line = layout.getLineForOffset(utf.coerceIn(0, (w.displayText.length - 1).coerceAtLeast(0)))
-        scrollState.scrollTo(layout.getLineTop(line).roundToInt().coerceIn(0, scrollState.maxValue))
+        scrollOffsetPx = layout.getLineTop(line).coerceIn(0f, maxScrollPx)
     }
-    LaunchedEffect(scrollState, layoutResult, window, viewportHeight, state.autoScrolling) {
-        snapshotFlow { scrollState.value to scrollState.isScrollInProgress }.distinctUntilChanged().collect { (y, scrolling) ->
+    LaunchedEffect(scrollableState, layoutResult, window, viewportHeight, state.autoScrolling) {
+        snapshotFlow { scrollOffsetPx.roundToInt() to scrollableState.isScrollInProgress }.distinctUntilChanged().collect { (y, scrolling) ->
             val w = window ?: return@collect
             val layout = layoutResult ?: return@collect
             if (w.displayText.isEmpty() || layout.lineCount <= 0) return@collect
@@ -528,7 +533,7 @@ private fun ContinuousReaderPageV3(
             }
             val edge = (viewportHeight * 0.25f).roundToInt()
             val nearTop = y <= edge && w.start > 0
-            val nearBottom = scrollState.maxValue > 0 && scrollState.maxValue - y <= edge && w.start + w.map.sourceCodePoints < w.documentLength - 1
+            val nearBottom = maxScrollPx > 0f && maxScrollPx - y.toFloat() <= edge.toFloat() && w.start + w.map.sourceCodePoints < w.documentLength - 1
             if (!loading && !scrolling && (nearTop || nearBottom)) loadAround(absolute)
         }
     }
@@ -539,12 +544,13 @@ private fun ContinuousReaderPageV3(
             withFrameNanos { now ->
                 if (lastFrame != 0L) {
                     val seconds = (now - lastFrame).toDouble() / 1_000_000_000.0
-                    scrollState.scrollBy(with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() })
+                    val deltaPx = with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() }
+                    scrollOffsetPx = (scrollOffsetPx + deltaPx).coerceIn(0f, maxScrollPx)
                 }
                 lastFrame = now
             }
             val w = window ?: continue
-            if (scrollState.maxValue > 0 && scrollState.value >= scrollState.maxValue - 1 && w.start + w.map.sourceCodePoints >= w.documentLength - 1) {
+            if (maxScrollPx > 0f && scrollOffsetPx >= maxScrollPx - 1f && w.start + w.map.sourceCodePoints >= w.documentLength - 1) {
                 actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)); break
             }
         }
@@ -572,7 +578,21 @@ private fun ContinuousReaderPageV3(
 
     SelectionContainer(state = selectionState) {
         Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; viewportHeight = it.height }.then(semantics).then(gestures), contentAlignment = Alignment.TopCenter) {
-            Text(annotated, Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp), style = style, overflow = TextOverflow.Clip, onTextLayout = { layoutResult = it })
+            Text(
+                annotated,
+                Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp),
+                style = style,
+                overflow = TextOverflow.Clip,
+                scrollableState = scrollableState,
+                scrollOffsetPx = { scrollOffsetPx },
+                onTextLayout = { layout ->
+                    layoutResult = layout
+                    val verticalPaddingPx = with(density) { settings.verticalPaddingDp.dp.toPx() * 2f }
+                    val visibleHeightPx = (viewportHeight.toFloat() - verticalPaddingPx).coerceAtLeast(1f)
+                    maxScrollPx = (layout.size.height.toFloat() - visibleHeightPx).coerceAtLeast(0f)
+                    scrollOffsetPx = scrollOffsetPx.coerceIn(0f, maxScrollPx)
+                },
+            )
             if (loading && display.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.Center))
         }
     }
