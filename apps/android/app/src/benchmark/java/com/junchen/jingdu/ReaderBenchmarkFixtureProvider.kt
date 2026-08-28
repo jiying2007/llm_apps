@@ -54,9 +54,9 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                         hapticEnabled = false,
                     ),
                 )
-                // A numeric ACK survives R8 enum optimization and proves the synchronous DataStore
-                // flush above completed. The caller already knows which mode it requested.
-                Bundle().apply { putLong("modeApplied", 1L) }
+                // The shell-visible empty Bundle is the protocol ACK. DataStore flush is synchronous;
+                // any write failure escapes above and makes the content command fail instead.
+                Bundle.EMPTY
             }
             "clear" -> {
                 val repository = BookRepository(context)
