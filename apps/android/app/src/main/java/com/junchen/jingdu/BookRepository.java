@@ -251,12 +251,19 @@ final class BookRepository {
     }
 
     private void prewarmChapterIndex(Book book) {
-        // Chapter discovery is a derived index of the immutable normalized TXT. Build it while the
-        // import/re-decode worker already owns the document so first reading interactions never pay
-        // the full scan or compete with the frame thread. Failure is harmless: Core can rebuild it.
+        // Chapter discovery and Smart TOC quality are derived indexes of the immutable normalized
+        // TXT. Build both while import/re-decode already owns the document so first reading/panel
+        // interactions consume revision-keyed caches instead of competing with the frame thread.
+        // Failure is harmless: Core/SmartToc can deterministically rebuild either cache later.
         try (ReaderController source = new ReaderController(false)) {
             source.open(normalizedFile(book), 0);
             source.chapters();
+            ReaderDerivedIndexPrewarmer.prewarm(
+                    context,
+                    book.id,
+                    book.normalizedSha256,
+                    source.length(),
+                    source);
         } catch (Throwable ignored) {
         }
     }
