@@ -142,6 +142,7 @@ final class BookRepository {
                     sameRevision ? existing.charCount : 0,
                     System.currentTimeMillis());
             upsert(book);
+            prewarmChapterIndex(book);
             return book;
         } finally {
             deleteTemporary(sourceTemporary);
@@ -174,6 +175,7 @@ final class BookRepository {
                     sameRevision ? book.charCount : 0,
                     System.currentTimeMillis());
             upsert(updated);
+            prewarmChapterIndex(updated);
             return updated;
         } finally {
             deleteTemporary(temporary);
@@ -245,6 +247,17 @@ final class BookRepository {
             } else if (name.equals("clean.txt") || name.equals("clean.revision")) {
                 deleteTemporary(file);
             }
+        }
+    }
+
+    private void prewarmChapterIndex(Book book) {
+        // Chapter discovery is a derived index of the immutable normalized TXT. Build it while the
+        // import/re-decode worker already owns the document so first reading interactions never pay
+        // the full scan or compete with the frame thread. Failure is harmless: Core can rebuild it.
+        try (ReaderController source = new ReaderController(false)) {
+            source.open(normalizedFile(book), 0);
+            source.chapters();
+        } catch (Throwable ignored) {
         }
     }
 
