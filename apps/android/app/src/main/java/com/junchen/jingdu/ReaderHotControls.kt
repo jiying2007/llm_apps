@@ -4,16 +4,23 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.TextPaint
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,11 +47,28 @@ internal fun Slider(
 }
 
 /**
- * Exact overload used by ReaderReadingStatusV3. A one-line status update must not construct a
- * Compose/StaticLayout on every page or settled scroll position; it is simple display-only text and
- * can be drawn directly with a native TextPaint. Material Text remains authoritative everywhere
- * else because those call sites have different signatures.
+ * ReaderTopBarV3 is updated on every reader-state publication. Keep the existing navigation/action
+ * children and their accessibility semantics, but avoid Material's multi-pass TopAppBar measure
+ * tree in the frame-critical reader composition.
  */
+@Composable
+internal fun CenterAlignedTopAppBar(
+    modifier: Modifier = Modifier,
+    navigationIcon: @Composable () -> Unit,
+    title: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Box(modifier.fillMaxWidth().height(64.dp)) {
+        Box(Modifier.align(Alignment.CenterStart), contentAlignment = Alignment.Center) { navigationIcon() }
+        Box(
+            Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 148.dp),
+            contentAlignment = Alignment.Center,
+        ) { title() }
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = actions)
+    }
+}
+
+/** Exact one-line overload used by the reader's hidden-controls status chip. */
 @Composable
 internal fun Text(
     text: String,
@@ -52,6 +76,43 @@ internal fun Text(
     style: TextStyle,
     color: Color,
     maxLines: Int,
+) = ReaderHotLine(text, modifier, style, color, maxLines)
+
+/** One-line reader-title overload. Other Material Text signatures remain untouched. */
+@Composable
+internal fun Text(
+    text: String,
+    maxLines: Int,
+    overflow: TextOverflow,
+) = ReaderHotLine(text, Modifier, MaterialTheme.typography.titleMedium, MaterialTheme.colorScheme.onSurface, maxLines, overflow)
+
+/** One-line chapter-label overload used by the reader top bar. */
+@Composable
+internal fun Text(
+    text: String,
+    maxLines: Int,
+    overflow: TextOverflow,
+    style: TextStyle,
+) = ReaderHotLine(text, Modifier, style, MaterialTheme.colorScheme.onSurfaceVariant, maxLines, overflow)
+
+/** One-line chapter-label overload used by the reader bottom bar. */
+@Composable
+internal fun Text(
+    text: String,
+    modifier: Modifier,
+    maxLines: Int,
+    overflow: TextOverflow,
+    style: TextStyle,
+) = ReaderHotLine(text, modifier, style, MaterialTheme.colorScheme.onSurfaceVariant, maxLines, overflow)
+
+@Composable
+private fun ReaderHotLine(
+    text: String,
+    modifier: Modifier,
+    style: TextStyle,
+    color: Color,
+    maxLines: Int,
+    @Suppress("UNUSED_PARAMETER") overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val density = LocalDensity.current
     val paint = remember(color, style.fontSize, style.fontWeight, density.density, density.fontScale) {
