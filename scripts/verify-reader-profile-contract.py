@@ -66,13 +66,14 @@ for task in (":app:assembleBenchmark", ":app:assembleProfile", ":macrobenchmark:
 # The hosted fixture is a stable R8-safe protocol and must match the real reader environment.
 assert "controlsAutoHideMs = 3500L" in benchmark_provider, "benchmark must use production controls auto-hide"
 assert "controlsAutoHideMs = 60_000L" not in benchmark_provider, "benchmark-only persistent controls bias retained"
-assert 'putLong("modeApplied", 1L)' in benchmark_provider, "R8-stable benchmark mode ACK missing"
-assert 'result.contains("modeApplied=1")' in journey, "Macrobenchmark mode ACK contract missing"
+assert "DataStore flush is synchronous" in benchmark_provider, "benchmark mode ACK rationale missing"
+assert 'putLong("modeApplied", 1L)' not in benchmark_provider, "unstable R8 Bundle payload ACK retained"
+assert 'result.contains("Result: Bundle[{}]")' in journey, "deterministic empty-Bundle mode ACK contract missing"
 assert "-keep class com.junchen.jingdu.ReaderBenchmarkFixtureProvider { *; }" in proguard, "hosted fixture provider R8 keep missing"
 
 slo_call = 'python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"'
-profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE"'
 profile_swap = 'install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFILE_TEST_APK"'
+profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log" "$PROFILE_CLASS"'
 assert slo_call in runner and profile_call in runner and profile_swap in runner
 assert ':app:assembleBenchmark :macrobenchmark:assembleBenchmark' in runner
 assert ':app:assembleProfile :macrobenchmark:assembleProfile' in runner
@@ -87,6 +88,14 @@ assert 'sort -u > "$RESULT_ROOT/profile/startup-prof.txt"' in runner
 last_slo_exit = runner.rfind('exit "$SLO_STATUS"')
 assert last_slo_exit > runner.index(profile_call), "red SLO must still fail after profiles are emitted"
 assert 'GPU_MODE="software"' in runner
+
+# Hosted instrumentation must run only the authority for each stage. This prevents unrelated
+# Startup/Profile tests from turning the frame SLO into a mixed-suite infrastructure result.
+assert 'local test_class="${4:-}"' in runner, "instrumentation class filter parameter missing"
+assert 'class_args=(-e class "$test_class")' in runner, "instrumentation class filter wiring missing"
+assert 'MACRO_CLASS="com.junchen.jingdu.macrobenchmark.ReaderJourneyBenchmark"' in runner
+assert 'PROFILE_CLASS="com.junchen.jingdu.macrobenchmark.BaselineProfileGenerator"' in runner
+assert 'StartupBenchmark' not in runner, "standalone startup suite must not contaminate the frame gate"
 
 # An invalid instrumentation run is infrastructure evidence, not a performance result. Exactly one
 # bounded Macrobenchmark recovery is allowed; valid measurements remain untouched.
