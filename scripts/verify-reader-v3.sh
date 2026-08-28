@@ -78,6 +78,7 @@ panel_surface=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurfa
 smart_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
 smart_toc_cache=apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
 hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
+fast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt
 service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 player=apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
 navigator=apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
@@ -134,6 +135,10 @@ require_literal "$screen" 'pageDirection = if (settings.pageAnimation == ReaderP
 require_literal "$screen" 'state.position, state.pageText, state, adaptiveLayout' 'paged route source'
 require_literal "$screen" 'val visibleText = remember(displayText, visibleEnd)' 'visible prefix slicing'
 require_literal "$screen" 'readerAnnotatedTextV3(sourceStart, visibleText' 'annotation after pagination'
+require_literal "$screen" 'if (columns == 2) ReaderSelectionController.annotatedForSelection' 'two-column exact selection fallback'
+require_literal "$screen" 'sourceBase = sourceStart' 'paged lazy selection source base'
+require_literal "$screen" 'sourceBase = start' 'continuous lazy selection source base'
+require_literal "$fast_text" 'sourceMap?.let { ReaderSelectionController.annotatedForSelection(sourceBase, text, it) } ?: text' 'selection annotations materialize only in selectable mode'
 forbid_literal "$screen" 'annotated.subSequence(0, visibleEnd)' 'post-annotation pagination'
 require_literal "$screen" 'scrollState.isScrollInProgress' 'continuous gesture settling'
 require_literal "$screen" '!scrolling && absolute != lastCommitted' 'manual continuous commit'

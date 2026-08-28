@@ -421,8 +421,13 @@ private fun PagedReaderPageV3(
     val visibleText = remember(displayText, visibleEnd) {
         if (visibleEnd <= 0) "" else displayText.substring(0, visibleEnd)
     }
-    val annotated = remember(sourceStart, visibleText, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
-        ReaderSelectionController.annotatedForSelection(sourceStart, readerAnnotatedTextV3(sourceStart, visibleText, map, state), map)
+    val visual = remember(sourceStart, visibleText, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
+        readerAnnotatedTextV3(sourceStart, visibleText, map, state)
+    }
+    // Two-column selection needs one shared source-annotated sequence so the second column retains
+    // its exact display offset. Compact/single-column reading stays visual-only until selection mode.
+    val annotated = remember(sourceStart, visual, map, columns) {
+        if (columns == 2) ReaderSelectionController.annotatedForSelection(sourceStart, visual, map) else visual
     }
     val selectionState = rememberSelectionState()
     LaunchedEffect(selectionState.selectedTexts) {
@@ -443,7 +448,14 @@ private fun PagedReaderPageV3(
                     Text(annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
                 }
             } else if (snapshotValue != null && annotated.isNotEmpty()) {
-                Text(annotated, Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp), style = style, overflow = TextOverflow.Clip)
+                Text(
+                    visual,
+                    Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    style = style,
+                    overflow = TextOverflow.Clip,
+                    sourceBase = sourceStart,
+                    sourceMap = map,
+                )
             }
         }
     }
@@ -556,8 +568,8 @@ private fun ContinuousReaderPageV3(
     val map = w?.map ?: SourceDisplayMap.between("", "")
     val spec = remember(settings) { ReaderTypographySpec.from(settings) }
     val style = spec.composeTextStyle(textColor, fontFamily)
-    val annotated = remember(start, display, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
-        ReaderSelectionController.annotatedForSelection(start, readerAnnotatedTextV3(start, display, map, state), map)
+    val visual = remember(start, display, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
+        readerAnnotatedTextV3(start, display, map, state)
     }
     val selectionState = rememberSelectionState()
     LaunchedEffect(selectionState.selectedTexts) {
@@ -572,7 +584,15 @@ private fun ContinuousReaderPageV3(
 
     SelectionContainer(state = selectionState) {
         Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; viewportHeight = it.height }.then(semantics).then(gestures), contentAlignment = Alignment.TopCenter) {
-            Text(annotated, Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp), style = style, overflow = TextOverflow.Clip, onTextLayout = { layoutResult = it })
+            Text(
+                visual,
+                Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp),
+                style = style,
+                overflow = TextOverflow.Clip,
+                sourceBase = start,
+                sourceMap = map,
+                onTextLayout = { layoutResult = it },
+            )
             if (loading && display.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.Center))
         }
     }

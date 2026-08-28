@@ -124,6 +124,12 @@ for marker in (
     "Landroidx/compose/foundation/text/**",
     "Landroidx/compose/ui/text/**",
     "Landroidx/compose/ui/layout/**",
+    "Landroidx/compose/runtime/**",
+    "Landroidx/compose/ui/platform/**",
+    "Landroidx/compose/ui/graphics/**",
+    "Landroidx/compose/foundation/gestures/**",
+    "Lcom/junchen/jingdu/ReaderFastTextKt;",
+    "Lcom/junchen/jingdu/ReaderHotControlsKt;",
 ):
     assert marker in baseline, f"baseline hot path missing: {marker}"
 for marker in (
@@ -144,6 +150,9 @@ assert re.search(r"source head: `?[0-9a-f]{40}`?", provenance), "profile provena
 assert re.search(r"run `?[0-9]{8,}`?", provenance), "profile provenance CI run missing"
 profile_evidence = re.findall(r"generated (?:baseline|startup) source: ([0-9,]+) rules, ([0-9,]+) bytes, SHA-256 `([0-9a-f]{64})`", provenance)
 assert len(profile_evidence) == 2, "baseline/startup profile provenance evidence must include rules, bytes and SHA-256"
+assert "d2917b523088621b0a5c76671bbaba50d87a797a" in provenance, "current Reader V3 profile source head missing"
+assert "run `33164386045`" in provenance, "current Reader V3 profile run missing"
+assert "BaselineProfileMode.Require" in provenance and "warmupIterations = 0" in provenance, "profile provenance must describe the production install-state gate"
 
 perf_job = workflow[workflow.index("  android-performance:"):workflow.index("  harmony-contract:")]
 assert "runs-on: ubuntu-22.04" in perf_job, "hosted performance image must be pinned"

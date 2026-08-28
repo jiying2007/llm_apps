@@ -65,12 +65,22 @@ import kotlin.math.roundToInt
  * frame thread and the Canvas only draws a ready layout.
  */
 @Composable
-internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow) {
+internal fun Text(
+    text: AnnotatedString,
+    modifier: Modifier,
+    style: TextStyle,
+    overflow: TextOverflow,
+    sourceBase: Long = 0L,
+    sourceMap: SourceDisplayMap? = null,
+) {
     val context = LocalContext.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
     var selectionMode by remember(text.text) { mutableStateOf(false) }
     if (selectionMode || accessibility.isTouchExplorationEnabled) {
-        androidx.compose.material3.Text(text = text, modifier = modifier, style = style, overflow = overflow)
+        val selectable = remember(text, sourceBase, sourceMap) {
+            sourceMap?.let { ReaderSelectionController.annotatedForSelection(sourceBase, text, it) } ?: text
+        }
+        androidx.compose.material3.Text(text = selectable, modifier = modifier, style = style, overflow = overflow)
         return
     }
     val density = LocalDensity.current
@@ -110,12 +120,23 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
 
 /** Continuous keeps the 4K window and TextLayoutResult authority, but measures off the frame thread. */
 @Composable
-internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow, onTextLayout: (TextLayoutResult) -> Unit) {
+internal fun Text(
+    text: AnnotatedString,
+    modifier: Modifier,
+    style: TextStyle,
+    overflow: TextOverflow,
+    sourceBase: Long = 0L,
+    sourceMap: SourceDisplayMap? = null,
+    onTextLayout: (TextLayoutResult) -> Unit,
+) {
     val context = LocalContext.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
     var selectionMode by remember(text.text) { mutableStateOf(false) }
     if (selectionMode || accessibility.isTouchExplorationEnabled) {
-        androidx.compose.material3.Text(text = text, modifier = modifier, style = style, overflow = overflow, onTextLayout = onTextLayout)
+        val selectable = remember(text, sourceBase, sourceMap) {
+            sourceMap?.let { ReaderSelectionController.annotatedForSelection(sourceBase, text, it) } ?: text
+        }
+        androidx.compose.material3.Text(text = selectable, modifier = modifier, style = style, overflow = overflow, onTextLayout = onTextLayout)
         return
     }
     val density = LocalDensity.current
