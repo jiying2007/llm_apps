@@ -58,6 +58,7 @@ assert "initWith release" in profile_block
 assert "minifyEnabled = false" in profile_block and "shrinkResources = false" in profile_block
 assert "debuggable = false" in profile_block
 assert 'java.srcDir "src/benchmark/java"' in app_gradle
+assert 'kotlin.srcDir "src/benchmark/java"' in app_gradle, "profile variant must compile the benchmark Kotlin fixture provider"
 assert 'manifest.srcFile "src/benchmark/AndroidManifest.xml"' in app_gradle
 assert "profile {" in macro_gradle and 'matchingFallbacks = ["profile"]' in macro_gradle
 for task in (":app:assembleBenchmark", ":app:assembleProfile", ":macrobenchmark:assembleBenchmark", ":macrobenchmark:assembleProfile"):
