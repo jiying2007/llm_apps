@@ -1,0 +1,315 @@
+name: Reader V3 State Phase Finalizer
+
+on:
+  push:
+    branches: [feat/reader-v3-prelaunch-final]
+    paths: [.github/workflows/reader-v3-state-phase-finalizer.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reader-v3-prelaunch-final
+          fetch-depth: 0
+      - name: Apply trace-driven Reader V3 state-phase reductions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, got {count}")
+              return text.replace(old, new, 1)
+
+          screen_path = Path("apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt")
+          screen = screen_path.read_text()
+          screen = once(
+              screen,
+              'private data class V3SelectionPayload(val range: ReaderSelectionRange, val clearNative: () -> Unit)\n',
+              '''private data class V3SelectionPayload(val range: ReaderSelectionRange, val clearNative: () -> Unit)\n\nprivate data class ReaderPreparedPageV3(\n    val snapshot: PageLayoutSnapshot,\n    val annotated: AnnotatedString,\n)\n''',
+              "prepared page model",
+          )
+          old_call = '''                            state.position, state.pageText, state, adaptiveLayout, fontFamily, textColor, touchExploration,\n'''
+          new_call = '''                            state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,\n'''
+          if screen.count(old_call) != 1:
+              raise SystemExit(f"animated paged call: expected 1, got {screen.count(old_call)}")
+          screen = screen.replace(old_call, new_call, 1)
+          old_call2 = '''                    state.position, state.pageText, state, adaptiveLayout, fontFamily, textColor, touchExploration,\n'''
+          new_call2 = '''                    state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,\n'''
+          if screen.count(old_call2) != 1:
+              raise SystemExit(f"direct paged call: expected 1, got {screen.count(old_call2)}")
+          screen = screen.replace(old_call2, new_call2, 1)
+
+          start = screen.index('@Composable\nprivate fun PagedReaderPageV3(')
+          end = screen.index('@Composable\nprivate fun ContinuousReaderPageV3(', start)
+          paged = r'''@Composable
+private fun PagedReaderPageV3(
+    sourceStart: Long,
+    sourceText: String,
+    settings: ReaderSettings,
+    annotations: List<ReaderAnnotation>,
+    tts: TtsPlaybackModel,
+    adaptiveLayout: ReaderAdaptiveLayout,
+    fontFamily: androidx.compose.ui.text.font.FontFamily,
+    textColor: Color,
+    touchExploration: Boolean,
+    onVisibleCharsChanged: (Long) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onToggleControls: () -> Unit,
+    onBrightnessDelta: (Float) -> Unit,
+    onResizeFont: (Float) -> Unit,
+    onBookmark: () -> Unit,
+    onSelection: (V3SelectionPayload?) -> Unit,
+) {
+    val context = LocalContext.current
+    val spec = remember(settings) { ReaderTypographySpec.from(settings) }
+    val style = spec.composeTextStyle(textColor, fontFamily)
+    val typeface = remember(settings.typeface, settings.customFontId, settings.fontWeight) { spec.androidTypeface(context) }
+    var widthPx by remember { mutableIntStateOf(0) }
+    var heightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val systemLeft = WindowInsets.systemGestures.getLeft(density, layoutDirection)
+    val systemRight = WindowInsets.systemGestures.getRight(density, layoutDirection)
+    val columns = when (settings.wideColumns) {
+        ReaderWideColumns.SINGLE -> 1
+        ReaderWideColumns.DOUBLE -> if (adaptiveLayout.width >= ReaderAdaptiveWidth.MEDIUM && !adaptiveLayout.tabletop) 2 else 1
+        ReaderWideColumns.AUTO -> if (adaptiveLayout.prefersTwoColumns) 2 else 1
+    }
+
+    // One worker result owns projection, pagination and selection metadata. The previous two-stage
+    // presented -> snapshot publication forced multiple Reader recompositions for every page turn.
+    val prepared by produceState<ReaderPreparedPageV3?>(
+        initialValue = null,
+        sourceStart,
+        sourceText,
+        settings,
+        annotations,
+        tts,
+        widthPx,
+        heightPx,
+        columns,
+        spec.fingerprint,
+    ) {
+        if (widthPx <= 0 || heightPx <= 0 || sourceText.isEmpty()) return@produceState
+        value = withContext(Dispatchers.Default) {
+            val presented = ReaderPresentationPipeline.present(sourceText, settings)
+            val snapshot = ReaderPageLayoutCache.measure(
+                sourceText,
+                presented.displayText,
+                widthPx,
+                heightPx,
+                columns,
+                settings,
+                density,
+                typeface,
+                presented.map,
+            )
+            val visibleEnd = snapshot.displayedEndUtf16.coerceIn(0, presented.displayText.length)
+            val visibleText = if (visibleEnd <= 0) "" else presented.displayText.substring(0, visibleEnd)
+            val visual = readerAnnotatedTextV3(sourceStart, visibleText, presented.map, annotations, tts, settings)
+            ReaderPreparedPageV3(
+                snapshot = snapshot,
+                annotated = ReaderSelectionController.annotatedForSelection(sourceStart, visual, presented.map),
+            )
+        }
+    }
+    val preparedValue = prepared
+    LaunchedEffect(preparedValue?.snapshot?.sourceCodePoints) {
+        preparedValue?.snapshot?.sourceCodePoints
+            ?.takeIf { it >= ReaderController.MIN_PAGE_CHARS }
+            ?.let(onVisibleCharsChanged)
+    }
+
+    val selectionState = rememberSelectionState()
+    LaunchedEffect(selectionState.selectedTexts) {
+        val range = ReaderSelectionController.fromSelectedTexts(selectionState.selectedTexts)
+        onSelection(range?.let { V3SelectionPayload(it) { selectionState.clear() } })
+    }
+    val semantics = Modifier.readerAccessibilityActionsV3(
+        onPrevious, onNext, onToggleControls, onBookmark,
+        stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous),
+        stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls),
+        stringResource(R.string.reader_access_bookmark),
+    )
+    val gestures = if (touchExploration) Modifier else Modifier
+        .readerGesturesV3(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark)
+        .pointerInput(settings.pinchFontEnabled) {
+            if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) }
+        }
+
+    SelectionContainer(state = selectionState) {
+        Box(
+            Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            val ready = preparedValue ?: return@Box
+            val annotated = ready.annotated
+            if (columns == 2 && annotated.isNotEmpty()) {
+                val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
+                Row(
+                    Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                ) {
+                    Text(annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
+                    Text(annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
+                }
+            } else if (annotated.isNotEmpty()) {
+                Text(
+                    annotated,
+                    Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    style = style,
+                    overflow = TextOverflow.Clip,
+                )
+            }
+        }
+    }
+}
+
+'''
+          screen = screen[:start] + paged + screen[end:]
+
+          screen = once(
+              screen,
+              '''    val annotated = remember(start, display, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {\n        ReaderSelectionController.annotatedForSelection(start, readerAnnotatedTextV3(start, display, map, state), map)\n    }\n''',
+              '''    val annotated = remember(start, display, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {\n        ReaderSelectionController.annotatedForSelection(\n            start,\n            readerAnnotatedTextV3(start, display, map, state.annotations, state.tts, settings),\n            map,\n        )\n    }\n''',
+              "continuous explicit visual state",
+          )
+          old_annotated = '''private fun readerAnnotatedTextV3(sourceStart: Long, displayText: String, map: SourceDisplayMap, state: AppUiState): AnnotatedString = buildAnnotatedString {\n'''
+          new_annotated = '''private fun readerAnnotatedTextV3(\n    sourceStart: Long,\n    displayText: String,\n    map: SourceDisplayMap,\n    annotations: List<ReaderAnnotation>,\n    tts: TtsPlaybackModel,\n    settings: ReaderSettings,\n): AnnotatedString = buildAnnotatedString {\n'''
+          screen = once(screen, old_annotated, new_annotated, "visual annotation signature")
+          screen = once(screen, '    state.annotations.forEach { annotation ->\n', '    annotations.forEach { annotation ->\n', "visual annotations input")
+          screen = once(screen, '    if (state.tts.active && state.tts.rangeEnd > state.tts.rangeStart) {\n        val a = displayIndex(state.tts.rangeStart)\n        val b = displayIndex(state.tts.rangeEnd).coerceAtLeast(a)\n', '    if (tts.active && tts.rangeEnd > tts.rangeStart) {\n        val a = displayIndex(tts.rangeStart)\n        val b = displayIndex(tts.rangeEnd).coerceAtLeast(a)\n', "visual tts input")
+          screen = once(screen, '    if (state.settings.emphasizeHeadings) {\n', '    if (settings.emphasizeHeadings) {\n', "visual heading input")
+          screen = once(screen, '    if (state.settings.paragraphSpacingEm > 0f) {\n        val gap = (state.settings.fontSizeSp * state.settings.paragraphSpacingEm).coerceAtLeast(1f).sp\n', '    if (settings.paragraphSpacingEm > 0f) {\n        val gap = (settings.fontSizeSp * settings.paragraphSpacingEm).coerceAtLeast(1f).sp\n', "visual paragraph input")
+
+          screen = once(screen, '            ReaderTopBarV3(state, currentChapter, actions) { more = true }\n', '            ReaderTopBarV3(book.name, currentChapter, actions) { more = true }\n', "minimal top bar call")
+          screen = once(screen, '            ReaderMoreMenuV3(state, actions) { more = false }\n', '            ReaderMoreMenuV3(state.cleanMode, actions) { more = false }\n', "minimal more menu call")
+          screen = once(
+              screen,
+              '''            ReaderBottomBarV3(\n                state = state,\n                chapter = currentChapter,\n''',
+              '''            ReaderBottomBarV3(\n                chapters = state.chapters,\n                length = state.length,\n                autoPaging = state.autoPaging,\n                ttsPlaying = state.ttsPlaying,\n                chapter = currentChapter,\n''',
+              "minimal bottom bar call",
+          )
+          screen = once(
+              screen,
+              '''private fun ReaderTopBarV3(state: AppUiState, chapter: String?, actions: JingduActions, onMore: () -> Unit) {\n    val book = state.currentBook ?: return\n''',
+              '''private fun ReaderTopBarV3(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit) {\n''',
+              "minimal top bar signature",
+          )
+          screen = once(screen, 'Text(book.name.removeSuffix(".txt").removeSuffix(".TXT"), maxLines = 1, overflow = TextOverflow.Ellipsis)', 'Text(bookName.removeSuffix(".txt").removeSuffix(".TXT"), maxLines = 1, overflow = TextOverflow.Ellipsis)', "top bar book name")
+          screen = once(
+              screen,
+              'private fun ReaderMoreMenuV3(state: AppUiState, actions: JingduActions, onDismiss: () -> Unit) {\n',
+              'private fun ReaderMoreMenuV3(cleanMode: Boolean, actions: JingduActions, onDismiss: () -> Unit) {\n',
+              "minimal more menu signature",
+          )
+          screen = once(screen, '        if (!state.cleanMode) DropdownMenuItem(', '        if (!cleanMode) DropdownMenuItem(', "more menu clean state")
+          screen = once(
+              screen,
+              '''private fun ReaderBottomBarV3(\n    state: AppUiState,\n    chapter: String?,\n''',
+              '''private fun ReaderBottomBarV3(\n    chapters: List<ChapterModel>,\n    length: Long,\n    autoPaging: Boolean,\n    ttsPlaying: Boolean,\n    chapter: String?,\n''',
+              "minimal bottom bar signature",
+          )
+          screen = once(screen, '            ReaderChapterTicksV3(state, fraction)\n', '            ReaderChapterTicksV3(chapters, length, fraction)\n', "minimal chapter ticks call")
+          screen = once(screen, 'Icon(if (state.autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (state.autoPaging) R.string.stop_auto_page else R.string.start_auto_page))', 'Icon(if (autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (autoPaging) R.string.stop_auto_page else R.string.start_auto_page))', "bottom auto state")
+          screen = once(screen, 'Icon(if (state.ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (state.ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud))', 'Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud))', "bottom tts state")
+          screen = once(
+              screen,
+              '''private fun ReaderChapterTicksV3(state: AppUiState, fraction: Float) {\n    val primary = MaterialTheme.colorScheme.primary\n    val outline = MaterialTheme.colorScheme.outlineVariant\n    val tickOffsets = remember(state.chapters, state.length) {\n        if (state.length <= 0 || state.chapters.isEmpty()) emptyList()\n        else {\n            val stride = ((state.chapters.size + MAX_CHAPTER_TICKS - 1) / MAX_CHAPTER_TICKS).coerceAtLeast(1)\n            state.chapters.filterIndexed { index, _ -> index % stride == 0 }.map { it.offset }.take(MAX_CHAPTER_TICKS)\n        }\n    }\n''',
+              '''private fun ReaderChapterTicksV3(chapters: List<ChapterModel>, length: Long, fraction: Float) {\n    val primary = MaterialTheme.colorScheme.primary\n    val outline = MaterialTheme.colorScheme.outlineVariant\n    val tickOffsets = remember(chapters, length) {\n        if (length <= 0 || chapters.isEmpty()) emptyList()\n        else {\n            val stride = ((chapters.size + MAX_CHAPTER_TICKS - 1) / MAX_CHAPTER_TICKS).coerceAtLeast(1)\n            chapters.filterIndexed { index, _ -> index % stride == 0 }.map { it.offset }.take(MAX_CHAPTER_TICKS)\n        }\n    }\n''',
+              "minimal chapter ticks signature",
+          )
+          screen = once(screen, '        if (state.length > 0) tickOffsets.forEach { offset ->\n            val x = (offset.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f) * size.width\n', '        if (length > 0) tickOffsets.forEach { offset ->\n            val x = (offset.toDouble() / length.toDouble()).toFloat().coerceIn(0f, 1f) * size.width\n', "chapter ticks length")
+          screen_path.write_text(screen)
+
+          panel_path = Path("apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt")
+          panel = panel_path.read_text()
+          effect_start = panel.index('    LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {')
+          effect_end = panel.index('    LaunchedEffect(report?.chapters?.size) {', effect_start)
+          effect = r'''    LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {
+        if (book == null) { base = null; report = null; loading = false; windowStart = 0; return@LaunchedEffect }
+
+        // Import/re-decode prewarms this revision cache. Paint it first so opening Chapters does not
+        // wait for a global AppUiState chapter hydration and recompose the reader behind the panel.
+        val cachedBase = withContext(Dispatchers.IO) { derivedCache.load(book.id, book.normalizedSha256, state.length) }
+        if (cachedBase != null) {
+            val key = TocPanelKey(book.id, book.normalizedSha256, state.length, cachedBase.chapters.hashCode())
+            TocPanelCache.get(key)?.let { cached ->
+                base = cached.base; report = cached.report; loading = false
+                if (!state.chaptersLoaded) actions.onEnsureChapters()
+                return@LaunchedEffect
+            }
+            val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
+            val computed = withContext(Dispatchers.Default) { store.apply(cachedBase, overrides) }
+            base = cachedBase
+            report = computed
+            TocPanelCache.put(key, TocPanelEntry(cachedBase, computed))
+            loading = false
+            if (!state.chaptersLoaded) actions.onEnsureChapters()
+            return@LaunchedEffect
+        }
+
+        if (!state.chaptersLoaded) { loading = true; actions.onEnsureChapters(); return@LaunchedEffect }
+        val key = TocPanelKey(book.id, book.normalizedSha256, state.length, state.chapters.hashCode())
+        TocPanelCache.get(key)?.let { cached -> base = cached.base; report = cached.report; loading = false; return@LaunchedEffect }
+        val computedBase = withContext(Dispatchers.Default) {
+            SmartToc.evaluate(state.chapters.map { SmartChapter(it.offset, it.title, it.source, it.confidence) })
+        }
+        val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
+        val computed = withContext(Dispatchers.Default) { store.apply(computedBase, overrides) }
+        base = computedBase
+        report = computed
+        TocPanelCache.put(key, TocPanelEntry(computedBase, computed))
+        loading = false
+    }
+'''
+          panel = panel[:effect_start] + effect + panel[effect_end:]
+          panel = once(
+              panel,
+              '    fun panelKey(): TocPanelKey? = book?.let { TocPanelKey(it.id, it.normalizedSha256, state.length, state.chapters.hashCode()) }\n',
+              '    fun panelKey(): TocPanelKey? = book?.let { TocPanelKey(it.id, it.normalizedSha256, state.length, base?.chapters?.hashCode() ?: state.chapters.hashCode()) }\n',
+              "cache-first panel key",
+          )
+          panel_path.write_text(panel)
+
+          contract_path = Path("scripts/verify-reader-v3.sh")
+          contract = contract_path.read_text()
+          contract = once(contract, "require_literal \"$screen\" 'state.position, state.pageText, state, adaptiveLayout' 'paged route source'\n", "require_literal \"$screen\" 'state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout' 'paged route minimal source'\n", "paged minimal route contract")
+          contract = once(contract, "require_literal \"$screen\" 'val visibleText = remember(displayText, visibleEnd)' 'visible prefix slicing'\n", "require_literal \"$screen\" 'private data class ReaderPreparedPageV3' 'single prepared page state'\nrequire_literal \"$screen\" 'val presented = ReaderPresentationPipeline.present(sourceText, settings)' 'prepared page presentation'\nrequire_literal \"$screen\" 'val snapshot = ReaderPageLayoutCache.measure' 'prepared page pagination'\nrequire_literal \"$screen\" 'val visibleText = if (visibleEnd <= 0)' 'prepared visible prefix'\n", "prepared page contract")
+          contract = once(contract, "require_literal \"$screen\" 'readerAnnotatedTextV3(sourceStart, visibleText' 'annotation after pagination'\n", "require_literal \"$screen\" 'readerAnnotatedTextV3(sourceStart, visibleText, presented.map, annotations, tts, settings)' 'annotation prepared after pagination'\nforbid_literal \"$screen\" 'produceState<ReaderPresentedText?>' 'two-stage paged presentation state'\nforbid_literal \"$screen\" 'produceState<PageLayoutSnapshot?>' 'two-stage paged layout state'\n", "single state phase contract")
+          anchor = "require_literal \"$screen\" 'take(MAX_CHAPTER_TICKS)' 'bounded chapter ticks'\n"
+          if anchor not in contract:
+              raise SystemExit("control contract anchor missing")
+          contract = contract.replace(anchor, anchor + "require_literal \"$screen\" 'ReaderTopBarV3(book.name, currentChapter' 'top bar minimal state'\nrequire_literal \"$screen\" 'chapters = state.chapters' 'bottom bar explicit chapters'\nrequire_literal \"$screen\" 'autoPaging = state.autoPaging' 'bottom bar explicit motion'\nforbid_literal \"$screen\" 'private fun ReaderTopBarV3(state: AppUiState' 'whole-state top bar subscription'\nforbid_literal \"$screen\" 'private fun ReaderBottomBarV3(\\n    state: AppUiState' 'whole-state bottom bar subscription'\n", 1)
+          panel_anchor = "require_literal \"$smart_panel\" 'derivedCache.load(book.id, book.normalizedSha256, state.length)' 'derived TOC reuse'\n"
+          if panel_anchor not in contract:
+              raise SystemExit("panel contract anchor missing")
+          contract = contract.replace(panel_anchor, panel_anchor + "require_literal \"$smart_panel\" 'Import/re-decode prewarms this revision cache' 'cache-first Chapters panel'\nrequire_literal \"$smart_panel\" 'if (cachedBase != null)' 'cache-first Chapters branch'\n", 1)
+          contract_path.write_text(contract)
+          PY
+
+          bash scripts/verify-reader-v3.sh
+          python3 scripts/verify-reader-profile-contract.py
+          git diff --check
+      - name: Commit state-phase reductions and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/reader-v3-state-phase-finalizer.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt \
+                  scripts/verify-reader-v3.sh
+          git commit -m "perf(android): collapse reader state phases"
+          git push origin HEAD:feat/reader-v3-prelaunch-final
