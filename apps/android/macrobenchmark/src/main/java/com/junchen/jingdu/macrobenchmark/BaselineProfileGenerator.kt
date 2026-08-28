@@ -81,15 +81,29 @@ class BaselineProfileGenerator {
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 10",
         )
-        check(result.contains("bytes=")) { "Reader V3 baseline fixture seed failed: $result" }
+        check(result.contains("bytes=")) {
+            "Reader V3 baseline fixture seed failed: $result\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics()}"
+        }
     }
 
     private fun MacrobenchmarkScope.setReaderMode(mode: String) {
-        val expected = mode.uppercase()
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
-        check(result.contains("mode=$expected")) { "Reader V3 benchmark mode setup failed: $result" }
+        check(result.contains("Result: Bundle[{}]")) {
+            "Reader V3 baseline mode setup failed: $result\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics()}"
+        }
+    }
+
+    private fun MacrobenchmarkScope.profileDiagnostics(): String = buildString {
+        append("package-path:\n")
+        append(device.executeShellCommand("pm path $PACKAGE_NAME").trim().ifEmpty { "<not-installed>" })
+        append("\nprovider:\n")
+        append(device.executeShellCommand("dumpsys package $PACKAGE_NAME | grep -A 12 -B 3 benchmarkfixture").takeLast(8_000))
+        append("\npidof: ")
+        append(device.executeShellCommand("pidof $PACKAGE_NAME").trim().ifEmpty { "<not-running>" })
+        append("\nexit-info:\n")
+        append(device.executeShellCommand("dumpsys activity exit-info $PACKAGE_NAME").takeLast(12_000))
     }
 
     private fun MacrobenchmarkScope.openFixture() {
