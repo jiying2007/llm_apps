@@ -11,10 +11,13 @@ data class LibraryMetadata(
 
 internal class LibraryMetadataStore(context: Context) {
     private val prefs = context.getSharedPreferences("jingdu.library.metadata.v1", Context.MODE_PRIVATE)
+    private val cache = HashMap<String, LibraryMetadata>()
 
+    @Synchronized
     fun load(bookId: String): LibraryMetadata {
-        val raw = prefs.getString(bookId, null) ?: return LibraryMetadata()
-        return runCatching {
+        cache[bookId]?.let { return it }
+        val raw = prefs.getString(bookId, null)
+        val value = if (raw == null) LibraryMetadata() else runCatching {
             val json = JSONObject(raw)
             val tags = json.optJSONArray("tags") ?: JSONArray()
             LibraryMetadata(
@@ -28,6 +31,8 @@ internal class LibraryMetadataStore(context: Context) {
                 },
             )
         }.getOrDefault(LibraryMetadata())
+        cache[bookId] = value
+        return value
     }
 
     fun toggleFavorite(bookId: String): LibraryMetadata {
@@ -47,14 +52,18 @@ internal class LibraryMetadataStore(context: Context) {
         return save(bookId, current.copy(tags = tags))
     }
 
+    @Synchronized
     fun clear(bookId: String) {
+        cache.remove(bookId)
         prefs.edit().remove(bookId).apply()
     }
 
+    @Synchronized
     private fun save(bookId: String, value: LibraryMetadata): LibraryMetadata {
         val json = JSONObject()
             .put("favorite", value.favorite)
             .put("tags", JSONArray(value.tags))
+        cache[bookId] = value
         prefs.edit().putString(bookId, json.toString()).apply()
         return value
     }
