@@ -4,6 +4,7 @@ import android.view.KeyEvent
 import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
+import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.benchmark.macro.Metric
 import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
@@ -86,7 +87,7 @@ class ReaderJourneyBenchmark {
             setReaderMode("paged")
         },
         measureBlock = {
-            startActivityAndWait()
+            startTargetAndWait()
             openFixture(fixtureMiB)
         },
     )
@@ -95,8 +96,8 @@ class ReaderJourneyBenchmark {
         @Suppress("UNUSED_PARAMETER") name: String,
         fixtureMiB: Int,
         iterations: Int = 5,
-        prepareBlock: androidx.benchmark.macro.MacrobenchmarkScope.() -> Unit = {},
-        block: androidx.benchmark.macro.MacrobenchmarkScope.() -> Unit,
+        prepareBlock: MacrobenchmarkScope.() -> Unit = {},
+        block: MacrobenchmarkScope.() -> Unit,
     ) = rule.measureRepeated(
         packageName = PACKAGE_NAME,
         metrics = frameMetrics(),
@@ -107,35 +108,66 @@ class ReaderJourneyBenchmark {
             pressHome()
             seedFixture(fixtureMiB)
             prepareBlock()
-            startActivityAndWait()
+            startTargetAndWait()
             openFixture(fixtureMiB)
         },
         measureBlock = block,
     )
 
-    private fun androidx.benchmark.macro.MacrobenchmarkScope.seedFixture(mib: Int) {
+    private fun MacrobenchmarkScope.seedFixture(mib: Int) {
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg $mib",
         )
         check(result.contains("bytes=")) { "Reader V3 benchmark fixture seed failed: $result" }
     }
 
-    private fun androidx.benchmark.macro.MacrobenchmarkScope.setReaderMode(mode: String) {
+    private fun MacrobenchmarkScope.setReaderMode(mode: String) {
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
         check(result.contains("Result: Bundle[{}]")) { "Reader V3 benchmark mode setup failed: $result" }
     }
 
-    private fun androidx.benchmark.macro.MacrobenchmarkScope.openFixture(mib: Int) {
+    private fun MacrobenchmarkScope.startTargetAndWait() {
+        try {
+            startActivityAndWait()
+        } catch (error: IllegalStateException) {
+            throw IllegalStateException(
+                buildString {
+                    append(error.message ?: "Reader V3 target launch failed")
+                    append("\n===== Reader V3 target diagnostics =====\n")
+                    append(failureDiagnostics())
+                },
+                error,
+            )
+        }
+    }
+
+    private fun MacrobenchmarkScope.openFixture(mib: Int) {
         val title = "Benchmark Novel $mib MiB"
-        check(device.wait(Until.hasObject(By.textContains(title)), 8_000)) { "fixture card missing: $title" }
+        if (!device.wait(Until.hasObject(By.textContains(title)), 8_000)) {
+            error("fixture card missing: $title\n===== Reader V3 target diagnostics =====\n${failureDiagnostics()}")
+        }
         val card = device.findObject(By.textContains(title)) ?: error("fixture card unavailable: $title")
         card.click()
         device.waitForIdle()
     }
 
-    private fun androidx.benchmark.macro.MacrobenchmarkScope.ensureTopControlsVisible() {
+    private fun MacrobenchmarkScope.failureDiagnostics(): String = buildString {
+        append("pidof: ")
+        append(device.executeShellCommand("pidof $PACKAGE_NAME").trim().ifEmpty { "<not-running>" })
+        append('\n')
+        append("exit-info:\n")
+        append(device.executeShellCommand("dumpsys activity exit-info $PACKAGE_NAME").takeLast(12_000))
+        append("\nlogcat:\n")
+        append(
+            device.executeShellCommand(
+                "logcat -d -t 300 AndroidRuntime:E ActivityManager:I ActivityTaskManager:I '*:S'",
+            ).takeLast(20_000),
+        )
+    }
+
+    private fun MacrobenchmarkScope.ensureTopControlsVisible() {
         if (device.wait(Until.hasObject(By.text("Aa")), 750)) return
         val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
         repeat(2) {
@@ -147,13 +179,13 @@ class ReaderJourneyBenchmark {
         error("Reader V3 top reading controls did not become visible")
     }
 
-    private fun androidx.benchmark.macro.MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
+    private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
         check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 $label missing" }
         val target = device.findObject(selector) ?: error("Reader V3 $label unavailable")
         target.click()
     }
 
-    private fun androidx.benchmark.macro.MacrobenchmarkScope.requireChaptersClick() {
+    private fun MacrobenchmarkScope.requireChaptersClick() {
         device.findObject(By.desc("Chapters"))?.let { target -> target.click(); return }
         device.findObject(By.descContains("Chapter"))?.let { target -> target.click(); return }
 
