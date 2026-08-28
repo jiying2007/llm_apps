@@ -416,7 +416,7 @@ private fun PagedReaderPageV3(
     // One worker result owns projection, pagination and selection metadata. The previous two-stage
     // presented -> snapshot publication forced multiple Reader recompositions for every page turn.
     val prepared by produceState<ReaderPreparedPageV3?>(
-        initialValue = null,
+        null,
         sourceStart,
         sourceText,
         settings,
