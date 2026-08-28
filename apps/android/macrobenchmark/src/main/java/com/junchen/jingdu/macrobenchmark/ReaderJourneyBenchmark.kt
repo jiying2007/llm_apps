@@ -209,12 +209,13 @@ class ReaderJourneyBenchmark {
     private companion object {
         const val PACKAGE_NAME = "com.junchen.jingdu"
 
-        // The CI regression gate must not require a profile that this same job generates later.
-        // One warmup iteration provides a repeatable partial/JIT state while BaselineProfileRule
-        // remains the separate authority for generating and archiving the real Reader V3 profile.
+        // This target APK already contains the curated, provenance-checked product Baseline Profile.
+        // Android's Macrobenchmark contract defines Partial + Require as the fresh-install state of an
+        // app partially precompiled by the installer (for example Google Play). The separately run
+        // BaselineProfileGenerator below is freshness evidence only and never feeds this same CI run.
         val CI_COMPILATION_MODE = CompilationMode.Partial(
-            baselineProfileMode = BaselineProfileMode.Disable,
-            warmupIterations = 1,
+            baselineProfileMode = BaselineProfileMode.Require,
+            warmupIterations = 0,
         )
     }
 }
