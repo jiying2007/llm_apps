@@ -18,11 +18,6 @@ import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.ScrollableState
-import androidx.compose.foundation.gestures.scrollable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,8 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -115,20 +108,19 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     }
 }
 
-/** Continuous keeps a bounded window and TextLayoutResult authority, but measures off the frame thread. */
+/** Continuous keeps the 4K window and TextLayoutResult authority, but measures off the frame thread. */
 @Composable
-internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow, scrollableState: ScrollableState, scrollOffsetPx: () -> Float, onTextLayout: (TextLayoutResult) -> Unit) {
+internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow, onTextLayout: (TextLayoutResult) -> Unit) {
     val context = LocalContext.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
     var selectionMode by remember(text.text) { mutableStateOf(false) }
     if (selectionMode || accessibility.isTouchExplorationEnabled) {
-        val selectionScrollState = rememberScrollState(initial = scrollOffsetPx().roundToInt().coerceAtLeast(0))
-        androidx.compose.material3.Text(text = text, modifier = modifier.verticalScroll(selectionScrollState), style = style, overflow = overflow, onTextLayout = onTextLayout)
+        androidx.compose.material3.Text(text = text, modifier = modifier, style = style, overflow = overflow, onTextLayout = onTextLayout)
         return
     }
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer(cacheSize = 4)
-    BoxWithConstraints(modifier.scrollable(scrollableState, Orientation.Vertical).armSelectionOnLongPress(text.text) { selectionMode = true }) {
+    BoxWithConstraints(modifier.armSelectionOnLongPress(text.text) { selectionMode = true }) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
         val layout by produceState<TextLayoutResult?>(null, text, style, overflow, widthPx, density.density, density.fontScale) {
             value = null
@@ -138,11 +130,7 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
         }
         LaunchedEffect(layout) { layout?.let(onTextLayout) }
         layout?.let { ready ->
-            Canvas(Modifier.fillMaxSize()) {
-                clipRect {
-                    translate(top = -scrollOffsetPx().coerceAtLeast(0f)) { drawText(ready) }
-                }
-            }
+            Canvas(Modifier.fillMaxWidth().height(with(density) { ready.size.height.toDp() })) { drawText(ready) }
         }
     }
 }
