@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_DIR="$ROOT/apps/android"
 AVD_NAME="jingdu-v3-ci"
 TARGET_PACKAGE="com.junchen.jingdu"
+TEST_PACKAGE="com.junchen.jingdu.macrobenchmark"
 API_LEVEL="${JINGDU_BENCHMARK_API:-35}"
 IMAGE="system-images;android-${API_LEVEL};google_apis;x86_64"
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
@@ -82,10 +83,15 @@ install_pair() {
   local label="$1"
   local target_apk="$2"
   local test_apk="$3"
+  # R8 benchmark and non-minified profile are separate target contracts. Never let package data,
+  # running processes, compiled code or a stale instrumentation package cross that boundary.
+  "$ADB" uninstall "$TEST_PACKAGE" >/dev/null 2>&1 || true
+  "$ADB" uninstall "$TARGET_PACKAGE" >/dev/null 2>&1 || true
+  INSTRUMENTATION=""
   echo "Installing ${label} target: $target_apk"
-  "$ADB" install -r "$target_apk"
+  "$ADB" install "$target_apk"
   echo "Installing ${label} tests: $test_apk"
-  "$ADB" install -r "$test_apk"
+  "$ADB" install "$test_apk"
   local target_path
   target_path="$("$ADB" shell pm path "$TARGET_PACKAGE" 2>/dev/null | tr -d '\r')"
   if [[ "$target_path" != package:* ]]; then
