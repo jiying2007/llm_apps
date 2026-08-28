@@ -28,7 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.LinkedHashMap
 
-private data class TocPanelKey(val bookId: String, val length: Long, val chaptersHash: Int)
+private data class TocPanelKey(val bookId: String, val revision: String, val length: Long, val chaptersHash: Int)
 private data class TocPanelEntry(val base: TocQualityReport, val report: TocQualityReport)
 private object TocPanelCache {
     private val entries = object : LinkedHashMap<TocPanelKey, TocPanelEntry>(5, 0.75f, true) {
@@ -45,6 +45,7 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
     val density = LocalDensity.current
     val book = state.currentBook
     val store = remember { TocOverrideStore(context) }
+    val derivedCache = remember { SmartTocCacheStore(context) }
     var base by remember(book?.id) { mutableStateOf<TocQualityReport?>(null) }
     var report by remember(book?.id) { mutableStateOf<TocQualityReport?>(null) }
     var loading by remember(book?.id) { mutableStateOf(!state.chaptersLoaded) }
@@ -52,13 +53,25 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
     var title by rememberSaveable { mutableStateOf("") }
     var windowStart by rememberSaveable(book?.id) { mutableIntStateOf(0) }
 
-    LaunchedEffect(book?.id, state.chaptersLoaded, state.chapters, state.length) {
+    LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {
         if (book == null) { base = null; report = null; loading = false; windowStart = 0; return@LaunchedEffect }
         if (!state.chaptersLoaded) { loading = true; actions.onEnsureChapters(); return@LaunchedEffect }
-        val key = TocPanelKey(book.id, state.length, state.chapters.hashCode())
+        val key = TocPanelKey(book.id, book.normalizedSha256, state.length, state.chapters.hashCode())
         TocPanelCache.get(key)?.let { cached -> base = cached.base; report = cached.report; loading = false; return@LaunchedEffect }
-        val computed = withContext(Dispatchers.Default) { SmartToc.evaluate(state.chapters.map { SmartChapter(it.offset, it.title, it.source, it.confidence) }) }
-        base = computed; report = computed; TocPanelCache.put(key, TocPanelEntry(computed, computed)); loading = false
+
+        // MainActivity persists the authoritative base report before publishing chapters. Reuse that
+        // report here so opening the panel never repeats full quality analysis on a competing CPU.
+        val cachedBase = withContext(Dispatchers.IO) { derivedCache.load(book.id, book.normalizedSha256, state.length) }
+        val computedBase = cachedBase ?: withContext(Dispatchers.Default) {
+            // Cache eviction is harmless: this bounded fallback preserves correctness without making
+            // the panel dependent on cache availability.
+            SmartToc.evaluate(state.chapters.map { SmartChapter(it.offset, it.title, it.source, it.confidence) })
+        }
+        val computed = store.apply(computedBase, store.load(book.id, state.length))
+        base = computedBase
+        report = computed
+        TocPanelCache.put(key, TocPanelEntry(computedBase, computed))
+        loading = false
     }
     LaunchedEffect(report?.chapters?.size) {
         val count = report?.chapters?.size ?: 0
@@ -84,11 +97,12 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
     val end = minOf(chapters.size, windowStart + CHAPTER_WINDOW_ROWS)
     val quality = current?.let { stringResource(R.string.smart_toc_quality, it.score, it.chapters.size, it.anomalyCount) }.orEmpty()
 
+    fun panelKey(): TocPanelKey? = book?.let { TocPanelKey(it.id, it.normalizedSha256, state.length, state.chapters.hashCode()) }
     fun cache(updated: TocQualityReport?) {
         report = updated
         val b = base
-        val currentBook = book
-        if (b != null && updated != null && currentBook != null) TocPanelCache.put(TocPanelKey(currentBook.id, state.length, state.chapters.hashCode()), TocPanelEntry(b, updated))
+        val key = panelKey()
+        if (b != null && updated != null && key != null) TocPanelCache.put(key, TocPanelEntry(b, updated))
     }
     fun hide(index: Int) {
         val currentBook = book ?: return
@@ -99,7 +113,8 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
     fun reset() {
         val currentBook = book ?: return
         store.reset(currentBook.id); report = base; windowStart = 0
-        base?.let { TocPanelCache.put(TocPanelKey(currentBook.id, state.length, state.chapters.hashCode()), TocPanelEntry(it, it)) }
+        val key = panelKey()
+        if (base != null && key != null) TocPanelCache.put(key, TocPanelEntry(base!!, base!!))
     }
 
     val accessibilityActions = buildList {
