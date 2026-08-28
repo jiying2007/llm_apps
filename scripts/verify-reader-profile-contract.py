@@ -37,11 +37,16 @@ assert "requireChaptersClick" not in startup_block
 assert "includeInStartupProfile = false" in runtime_block
 assert "KEYCODE_VOLUME_DOWN" in runtime_block
 assert "requireChaptersClick" in runtime_block
-assert 'By.textContains("Continuous")' in runtime_block
+assert 'setProfileMode("continuous")' in runtime_block, "runtime profile must switch mode through deterministic provider protocol"
+assert 'requireContinuousModeClick' not in generator, "localized/UI-text profile mode switch retained"
+assert 'content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode' in generator
 
-# Product profiles must never weaken or self-feed the hosted regression gate.
-assert "BaselineProfileMode.Disable" in journey
-assert "warmupIterations = 1" in journey
+# Stage 1 measures the production R8 APK in the install state Android defines for a fresh Play-style
+# install: the curated Baseline Profile already packaged in the APK is required and precompiled. The
+# profile generated later in this job is independent freshness evidence and can never self-feed SLO.
+assert "BaselineProfileMode.Require" in journey
+assert "BaselineProfileMode.Disable" not in journey
+assert "warmupIterations = 0" in journey
 assert journey.count('repeat(6) {') >= 2, "page and continuous journeys must both retain six interactions"
 assert 'os.environ.get("JINGDU_FRAME_P95_MS", "40")' in checker
 assert 'os.environ.get("JINGDU_FRAME_P99_MS", "80")' in checker
@@ -82,6 +87,7 @@ assert 'BENCHMARK_TARGET_APK=' in runner and 'PROFILE_TARGET_APK=' in runner
 assert runner.index(slo_call) < runner.index(profile_swap) < runner.index(profile_call), "R8 SLO must freeze before non-minified profile target is installed"
 assert "SLO_STATUS=$?" in runner, "SLO result must be retained across profile generation"
 assert 'preserve_failed_macro_evidence "$MACRO_REMOTE"' in runner
+assert runner.index('if (( SLO_STATUS != 0 )); then\n  preserve_failed_macro_evidence "$MACRO_REMOTE"') < runner.index(profile_swap), "red SLO Perfetto must be retained before a later Profile failure can exit"
 assert 'PROFILE_RAW="$RESULT_ROOT/profile/raw"' in runner
 assert 'baseline-prof.txt' in runner and 'startup-prof.txt' in runner
 assert 'sort -u > "$RESULT_ROOT/profile/baseline-prof.txt"' in runner
