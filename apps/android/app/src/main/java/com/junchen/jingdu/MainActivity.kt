@@ -593,13 +593,16 @@ class MainActivity : ComponentActivity() {
                 }
                 val overrides = TocOverrideStore(this).load(book.id, length)
                 val report = TocOverrideStore(this).apply(base, overrides)
+                // Materialize the potentially large chapter projection on the background TOC worker.
+                // The main thread only publishes an already-built immutable list.
+                val chapterModels = report.chapters.map { ChapterModel(it.offset, it.title, it.source, it.confidence) }
                 main.post {
                     if (chapterWorkKey == key) chapterWorkKey = null
                     val active = currentBook
                     if (isDestroyed || active == null || active.id != book.id || active.normalizedSha256 != revision || cleanMode) return@post
                     uiState = uiState.copy(
                         chaptersLoaded = true,
-                        chapters = report.chapters.map { ChapterModel(it.offset, it.title, it.source, it.confidence) },
+                        chapters = chapterModels,
                     )
                 }
             } catch (error: Throwable) {

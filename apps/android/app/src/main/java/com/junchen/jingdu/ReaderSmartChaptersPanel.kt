@@ -67,7 +67,8 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
             // the panel dependent on cache availability.
             SmartToc.evaluate(state.chapters.map { SmartChapter(it.offset, it.title, it.source, it.confidence) })
         }
-        val computed = store.apply(computedBase, store.load(book.id, state.length))
+        val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
+        val computed = withContext(Dispatchers.Default) { store.apply(computedBase, overrides) }
         base = computedBase
         report = computed
         TocPanelCache.put(key, TocPanelEntry(computedBase, computed))

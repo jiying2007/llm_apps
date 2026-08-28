@@ -103,12 +103,12 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         const val MAX_WINDOWS = 8
         const val PAGE_ALIGN_CHARS = 512L
         const val PAGE_BACK_BUFFER_CHARS = 384L
-        // Empirical hosted Macrobenchmark data showed that the 2 KiB experiment increased tail
-        // latency by forcing more window swaps/re-layouts during real swipes. Three KiB keeps several
-        // screens of headroom while retaining a bounded paragraph and the better measured steady state.
-        const val CONTINUOUS_WINDOW_CHARS = 3072L
-        const val CONTINUOUS_ALIGN_CHARS = 768L
-        const val CONTINUOUS_BACK_BUFFER_CHARS = 768L
+        // Hosted #642 measured the best continuous steady state with the original 4 KiB
+        // window (P95 55.1 ms versus 70+ ms after 3/2 KiB experiments). Keep multiple screens of
+        // headroom so real swipes do not churn window boundaries while remaining strictly bounded.
+        const val CONTINUOUS_WINDOW_CHARS = 4096L
+        const val CONTINUOUS_ALIGN_CHARS = 1024L
+        const val CONTINUOUS_BACK_BUFFER_CHARS = 1024L
     }
 }
 
