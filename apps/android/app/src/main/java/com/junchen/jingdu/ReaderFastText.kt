@@ -24,7 +24,6 @@ import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -38,12 +37,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
@@ -175,23 +172,17 @@ internal fun Text(
             }
         }
         layout?.let { ready ->
-            Layout(
-                modifier = Modifier.fillMaxSize(),
-                content = {
-                    Canvas(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(with(density) { ready.size.height.toDp() })
-                            .graphicsLayer { translationY = -scrollOffsetPx().coerceAtLeast(0f) },
-                    ) { drawText(ready) }
-                },
-            ) { measurables, viewport ->
-                val width = viewport.maxWidth.coerceAtLeast(1)
-                val height = viewport.maxHeight.coerceAtLeast(1)
-                val placeable = measurables.firstOrNull()?.measure(
-                    Constraints(minWidth = 0, maxWidth = width, minHeight = 0, maxHeight = Constraints.Infinity),
-                )
-                layout(width, height) { placeable?.place(0, 0) }
+            // Keep the state-phase scroll model, but draw into one viewport-sized Canvas.
+            // The previous full-text-height layer could be tens of thousands of pixels
+            // tall; hosted HWUI repeatedly recording/uploading it regressed P95/P99.
+            // Reading scrollOffsetPx in draw invalidates draw only, not composition/layout.
+            Canvas(Modifier.fillMaxSize()) {
+                val maxOffset = (ready.size.height - viewportHeightPx).coerceAtLeast(0).toFloat()
+                val canvas = drawContext.canvas
+                canvas.save()
+                canvas.translate(0f, -scrollOffsetPx().coerceIn(0f, maxOffset))
+                drawText(ready)
+                canvas.restore()
             }
         }
     }

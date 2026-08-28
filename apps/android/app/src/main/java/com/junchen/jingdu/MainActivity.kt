@@ -403,6 +403,16 @@ class MainActivity : ComponentActivity() {
             try {
                 val file = if (clean) buildClean(book) else repository.normalizedFile(book)
                 candidate.open(file, restored)
+                if (!clean) {
+                    runCatching {
+                        prewarmReaderSmartChaptersPanel(
+                            applicationContext,
+                            book.id,
+                            book.normalizedSha256,
+                            candidate.length(),
+                        )
+                    }
+                }
                 if (token != workGeneration.get() || isDestroyed) { candidate.close(); return@execute }
                 main.post {
                     if (token != workGeneration.get() || isDestroyed) { candidate.close(); return@post }

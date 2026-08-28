@@ -1,5 +1,6 @@
 package com.junchen.jingdu
 
+import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,7 +36,33 @@ private object TocPanelCache {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TocPanelKey, TocPanelEntry>?): Boolean = size > 4
     }
     @Synchronized fun get(key: TocPanelKey): TocPanelEntry? = entries[key]
+    @Synchronized fun get(bookId: String, revision: String, length: Long): TocPanelEntry? =
+        entries.entries.firstOrNull { (key, _) ->
+            key.bookId == bookId && key.revision == revision && key.length == length
+        }?.value
     @Synchronized fun put(key: TocPanelKey, entry: TocPanelEntry) { entries[key] = entry }
+}
+
+/**
+ * Promote the already-import-prewarmed Smart TOC disk cache into the tiny in-process
+ * panel cache while Reader is opening on a worker. First Chapters tap is therefore
+ * one presentation phase and never hydrates global reader chapter state.
+ */
+internal fun prewarmReaderSmartChaptersPanel(
+    context: Context,
+    bookId: String,
+    revision: String,
+    length: Long,
+) {
+    if (bookId.isBlank() || revision.isBlank() || length <= 0L) return
+    if (TocPanelCache.get(bookId, revision, length) != null) return
+    val appContext = context.applicationContext
+    val base = SmartTocCacheStore(appContext).load(bookId, revision, length) ?: return
+    val key = TocPanelKey(bookId, revision, length, base.chapters.hashCode())
+    if (TocPanelCache.get(key) != null) return
+    val store = TocOverrideStore(appContext)
+    val computed = store.apply(base, store.load(bookId, length))
+    TocPanelCache.put(key, TocPanelEntry(base, computed))
 }
 
 /** Canonical Smart TOC route with one Canvas and a bounded eight-row viewport. */
@@ -46,15 +73,19 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
     val book = state.currentBook
     val store = remember { TocOverrideStore(context) }
     val derivedCache = remember { SmartTocCacheStore(context) }
-    var base by remember(book?.id) { mutableStateOf<TocQualityReport?>(null) }
-    var report by remember(book?.id) { mutableStateOf<TocQualityReport?>(null) }
-    var loading by remember(book?.id) { mutableStateOf(!state.chaptersLoaded) }
+    val initial = remember(book?.id, book?.normalizedSha256, state.length) {
+        book?.let { TocPanelCache.get(it.id, it.normalizedSha256, state.length) }
+    }
+    var base by remember(book?.id, book?.normalizedSha256, state.length) { mutableStateOf(initial?.base) }
+    var report by remember(book?.id, book?.normalizedSha256, state.length) { mutableStateOf(initial?.report) }
+    var loading by remember(book?.id, book?.normalizedSha256, state.length) { mutableStateOf(initial == null && !state.chaptersLoaded) }
     var addDialog by rememberSaveable { mutableStateOf(false) }
     var title by rememberSaveable { mutableStateOf("") }
     var windowStart by rememberSaveable(book?.id) { mutableIntStateOf(0) }
 
     LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {
         if (book == null) { base = null; report = null; loading = false; windowStart = 0; return@LaunchedEffect }
+        if (initial != null) return@LaunchedEffect
 
         // Import/re-decode prewarms this revision cache. Paint it first so opening Chapters does not
         // wait for a global AppUiState chapter hydration and recompose the reader behind the panel.
