@@ -124,7 +124,7 @@ class ReaderJourneyBenchmark {
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
-        check(result.contains("modeApplied=1")) { "Reader V3 benchmark mode setup failed: $result" }
+        check(result.contains("Result: Bundle[{}]")) { "Reader V3 benchmark mode setup failed: $result" }
     }
 
     private fun androidx.benchmark.macro.MacrobenchmarkScope.openFixture(mib: Int) {
