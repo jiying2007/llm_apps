@@ -76,15 +76,27 @@ internal fun Text(
     style: TextStyle,
     color: Color,
     maxLines: Int,
-) = ReaderHotLine(text, modifier, style, color, maxLines)
+) {
+    if (maxLines != 1) {
+        androidx.compose.material3.Text(text = text, modifier = modifier, style = style, color = color, maxLines = maxLines)
+    } else {
+        ReaderHotLine(text, modifier, style, color)
+    }
+}
 
-/** One-line reader-title overload. Other Material Text signatures remain untouched. */
+/** One-line reader-title overload. Multiline callers retain Material text/layout semantics. */
 @Composable
 internal fun Text(
     text: String,
     maxLines: Int,
     overflow: TextOverflow,
-) = ReaderHotLine(text, Modifier, MaterialTheme.typography.titleMedium, MaterialTheme.colorScheme.onSurface, maxLines, overflow)
+) {
+    if (maxLines != 1) {
+        androidx.compose.material3.Text(text = text, maxLines = maxLines, overflow = overflow)
+    } else {
+        ReaderHotLine(text, Modifier, MaterialTheme.typography.titleMedium, MaterialTheme.colorScheme.onSurface)
+    }
+}
 
 /** One-line chapter-label overload used by the reader top bar. */
 @Composable
@@ -93,7 +105,13 @@ internal fun Text(
     maxLines: Int,
     overflow: TextOverflow,
     style: TextStyle,
-) = ReaderHotLine(text, Modifier, style, MaterialTheme.colorScheme.onSurfaceVariant, maxLines, overflow)
+) {
+    if (maxLines != 1) {
+        androidx.compose.material3.Text(text = text, maxLines = maxLines, overflow = overflow, style = style)
+    } else {
+        ReaderHotLine(text, Modifier, style, MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 /** One-line chapter-label overload used by the reader bottom bar. */
 @Composable
@@ -103,7 +121,13 @@ internal fun Text(
     maxLines: Int,
     overflow: TextOverflow,
     style: TextStyle,
-) = ReaderHotLine(text, modifier, style, MaterialTheme.colorScheme.onSurfaceVariant, maxLines, overflow)
+) {
+    if (maxLines != 1) {
+        androidx.compose.material3.Text(text = text, modifier = modifier, maxLines = maxLines, overflow = overflow, style = style)
+    } else {
+        ReaderHotLine(text, modifier, style, MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 @Composable
 private fun ReaderHotLine(
@@ -111,8 +135,6 @@ private fun ReaderHotLine(
     modifier: Modifier,
     style: TextStyle,
     color: Color,
-    maxLines: Int,
-    @Suppress("UNUSED_PARAMETER") overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val density = LocalDensity.current
     val paint = remember(color, style.fontSize, style.fontWeight, density.density, density.fontScale) {
@@ -127,8 +149,6 @@ private fun ReaderHotLine(
         }
     }
     Canvas(modifier.fillMaxWidth().height(22.dp)) {
-        if (maxLines > 0 && text.isNotEmpty()) {
-            drawReaderText(text, paint, 0f, size.height / 2f, size.width, centered = true)
-        }
+        if (text.isNotEmpty()) drawReaderText(text, paint, 0f, size.height / 2f, size.width, centered = true)
     }
 }
