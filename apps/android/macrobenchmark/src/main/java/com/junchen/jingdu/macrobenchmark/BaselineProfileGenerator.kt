@@ -54,13 +54,17 @@ class BaselineProfileGenerator {
                 device.waitForIdle()
             }
 
+            // Exercise the real Quick Settings composition, but do not depend on translated or
+            // Canvas-only UI text to mutate test state. The benchmark-only provider is the same
+            // deterministic protocol used by the frame gate and synchronously persists DataStore.
             ensureTopControlsVisible()
             requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
-            requireContinuousModeClick()
-            device.waitForIdle()
             device.pressBack()
             device.waitForIdle()
+            setProfileMode("continuous")
+            startActivityAndWait()
+            openFixture()
             SystemClock.sleep(500)
 
             repeat(4) {
@@ -95,6 +99,10 @@ class BaselineProfileGenerator {
         check(seed.contains("bytes=")) {
             "Reader V3 baseline fixture seed failed before profile collection: $seed\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics(device)}"
         }
+        setProfileMode(device, mode)
+    }
+
+    private fun setProfileMode(device: UiDevice, mode: String) {
         val modeResult = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
@@ -104,6 +112,10 @@ class BaselineProfileGenerator {
         // BaselineProfileRule owns product-process startup. Leave a fully provisioned but stopped
         // package so compilation/profile collection begins from a deterministic lifecycle boundary.
         device.executeShellCommand("am force-stop $PACKAGE_NAME")
+    }
+
+    private fun MacrobenchmarkScope.setProfileMode(mode: String) {
+        setProfileMode(device, mode)
     }
 
     private fun profileDiagnostics(device: UiDevice): String = buildString {
@@ -147,17 +159,6 @@ class BaselineProfileGenerator {
         check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 baseline $label missing" }
         val target = device.findObject(selector) ?: error("Reader V3 baseline $label unavailable")
         target.click()
-    }
-
-    private fun MacrobenchmarkScope.requireContinuousModeClick() {
-        val selectors = listOf(
-            By.textContains("Continuous"),
-            By.descContains("Continuous"),
-        )
-        for (selector in selectors) {
-            device.findObject(selector)?.let { target -> target.click(); return }
-        }
-        error("Reader V3 baseline continuous reading mode missing")
     }
 
     private fun MacrobenchmarkScope.requireChaptersClick() {
