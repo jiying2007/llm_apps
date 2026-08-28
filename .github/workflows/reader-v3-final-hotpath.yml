@@ -1,0 +1,41 @@
+name: Reader V3 Final Hotpath
+
+on:
+  push:
+    branches: [feat/reader-v3-prelaunch-final]
+    paths: [.github/workflows/reader-v3-final-hotpath.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: feat/reader-v3-prelaunch-final
+          fetch-depth: 0
+      - name: Apply and verify final hotpath patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/reader_v3_final_hotpath_patch.py
+          bash scripts/verify-reader-v3.sh
+          python3 scripts/verify-reader-profile-contract.py
+          git diff --check
+      - name: Commit patch and self-delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/reader-v3-final-hotpath.yml scripts/reader_v3_final_hotpath_patch.py
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt \
+                  apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt \
+                  scripts/verify-reader-v3.sh
+          git commit -m "perf(android): finish reader hot paths"
+          git push origin HEAD:feat/reader-v3-prelaunch-final
