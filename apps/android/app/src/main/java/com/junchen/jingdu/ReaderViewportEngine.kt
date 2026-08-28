@@ -103,12 +103,12 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         const val MAX_WINDOWS = 8
         const val PAGE_ALIGN_CHARS = 512L
         const val PAGE_BACK_BUFFER_CHARS = 384L
-        // Two Ki code points still retain several screens of local scroll context on phone layouts,
-        // while cutting the continuously redrawn TextMeasurer paragraph by a third versus the 3 KiB
-        // interim implementation. Aligned half-KiB windows keep edge reloads bounded and reusable.
-        const val CONTINUOUS_WINDOW_CHARS = 2048L
-        const val CONTINUOUS_ALIGN_CHARS = 512L
-        const val CONTINUOUS_BACK_BUFFER_CHARS = 512L
+        // Empirical hosted Macrobenchmark data showed that the 2 KiB experiment increased tail
+        // latency by forcing more window swaps/re-layouts during real swipes. Three KiB keeps several
+        // screens of headroom while retaining a bounded paragraph and the better measured steady state.
+        const val CONTINUOUS_WINDOW_CHARS = 3072L
+        const val CONTINUOUS_ALIGN_CHARS = 768L
+        const val CONTINUOUS_BACK_BUFFER_CHARS = 768L
     }
 }
 
