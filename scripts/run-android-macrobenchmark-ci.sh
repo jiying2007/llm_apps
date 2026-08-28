@@ -101,6 +101,12 @@ run_instrumentation() {
   local rule="$1"
   local remote_dir="$2"
   local log_file="$3"
+  local test_class="${4:-}"
+  local class_args=()
+  if [[ -n "$test_class" ]]; then
+    class_args=(-e class "$test_class")
+    echo "Instrumentation class filter: $test_class"
+  fi
   "$ADB" shell rm -rf "$remote_dir"
   "$ADB" shell mkdir -p "$remote_dir"
 
@@ -111,6 +117,7 @@ run_instrumentation() {
     -e androidx.benchmark.suppressErrors EMULATOR \
     -e listener androidx.benchmark.macro.junit4.SideEffectRunListener \
     -e androidx.benchmark.enabledRules "$rule" \
+    "${class_args[@]}" \
     "$INSTRUMENTATION" | tee "$log_file"
   local status=${PIPESTATUS[0]}
   set -e
@@ -254,7 +261,8 @@ mkdir -p "$RESULT_ROOT/macro" "$RESULT_ROOT/profile"
 "$ADB" shell mkdir -p "$REMOTE_RESULT_ROOT"
 
 MACRO_REMOTE="$REMOTE_RESULT_ROOT/macro"
-if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation.log"; then
+MACRO_CLASS="com.junchen.jingdu.macrobenchmark.ReaderJourneyBenchmark"
+if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation.log" "$MACRO_CLASS"; then
   preserve_failed_macro_evidence "$MACRO_REMOTE"
   echo "Macrobenchmark instrumentation aborted before valid evidence; attempting one bounded guest recovery" >&2
   if ! wait_for_android_ready 120; then
@@ -263,7 +271,7 @@ if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-inst
   "$ADB" shell settings put global window_animation_scale 0 || true
   "$ADB" shell settings put global transition_animation_scale 0 || true
   "$ADB" shell settings put global animator_duration_scale 0 || true
-  if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation-retry.log"; then
+  if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation-retry.log" "$MACRO_CLASS"; then
     preserve_failed_macro_evidence "$MACRO_REMOTE"
     fail_emulator "Reader V3 Macrobenchmark instrumentation failed after one guest recovery"
   fi
@@ -293,7 +301,8 @@ echo "Switching from R8 Macrobenchmark target to non-minified Profile target"
 install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFILE_TEST_APK"
 "$ADB" shell rm -rf "$MACRO_REMOTE"
 PROFILE_REMOTE="$REMOTE_RESULT_ROOT/profile"
-run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log"
+PROFILE_CLASS="com.junchen.jingdu.macrobenchmark.BaselineProfileGenerator"
+run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log" "$PROFILE_CLASS"
 PROFILE_RAW="$RESULT_ROOT/profile/raw"
 rm -rf "$PROFILE_RAW"
 mkdir -p "$PROFILE_RAW"
