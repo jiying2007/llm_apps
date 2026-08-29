@@ -34,4 +34,6 @@ HPLandroidx/compose/material3/IconButtonKt;->**(**)**
 HPLandroidx/compose/material3/IconKt;->**(**)**
 HPLcom/junchen/jingdu/ReaderContinuousScrollModel;->**(**)**
 HPLcom/junchen/jingdu/ReaderContinuousViewportView;->**(**)**
+HPLcom/junchen/jingdu/ReaderContinuousLayerViewport;->**(**)**
+HPLcom/junchen/jingdu/ReaderContinuousLayerViewport$SliceView;->**(**)**
 HPLcom/junchen/jingdu/ReaderContinuousTextView;->**(**)**
