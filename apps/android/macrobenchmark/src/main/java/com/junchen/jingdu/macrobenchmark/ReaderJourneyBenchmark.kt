@@ -12,6 +12,7 @@ import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import org.junit.Rule
 import org.junit.Test
@@ -121,6 +122,7 @@ class ReaderJourneyBenchmark {
             prepareBlock()
             startTargetAndWait()
             openFixture(fixtureMiB)
+            waitForReaderReady()
             afterOpenPrepareBlock()
         },
         measureBlock = block,
@@ -146,6 +148,23 @@ class ReaderJourneyBenchmark {
         )
         return Regex("""position=(-?\d+)""").find(result)?.groupValues?.get(1)?.toLongOrNull()
             ?: error("Reader V3 benchmark position query failed: $result")
+    }
+
+    private fun MacrobenchmarkScope.waitForReaderReady() {
+        val deadline = System.nanoTime() + READER_READY_TIMEOUT_NS
+        var position = -1L
+        while (System.nanoTime() < deadline) {
+            position = readerPosition()
+            if (position >= 0L) {
+                device.waitForIdle()
+                // Hot controls and panel display lists are intentionally retained/pre-recorded. Let
+                // their post-render effects settle before interaction timing begins.
+                Thread.sleep(READER_POST_RENDER_SETTLE_MS)
+                return
+            }
+            Thread.sleep(INPUT_POLL_MS)
+        }
+        error("Reader V3 did not publish an authoritative rendered position before interaction: $position")
     }
 
     private fun MacrobenchmarkScope.waitForReaderAdvance(before: Long): Long {
@@ -218,44 +237,52 @@ class ReaderJourneyBenchmark {
         )
     }
 
+    private fun MacrobenchmarkScope.isOnScreen(node: UiObject2): Boolean {
+        val bounds = node.visibleBounds
+        return bounds.width() > 0 && bounds.height() > 0 &&
+            bounds.right > 0 && bounds.bottom > 0 &&
+            bounds.left < device.displayWidth && bounds.top < device.displayHeight
+    }
+
+    private fun MacrobenchmarkScope.visibleObject(selector: BySelector): UiObject2? =
+        device.findObjects(selector).firstOrNull(::isOnScreen)
+
     private fun MacrobenchmarkScope.ensureTopControlsVisible() {
-        if (device.wait(Until.hasObject(By.text("Aa")), 750)) return
+        if (visibleObject(By.text("Aa")) != null) return
         val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
         repeat(2) {
             for ((x, y) in taps) {
                 val px = (device.displayWidth * x).toInt()
                 val py = (device.displayHeight * y).toInt()
-                // Match the key journey: use the platform input command so Compose sees a normal
-                // DOWN/UP stream even when hosted UiAutomator click injection is flaky.
                 device.executeShellCommand("input tap $px $py")
-                if (device.wait(Until.hasObject(By.text("Aa")), 1_100)) return
+                if (device.wait(Until.hasObject(By.text("Aa")), 1_100) && visibleObject(By.text("Aa")) != null) return
             }
         }
-        error("Reader V3 top reading controls did not become visible after real shell tap input")
+        error("Reader V3 top reading controls did not become visibly on-screen after real shell tap input")
     }
 
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
         check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 $label missing" }
-        val target = device.findObject(selector) ?: error("Reader V3 $label unavailable")
+        val target = visibleObject(selector) ?: error("Reader V3 $label exists only off-screen")
         target.click()
     }
 
     private fun MacrobenchmarkScope.requireChaptersClick() {
-        device.findObject(By.desc("Chapters"))?.let { target -> target.click(); return }
-        device.findObject(By.descContains("Chapter"))?.let { target -> target.click(); return }
+        visibleObject(By.desc("Chapters"))?.let { target -> target.click(); return }
+        visibleObject(By.descContains("Chapter"))?.let { target -> target.click(); return }
 
-        val aa = device.findObjects(By.text("Aa")).minByOrNull { it.visibleBounds.centerY() }
-            ?: error("Reader V3 top reading controls missing")
+        val aa = visibleObject(By.text("Aa")) ?: error("Reader V3 visible top reading controls missing")
         val anchor = aa.visibleBounds
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
+            .filter(::isOnScreen)
             .filter { node ->
                 val bounds = node.visibleBounds
                 bounds.centerX() > anchor.centerX() &&
                     abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
             }
             .minByOrNull { node -> node.visibleBounds.centerX() - anchor.centerX() }
-            ?: error("Reader V3 chapters control missing beside Aa")
+            ?: error("Reader V3 visible chapters control missing beside Aa")
         candidate.click()
     }
 
@@ -265,7 +292,9 @@ class ReaderJourneyBenchmark {
         const val PACKAGE_NAME = "com.junchen.jingdu"
         const val INPUT_POLL_MS = 25L
         const val CONTINUOUS_READY_POLL_MS = 50L
+        const val READER_POST_RENDER_SETTLE_MS = 350L
         const val INPUT_STATE_TIMEOUT_NS = 2_500_000_000L
+        const val READER_READY_TIMEOUT_NS = 12_000_000_000L
         const val CONTINUOUS_READY_TIMEOUT_NS = 12_000_000_000L
 
         // This target APK already contains the curated, provenance-checked product Baseline Profile.
