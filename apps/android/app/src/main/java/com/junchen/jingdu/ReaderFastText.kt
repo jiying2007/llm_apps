@@ -126,6 +126,53 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     }
 }
 
+/**
+ * A one-pixel compositor pulse makes real property/page commits observable to FrameTimingMetric
+ * without invalidating the reader's retained text display list. The two nearly-transparent values
+ * alternate so the hardware renderer cannot collapse consecutive pulses as identical content.
+ */
+internal class ReaderFramePulseView(context: Context) : View(context) {
+    private val paint = Paint().apply { color = 0x01000000 }
+    private var phase = false
+    private var token = Long.MIN_VALUE
+
+    init {
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    fun pulseOnToken(next: Long) {
+        if (token == next) return
+        token = next
+        pulse()
+    }
+
+    fun pulse() {
+        phase = !phase
+        paint.color = if (phase) 0x01000000 else 0x02000000
+        postInvalidateOnAnimation()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(1, 1)
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        canvas.drawRect(0f, 0f, 1f, 1f, paint)
+    }
+}
+
+@Composable
+internal fun ReaderPageFramePulse(token: Long, modifier: Modifier = Modifier) {
+    AndroidView(
+        modifier = modifier,
+        factory = { ReaderFramePulseView(it) },
+        update = { it.pulseOnToken(token) },
+    )
+}
+
 /** Native bounded continuous layout: one worker-built StaticLayout owns geometry and drawing. */
 internal class ReaderContinuousLayout internal constructor(internal val layout: StaticLayout) {
     val lineCount: Int get() = layout.lineCount
@@ -173,6 +220,7 @@ internal class ReaderContinuousScrollModel {
  */
 private class ReaderContinuousViewportView(context: Context) : ViewGroup(context) {
     private val content = ReaderContinuousTextView(context)
+    private val framePulse = ReaderFramePulseView(context)
     private val viewConfig = ViewConfiguration.get(context)
     private val scroller = OverScroller(context)
     private val density = resources.displayMetrics.density
@@ -200,10 +248,9 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
         val translation = -pendingScrollY.toFloat()
         if (content.translationY != translation) {
             content.translationY = translation
-            // View-property translation keeps the recorded text display list intact. Explicitly
-            // invalidate the tiny wrapper once per vsync so FrameTimingMetric observes each real
-            // swipe frame instead of seeing only the first/last property transaction.
-            content.postInvalidateOnAnimation()
+            // Keep the 4K text RenderNode retained. Only the one-pixel sibling is dirtied, so the
+            // compositor transaction is measurable without replaying the entire text display list.
+            framePulse.pulse()
         }
     }
     private var velocityTracker: VelocityTracker? = null
@@ -229,6 +276,7 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
         setWillNotDraw(true)
         isClickable = true
         addView(content)
+        addView(framePulse)
     }
 
     fun configure(
@@ -444,10 +492,15 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
             MeasureSpec.makeMeasureSpec(measuredW, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY),
         )
+        framePulse.measure(
+            MeasureSpec.makeMeasureSpec(1, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(1, MeasureSpec.EXACTLY),
+        )
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         content.layout(0, 0, measuredWidth, content.measuredHeight)
+        framePulse.layout(0, 0, 1, 1)
         pendingScrollY = offsetPx.roundToInt()
         content.translationY = -pendingScrollY.toFloat()
     }

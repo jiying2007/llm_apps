@@ -541,6 +541,7 @@ private fun PagedReaderPageV3(
                     overflow = TextOverflow.Clip,
                 )
             }
+            ReaderPageFramePulse(sourceStart, Modifier.align(Alignment.TopStart))
         }
     }
 }

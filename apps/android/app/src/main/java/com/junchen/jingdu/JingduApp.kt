@@ -25,12 +25,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -239,10 +237,15 @@ private fun PersistentReaderPanelLayer(
                     cache.recordKey = null
                 }
             }
-            .graphicsLayer {
-                val visible = panelState.value == target
-                translationY = if (visible) 0f else READER_PANEL_HIDDEN_OFFSET_PX.toFloat()
-                alpha = if (visible) 1f else 0f
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    val visible = panelState.value == target
+                    placeable.placeWithLayer(
+                        x = 0,
+                        y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
+                    ) { alpha = if (visible) 1f else 0f }
+                }
             }
             .semantics { if (panelState.value != target) hideFromAccessibility() }
             .drawWithContent panelDraw@{
