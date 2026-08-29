@@ -36,6 +36,10 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                     "continuous" -> ReaderMode.CONTINUOUS
                     else -> error("Unsupported Reader V3 benchmark mode: $arg")
                 }
+                // Reset runtime-only launch evidence before every measured reader start. A source
+                // position of zero is valid, so -1 remains the unambiguous not-rendered sentinel.
+                ReaderInteractionRuntime.foregroundPosition = -1L
+                ReaderInteractionRuntime.backgroundTtsPlaying = false
                 ReaderInteractionRuntime.continuousReady = false
                 val preferences = ReaderPreferences(context)
                 preferences.flush(
