@@ -245,7 +245,7 @@ class ReaderJourneyBenchmark {
     }
 
     private fun MacrobenchmarkScope.visibleObject(selector: BySelector): UiObject2? =
-        device.findObjects(selector).firstOrNull(::isOnScreen)
+        device.findObjects(selector).firstOrNull { node -> isOnScreen(node) }
 
     private fun MacrobenchmarkScope.ensureTopControlsVisible() {
         if (visibleObject(By.text("Aa")) != null) return
@@ -275,7 +275,7 @@ class ReaderJourneyBenchmark {
         val anchor = aa.visibleBounds
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
-            .filter(::isOnScreen)
+            .filter { node -> isOnScreen(node) }
             .filter { node ->
                 val bounds = node.visibleBounds
                 bounds.centerX() > anchor.centerX() &&
