@@ -69,6 +69,20 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
             }
             "position" -> Bundle().apply { putLong("position", ReaderInteractionRuntime.foregroundPosition) }
             "continuousReady" -> Bundle().apply { putLong("ready", if (ReaderInteractionRuntime.continuousReady) 1L else 0L) }
+            "inputState" -> {
+                // Read-only benchmark diagnostics. This exposes no navigation action and cannot alter
+                // product state; it only proves which persisted/runtime eligibility inputs the real
+                // Activity volume-key path should see when a hosted input journey fails.
+                val settings = ReaderPreferences(context).load()
+                Bundle().apply {
+                    putLong("position", ReaderInteractionRuntime.foregroundPosition)
+                    putString("readingMode", settings.readingMode.name)
+                    putString("volumeKeyMode", settings.volumeKeyMode.name)
+                    putBoolean("reverseVolumeKeys", settings.reverseVolumeKeys)
+                    putBoolean("autoScrollEnabled", settings.autoScrollEnabled)
+                    putBoolean("backgroundTtsPlaying", ReaderInteractionRuntime.backgroundTtsPlaying)
+                }
+            }
             "clear" -> {
                 val repository = BookRepository(context)
                 repository.list().filter { it.name.startsWith("Benchmark Novel ") }.forEach(repository::delete)
