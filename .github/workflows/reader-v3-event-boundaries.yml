@@ -25,8 +25,8 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('scripts/verify-reader-v3.sh')
-          text = path.read_text()
+          verify = Path('scripts/verify-reader-v3.sh')
+          text = verify.read_text()
           current = '''require_literal "$screen" 'rememberScrollableState' 'continuous layer scroll state'
           require_literal "$screen" 'scrollableState.isScrollInProgress' 'continuous gesture settling'
           forbid_literal "$screen" '.verticalScroll(scrollState)' 'layout-driven continuous scrolling'
@@ -55,7 +55,12 @@ jobs:
           require_literal "$screen" 'settleContinuousPosition(scrollModel.offsetPx.roundToInt(), auto = false)' 'manual continuous settle' '''
           if current not in text:
               raise SystemExit('current RenderNode continuous contract drifted')
-          path.write_text(text.replace(current, expected, 1))
+          verify.write_text(text.replace(current, expected, 1))
+
+          patch = Path('scripts/apply-reader-v3-event-boundaries.py')
+          source = patch.read_text()
+          source = source.replace("'persistent panel route ownership' '''", "'persistent panel route ownership'\n'''")
+          patch.write_text(source)
           PY
           python3 scripts/apply-reader-v3-event-boundaries.py
           bash scripts/verify-reader-v3.sh
