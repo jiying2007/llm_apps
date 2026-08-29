@@ -277,13 +277,23 @@ internal fun ReaderScreenV3(
                 .align(Alignment.Center).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)),
         )
 
-        if (controlsVisible) Box(Modifier.align(Alignment.TopCenter)) {
+        // Keep hot controls composed for the whole reader session. Visibility changes are a
+        // layout-phase placement only, so reopening controls never rebuilds the Material button tree.
+        Box(
+            Modifier.align(Alignment.TopCenter).offset {
+                androidx.compose.ui.unit.IntOffset(0, if (controlsVisible) 0 else -READER_HIDDEN_LAYER_OFFSET_PX)
+            },
+        ) {
             ReaderTopBarV3(book.name, currentChapter, actions) { more = true }
         }
         if (controlsVisible && more) Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)) {
             ReaderMoreMenuV3(state.cleanMode, actions) { more = false }
         }
-        if (controlsVisible) Box(Modifier.align(Alignment.BottomCenter)) {
+        Box(
+            Modifier.align(Alignment.BottomCenter).offset {
+                androidx.compose.ui.unit.IntOffset(0, if (controlsVisible) 0 else READER_HIDDEN_LAYER_OFFSET_PX)
+            },
+        ) {
             ReaderBottomBarV3(
                 chapters = state.chapters,
                 length = state.length,
@@ -568,44 +578,67 @@ private fun ContinuousReaderPageV3(
         val line = layout.getLineForOffset(utf.coerceIn(0, (w.displayText.length - 1).coerceAtLeast(0)))
         scrollOffsetPx = layout.getLineTop(line).coerceIn(0f, maxScrollPx)
     }
-    LaunchedEffect(scrollableState, layoutResult, window, viewportHeight, state.autoScrolling) {
-        snapshotFlow { scrollOffsetPx.roundToInt() to scrollableState.isScrollInProgress }.distinctUntilChanged().collect { (y, scrolling) ->
-            val w = window ?: return@collect
-            val layout = layoutResult ?: return@collect
-            if (w.displayText.isEmpty() || layout.lineCount <= 0) return@collect
-            val line = layout.getLineForVerticalPosition(y.toFloat()).coerceIn(0, layout.lineCount - 1)
-            val utf = layout.getLineStart(line).coerceIn(0, w.displayText.length)
-            val absolute = (w.start + w.map.sourceForDisplay(w.displayText.codePointCount(0, utf).toLong())).coerceIn(0L, (w.documentLength - 1).coerceAtLeast(0L))
-            localPosition.set(absolute)
-            val shouldCommit = if (state.autoScrolling) {
-                abs(absolute - lastCommitted) >= AUTO_SCROLL_COMMIT_CHARS
-            } else {
-                !scrolling && absolute != lastCommitted
-            }
-            if (shouldCommit) {
-                lastCommitted = absolute
-                actions.onSyncTtsPosition(absolute)
-            }
-            val edge = (viewportHeight * 0.25f).roundToInt()
-            val nearTop = y <= edge && w.start > 0
-            val nearBottom = maxScrollPx > 0f && maxScrollPx - y.toFloat() <= edge.toFloat() && w.start + w.map.sourceCodePoints < w.documentLength - 1
-            if (!loading && !scrolling && (nearTop || nearBottom)) loadAround(absolute)
+    fun absoluteAtContinuousOffset(y: Int): Long? {
+        val currentWindow = window ?: return null
+        val layout = layoutResult ?: return null
+        if (currentWindow.displayText.isEmpty() || layout.lineCount <= 0) return null
+        val line = layout.getLineForVerticalPosition(y.toFloat()).coerceIn(0, layout.lineCount - 1)
+        val utf = layout.getLineStart(line).coerceIn(0, currentWindow.displayText.length)
+        val displayedCodePoints = currentWindow.displayText.codePointCount(0, utf).toLong()
+        return (currentWindow.start + currentWindow.map.sourceForDisplay(displayedCodePoints))
+            .coerceIn(0L, (currentWindow.documentLength - 1).coerceAtLeast(0L))
+    }
+
+    suspend fun settleContinuousPosition(y: Int, auto: Boolean) {
+        val currentWindow = window ?: return
+        val absolute = absoluteAtContinuousOffset(y) ?: return
+        localPosition.set(absolute)
+        val shouldCommit = if (auto) {
+            abs(absolute - lastCommitted) >= AUTO_SCROLL_COMMIT_CHARS
+        } else {
+            absolute != lastCommitted
+        }
+        if (shouldCommit) {
+            lastCommitted = absolute
+            actions.onSyncTtsPosition(absolute)
+        }
+        val edge = (viewportHeight * 0.25f).roundToInt()
+        val nearTop = y <= edge && currentWindow.start > 0
+        val nearBottom = maxScrollPx > 0f &&
+            maxScrollPx - y.toFloat() <= edge.toFloat() &&
+            currentWindow.start + currentWindow.map.sourceCodePoints < currentWindow.documentLength - 1
+        if (!loading && (nearTop || nearBottom)) loadAround(absolute)
+    }
+
+    // A manual swipe can emit dozens of scroll deltas. Position/source mapping is not visual work;
+    // perform it once when the gesture settles instead of on every delta/frame.
+    LaunchedEffect(scrollableState, layoutResult, window, viewportHeight) {
+        snapshotFlow { scrollableState.isScrollInProgress }.distinctUntilChanged().collect { scrolling ->
+            if (!scrolling) settleContinuousPosition(scrollOffsetPx.roundToInt(), auto = false)
         }
     }
     LaunchedEffect(state.autoScrolling, settings.autoScrollSpeedDpPerSecond, window) {
         if (!state.autoScrolling) return@LaunchedEffect
         var lastFrame = 0L
+        var lastPositionSample = 0L
         while (isActive && state.autoScrolling) {
+            var samplePosition = false
             withFrameNanos { now ->
                 if (lastFrame != 0L) {
                     val seconds = (now - lastFrame).toDouble() / 1_000_000_000.0
                     val deltaPx = with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() }
                     scrollOffsetPx = (scrollOffsetPx + deltaPx).coerceIn(0f, maxScrollPx)
                 }
+                if (lastPositionSample == 0L || now - lastPositionSample >= AUTO_SCROLL_POSITION_SAMPLE_NS) {
+                    lastPositionSample = now
+                    samplePosition = true
+                }
                 lastFrame = now
             }
-            val w = window ?: continue
-            if (maxScrollPx > 0f && scrollOffsetPx >= maxScrollPx - 1f && w.start + w.map.sourceCodePoints >= w.documentLength - 1) {
+            if (samplePosition) settleContinuousPosition(scrollOffsetPx.roundToInt(), auto = true)
+            val currentWindow = window ?: continue
+            if (maxScrollPx > 0f && scrollOffsetPx >= maxScrollPx - 1f &&
+                currentWindow.start + currentWindow.map.sourceCodePoints >= currentWindow.documentLength - 1) {
                 actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)); break
             }
         }
@@ -986,6 +1019,8 @@ private fun ReaderHudV3(text: String, modifier: Modifier = Modifier) {
 
 private const val MAX_CHAPTER_TICKS = 96
 private const val AUTO_SCROLL_COMMIT_CHARS = 512L
+private const val AUTO_SCROLL_POSITION_SAMPLE_NS = 250_000_000L
+private const val READER_HIDDEN_LAYER_OFFSET_PX = 16_384
 
 private fun highlightColorV3(style: ReaderHighlightStyle): Color = when (style) {
     ReaderHighlightStyle.YELLOW -> Color(0x55FFD54F)

@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-TEMP_PREFIXES = ("feat/", "fix/", "chore/", "ci/", "refactor/", "docs/", "test/", "perf/")
+TEMP_PREFIXES = ("feat/", "fix/", "chore/", "ci/", "refactor/", "docs/", "test/", "perf/", "tmp/")
 RELEASE_PREFIX = "release/source-v"
 
 

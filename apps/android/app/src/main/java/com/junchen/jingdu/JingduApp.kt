@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
@@ -25,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
@@ -125,6 +127,17 @@ fun JingduApp(
                 settings = state.settings,
             )
         }
+        val quickPanelState = remember(state.settings, state.motion) {
+            AppUiState(settings = state.settings, motion = state.motion)
+        }
+        val chaptersPanelState = remember(state.currentBook, state.length, state.chapters, state.chaptersLoaded) {
+            AppUiState(
+                currentBook = state.currentBook,
+                length = state.length,
+                chapters = state.chapters,
+                chaptersLoaded = state.chaptersLoaded,
+            )
+        }
 
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
             when {
@@ -138,14 +151,17 @@ fun JingduApp(
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
                 AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
             }
+            if (state.screen == AppScreen.READER) {
+                PersistentReaderPanelLayer(state.panel == ReaderPanel.QUICK_SETTINGS) {
+                    ReaderQuickSettingsSheet(quickPanelState, trackedActions)
+                }
+                PersistentReaderPanelLayer(state.panel == ReaderPanel.CHAPTERS) {
+                    ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition)
+                }
+            }
             state.busyLabel?.let { BusyOverlay(it) }
             when (state.panel) {
-                ReaderPanel.QUICK_SETTINGS -> ReaderQuickSettingsSheet(AppUiState(settings = state.settings, motion = state.motion), trackedActions)
-                ReaderPanel.CHAPTERS -> ReaderSmartChaptersPanel(
-                    AppUiState(currentBook = state.currentBook, length = state.length, chapters = state.chapters, chaptersLoaded = state.chaptersLoaded),
-                    trackedActions,
-                    currentReaderPosition,
-                )
+                ReaderPanel.QUICK_SETTINGS, ReaderPanel.CHAPTERS -> Unit
                 ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
                 ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
                 ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
@@ -169,6 +185,22 @@ fun JingduApp(
         )
     }
 }
+
+/**
+ * Quick/Chapters are high-frequency reader overlays. Keep them composed after Reader opens and
+ * move the complete layer outside the viewport while hidden. Modifier.offset reads visibility in
+ * layout, so open/close does not destroy and recreate the panel composition or its Canvas display list.
+ */
+@Composable
+private fun PersistentReaderPanelLayer(visible: Boolean, content: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().offset {
+            IntOffset(0, if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX)
+        },
+    ) { content() }
+}
+
+private const val READER_PANEL_HIDDEN_OFFSET_PX = 16_384
 
 @Composable private fun BusyOverlay(label: String) {
     Box(Modifier.fillMaxSize().zIndex(20f).background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.24f)), contentAlignment = Alignment.Center) {
