@@ -514,11 +514,15 @@ private fun PagedReaderPageV3(
             if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) }
         }
 
-    SelectionContainer(state = selectionState) {
-        Box(
-            Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
-            contentAlignment = Alignment.TopCenter,
-        ) {
+    Box(
+        Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        SelectionContainer(state = selectionState) {
+            Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter,
+            ) {
             val ready = preparedValue ?: return@Box
             val annotated = ready.annotated
             if (columns == 2 && annotated.isNotEmpty()) {
@@ -537,6 +541,7 @@ private fun PagedReaderPageV3(
                     style = style,
                     overflow = TextOverflow.Clip,
                 )
+            }
             }
         }
     }

@@ -81,6 +81,7 @@ class MainActivity : ComponentActivity() {
     private var pendingExport: File? = null
     private var lastProgressPersistAt = 0L
     private var lastProgressPersistPosition = -1L
+    private var consumedReaderVolumeKey = KeyEvent.KEYCODE_UNKNOWN
     private var uiState: AppUiState
         get() = readerViewModel.state.value
         set(value) { readerViewModel.replace(value) }
@@ -1183,16 +1184,39 @@ class MainActivity : ComponentActivity() {
         else -> reason
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (uiState.screen == AppScreen.READER && uiState.busyLabel == null &&
-            motionController.state == ReaderMotionState.IDLE && ReaderInteractionRuntime.shouldUseVolumeKeysForPaging(uiState.settings, uiState.tts.active)
-        ) {
-            val nextKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
-            val previousKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_DOWN else KeyEvent.KEYCODE_VOLUME_UP
-            if (keyCode == nextKey) { navigateNext(userInitiated = true); return true }
-            if (keyCode == previousKey) { navigatePrevious(userInitiated = true); return true }
+    private fun handleReaderVolumeKey(keyCode: Int): Boolean {
+        if (uiState.screen != AppScreen.READER || uiState.busyLabel != null ||
+            motionController.state != ReaderMotionState.IDLE ||
+            !ReaderInteractionRuntime.shouldUseVolumeKeysForPaging(uiState.settings, uiState.tts.active)
+        ) return false
+        val nextKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
+        val previousKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_DOWN else KeyEvent.KEYCODE_VOLUME_UP
+        return when (keyCode) {
+            nextKey -> { navigateNext(userInitiated = true); true }
+            previousKey -> { navigatePrevious(userInitiated = true); true }
+            else -> false
         }
-        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
+        val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+        if (isVolumeKey) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (consumedReaderVolumeKey == keyCode) return true
+                    if (event.repeatCount == 0 && handleReaderVolumeKey(keyCode)) {
+                        consumedReaderVolumeKey = keyCode
+                        return true
+                    }
+                }
+                KeyEvent.ACTION_UP -> if (consumedReaderVolumeKey == keyCode) {
+                    consumedReaderVolumeKey = KeyEvent.KEYCODE_UNKNOWN
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onPause() {
