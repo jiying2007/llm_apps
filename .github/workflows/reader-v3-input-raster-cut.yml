@@ -1,0 +1,53 @@
+name: Reader V3 input raster cut
+
+on:
+  push:
+    branches:
+      - feat/reader-v3-prelaunch-final
+    paths:
+      - .github/workflows/reader-v3-input-raster-cut.yml
+      - scripts/apply-reader-v3-input-raster-cut.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: feat/reader-v3-prelaunch-final
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Apply Reader V3 input and raster cut
+        shell: bash
+        run: |
+          python3 scripts/apply-reader-v3-input-raster-cut.py
+          python3 scripts/test-android-performance-slo.py
+          bash scripts/verify-reader-v3.sh
+          python3 scripts/verify-reader-profile-contract.py
+          git diff --check
+          cd apps/android
+          ./gradlew :app:compileBenchmarkKotlin :macrobenchmark:compileBenchmarkKotlin --no-daemon
+
+      - name: Commit business cut and self-delete
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/reader-v3-input-raster-cut.yml scripts/apply-reader-v3-input-raster-cut.py
+          git add \
+            apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt \
+            scripts/verify-reader-v3.sh
+          git diff --cached --check
+          git commit -m 'perf(android): harden Reader V3 input and raster scroll'
+          git push origin HEAD:feat/reader-v3-prelaunch-final
