@@ -1,0 +1,45 @@
+name: Reader V3 frame-boundary cut
+
+on:
+  push:
+    branches:
+      - feat/reader-v3-prelaunch-final
+    paths:
+      - .github/workflows/reader-v3-frame-boundaries.yml
+      - scripts/apply-reader-v3-frame-boundaries.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: feat/reader-v3-prelaunch-final
+
+      - name: Apply and verify Reader V3 frame boundaries
+        shell: bash
+        run: |
+          python3 scripts/apply-reader-v3-frame-boundaries.py
+          bash scripts/verify-reader-v3.sh
+          python3 scripts/verify-reader-profile-contract.py
+          git diff --check
+
+      - name: Commit business cut and self-delete
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/reader-v3-frame-boundaries.yml scripts/apply-reader-v3-frame-boundaries.py
+          git add \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt \
+            docs/READER_V3_PROFILE_PROVENANCE.md \
+            scripts/verify-reader-v3.sh
+          git diff --cached --check
+          git commit -m 'perf(android): close Reader V3 frame invalidation boundaries'
+          git push origin HEAD:feat/reader-v3-prelaunch-final
