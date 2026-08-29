@@ -17,6 +17,13 @@ import sys
 from typing import Any, Iterable
 
 
+REQUIRED_MIN_SAMPLES = {
+    "pageTurn10MiB": 20,
+    "continuousScroll10MiB": 500,
+    "chaptersAndSettings10MiB": 50,
+}
+
+
 def finite_numbers(value: Any) -> Iterable[float]:
     if isinstance(value, bool):
         return
@@ -65,6 +72,21 @@ def frame_sample_sets(payload: Any) -> list[tuple[str, list[float]]]:
     return found
 
 
+def required_sample_failures(sample_sets: list[tuple[str, list[float]]]) -> list[str]:
+    failures: list[str] = []
+    for suffix, minimum in REQUIRED_MIN_SAMPLES.items():
+        counts = [len(samples) for label, samples in sample_sets if label.endswith(suffix)]
+        if not counts:
+            failures.append(f"missing required frame evidence: {suffix}")
+            continue
+        observed = max(counts)
+        if observed < minimum:
+            failures.append(
+                f"insufficient frame evidence: {suffix} samples={observed} minimum={minimum}"
+            )
+    return failures
+
+
 def collect_files(paths: list[str]) -> list[pathlib.Path]:
     files: list[pathlib.Path] = []
     for raw in paths:
@@ -89,6 +111,7 @@ def main() -> int:
         return 2
 
     rows: list[tuple[str, str, int, float, float, int]] = []
+    all_sample_sets: list[tuple[str, list[float]]] = []
     limits = {95: args.p95_ms, 99: args.p99_ms}
     for file in files:
         try:
@@ -96,7 +119,9 @@ def main() -> int:
         except (OSError, json.JSONDecodeError) as exc:
             print(f"performance SLO: cannot parse {file}: {exc}", file=sys.stderr)
             return 2
-        for benchmark, samples in frame_sample_sets(payload):
+        sample_sets = frame_sample_sets(payload)
+        all_sample_sets.extend(sample_sets)
+        for benchmark, samples in sample_sets:
             for percentile in (95, 99):
                 rows.append(
                     (
@@ -111,6 +136,12 @@ def main() -> int:
 
     if not rows:
         print("performance SLO: no sampledMetrics.frameDurationCpuMs.runs evidence found", file=sys.stderr)
+        return 2
+
+    evidence_failures = required_sample_failures(all_sample_sets)
+    if evidence_failures:
+        for failure in evidence_failures:
+            print(f"performance SLO: {failure}", file=sys.stderr)
         return 2
 
     # Every frame-producing benchmark is independently gated. This prevents a fast journey from

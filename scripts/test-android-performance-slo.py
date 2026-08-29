@@ -35,6 +35,21 @@ class AndroidPerformanceSloTest(unittest.TestCase):
         rows = slo.frame_sample_sets(payload)
         self.assertEqual([("ReaderJourneyBenchmark.pageTurn10MiB", [5.0, 10.0, 15.0, 20.0])], rows)
 
+    def test_required_interaction_sample_counts_reject_truncated_evidence(self) -> None:
+        valid = [
+            ("ReaderJourneyBenchmark.pageTurn10MiB", [1.0] * 20),
+            ("ReaderJourneyBenchmark.continuousScroll10MiB", [1.0] * 500),
+            ("ReaderJourneyBenchmark.chaptersAndSettings10MiB", [1.0] * 50),
+        ]
+        self.assertEqual([], slo.required_sample_failures(valid))
+        truncated = [
+            ("ReaderJourneyBenchmark.pageTurn10MiB", [1.0] * 20),
+            ("ReaderJourneyBenchmark.continuousScroll10MiB", [1.0] * 2),
+        ]
+        failures = slo.required_sample_failures(truncated)
+        self.assertTrue(any("continuousScroll10MiB samples=2" in failure for failure in failures))
+        self.assertTrue(any("missing required frame evidence: chaptersAndSettings10MiB" in failure for failure in failures))
+
     def test_real_shape_file_discovery(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

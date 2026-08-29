@@ -238,15 +238,12 @@ private fun PersistentReaderPanelLayer(
                     cache.recordKey = null
                 }
             }
-            .semantics { if (panelState.value != target) hideFromAccessibility() }
-            .pointerInput(panelState, target) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        if (panelState.value != target) event.changes.forEach { it.consume() }
-                    }
-                }
+            .graphicsLayer {
+                val visible = panelState.value == target
+                translationY = if (visible) 0f else READER_PANEL_HIDDEN_OFFSET_PX.toFloat()
+                alpha = if (visible) 1f else 0f
             }
+            .semantics { if (panelState.value != target) hideFromAccessibility() }
             .drawWithContent panelDraw@{
                 val size = cache.size
                 if (size.width > 0 && size.height > 0 && cache.recordKey != recordKey) {
@@ -259,6 +256,8 @@ private fun PersistentReaderPanelLayer(
             },
     ) { content() }
 }
+
+private const val READER_PANEL_HIDDEN_OFFSET_PX = 16_384
 
 @Composable private fun BusyOverlay(label: String) {
     Box(Modifier.fillMaxSize().zIndex(20f).background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.24f)), contentAlignment = Alignment.Center) {

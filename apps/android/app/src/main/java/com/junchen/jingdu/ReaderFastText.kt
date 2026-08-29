@@ -111,42 +111,18 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
                 value = withContext(Dispatchers.Default) { buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx) }
             }
         }
-        AndroidView(
-            factory = { ReaderPagedTextView(it) },
-            modifier = Modifier.fillMaxSize(),
-            update = { view -> view.setTextLayout(layout, resolvedColor.toArgb()) },
-        )
-    }
-}
-
-private class ReaderPagedTextView(context: Context) : View(context) {
-    private var textLayout: StaticLayout? = null
-    private var color: Int = 0
-    private var recorded: ReaderStaticLayoutRenderNode? = null
-
-    fun setTextLayout(layout: StaticLayout?, nextColor: Int) {
-        val changed = textLayout !== layout || color != nextColor
-        if (!changed) return
-        textLayout = layout
-        color = nextColor
-        if (layout == null) {
-            recorded = null
-            invalidate()
-            return
+        Canvas(Modifier.fillMaxSize()) {
+            layout?.let { ready ->
+                // The layout is already measured off-main. Canvas replay is deliberately retained
+                // for paged mode so page changes create normal RenderThread-observable frames.
+                ready.paint.color = resolvedColor.toArgb()
+                val canvas = drawContext.canvas.nativeCanvas
+                canvas.save()
+                canvas.clipRect(0f, 0f, size.width, size.height)
+                ready.draw(canvas)
+                canvas.restore()
+            }
         }
-        layout.paint.color = nextColor
-        if (Build.VERSION.SDK_INT >= 29) {
-            recorded = (recorded ?: ReaderStaticLayoutRenderNode()).also { it.record(layout) }
-        }
-        invalidate()
-    }
-
-    override fun onDraw(canvas: android.graphics.Canvas) {
-        super.onDraw(canvas)
-        canvas.save()
-        canvas.clipRect(0, 0, width, height)
-        if (Build.VERSION.SDK_INT < 29 || recorded?.draw(canvas) != true) textLayout?.draw(canvas)
-        canvas.restore()
     }
 }
 
@@ -222,7 +198,13 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
     private val applyPendingScroll = Runnable {
         scrollScheduled = false
         val translation = -pendingScrollY.toFloat()
-        if (content.translationY != translation) content.translationY = translation
+        if (content.translationY != translation) {
+            content.translationY = translation
+            // View-property translation keeps the recorded text display list intact. Explicitly
+            // invalidate the tiny wrapper once per vsync so FrameTimingMetric observes each real
+            // swipe frame instead of seeing only the first/last property transaction.
+            content.postInvalidateOnAnimation()
+        }
     }
     private var velocityTracker: VelocityTracker? = null
     private var onPrevious: () -> Unit = {}
