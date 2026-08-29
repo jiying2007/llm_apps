@@ -14,6 +14,8 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.LineHeightSpan
 import android.text.style.StyleSpan
+import android.view.View
+import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -128,7 +131,105 @@ internal class ReaderContinuousLayout internal constructor(internal val layout: 
     fun getLineStart(line: Int): Int = layout.getLineStart(line.coerceIn(0, (layout.lineCount - 1).coerceAtLeast(0)))
 }
 
-/** Continuous keeps the 4K bounded window; scroll frames draw only clipped native lines. */
+/**
+ * Non-snapshot scroll model for the continuous hot path. Gesture deltas must not invalidate the
+ * Compose reader tree. The attached viewport consumes offset changes as RenderNode properties.
+ */
+internal class ReaderContinuousScrollModel {
+    var offsetPx: Float = 0f
+        private set
+    var maxOffsetPx: Float = 0f
+        private set
+    private var scrollSink: ((Float) -> Unit)? = null
+
+    fun attachScrollSink(sink: (Float) -> Unit) {
+        scrollSink = sink
+        sink(offsetPx)
+    }
+
+    fun setRange(rangePx: Int) {
+        maxOffsetPx = rangePx.toFloat().coerceAtLeast(0f)
+        setOffset(offsetPx)
+    }
+
+    fun setOffset(value: Float) {
+        val next = value.coerceIn(0f, maxOffsetPx)
+        if (next == offsetPx) return
+        offsetPx = next
+        scrollSink?.invoke(next)
+    }
+
+    fun consumeDelta(delta: Float): Float {
+        val previous = offsetPx
+        setOffset(previous - delta)
+        return previous - offsetPx
+    }
+}
+
+/**
+ * Viewport owns a tall but bounded (4K-source-window) child display list. StaticLayout is recorded
+ * only when text/style changes. Scrolling updates child.translationY, which is a RenderNode property
+ * and does not re-record text or invalidate the surrounding Compose tree.
+ */
+private class ReaderContinuousViewportView(context: Context) : ViewGroup(context) {
+    private val content = ReaderContinuousTextView(context)
+    private var textLayout: StaticLayout? = null
+    private var offsetPx = 0f
+
+    init {
+        clipChildren = true
+        addView(content)
+    }
+
+    fun setTextLayout(layout: StaticLayout, color: Int) {
+        val changed = textLayout !== layout
+        textLayout = layout
+        content.setTextLayout(layout, color)
+        if (changed) requestLayout()
+    }
+
+    fun setScrollOffset(value: Float) {
+        if (value == offsetPx) return
+        offsetPx = value
+        content.translationY = -value
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast(1)
+        val height = MeasureSpec.getSize(heightMeasureSpec).coerceAtLeast(1)
+        setMeasuredDimension(width, height)
+        val contentHeight = (textLayout?.height ?: height).coerceAtLeast(height)
+        content.measure(
+            MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY),
+        )
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        content.layout(0, 0, measuredWidth, content.measuredHeight)
+        content.translationY = -offsetPx
+    }
+}
+
+private class ReaderContinuousTextView(context: Context) : View(context) {
+    private var textLayout: StaticLayout? = null
+    private var color: Int = 0
+
+    fun setTextLayout(layout: StaticLayout, nextColor: Int) {
+        val changed = textLayout !== layout || color != nextColor
+        textLayout = layout
+        color = nextColor
+        layout.paint.color = nextColor
+        if (changed) invalidate()
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        textLayout?.draw(canvas)
+    }
+}
+
+/** Continuous keeps the 4K bounded window; scroll frames move one native RenderNode only. */
 @Composable
 internal fun Text(
     text: AnnotatedString,
@@ -136,8 +237,7 @@ internal fun Text(
     style: TextStyle,
     overflow: TextOverflow,
     scrollableState: ScrollableState,
-    scrollOffsetPx: () -> Float,
-    onScrollRange: (Int) -> Unit,
+    scrollModel: ReaderContinuousScrollModel,
     onTextLayout: (ReaderContinuousLayout) -> Unit,
 ) {
     val context = LocalContext.current
@@ -177,13 +277,13 @@ internal fun Text(
         }
         LaunchedEffect(layout, viewportHeightPx) {
             layout?.let { ready ->
+                scrollModel.setRange((ready.height - viewportHeightPx).coerceAtLeast(0))
                 onTextLayout(ready)
-                onScrollRange((ready.height - viewportHeightPx).coerceAtLeast(0))
             }
         }
         val ready = layout
         if (fallback) {
-            val fallbackScroll = rememberScrollState(initial = scrollOffsetPx().roundToInt().coerceAtLeast(0))
+            val fallbackScroll = rememberScrollState(initial = scrollModel.offsetPx.roundToInt().coerceAtLeast(0))
             androidx.compose.material3.Text(
                 text = text,
                 modifier = Modifier.fillMaxSize().verticalScroll(fallbackScroll),
@@ -191,16 +291,19 @@ internal fun Text(
                 overflow = overflow,
             )
         } else if (ready != null) {
-            Canvas(Modifier.fillMaxSize()) {
-                val maxOffset = (ready.height - viewportHeightPx).coerceAtLeast(0).toFloat()
-                ready.layout.paint.color = resolvedColor.toArgb()
-                val canvas = drawContext.canvas.nativeCanvas
-                canvas.save()
-                canvas.clipRect(0f, 0f, size.width, size.height)
-                canvas.translate(0f, -scrollOffsetPx().coerceIn(0f, maxOffset))
-                ready.layout.draw(canvas)
-                canvas.restore()
-            }
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { androidContext ->
+                    ReaderContinuousViewportView(androidContext).also { viewport ->
+                        viewport.setTextLayout(ready.layout, resolvedColor.toArgb())
+                        scrollModel.attachScrollSink(viewport::setScrollOffset)
+                    }
+                },
+                update = { viewport ->
+                    viewport.setTextLayout(ready.layout, resolvedColor.toArgb())
+                    scrollModel.attachScrollSink(viewport::setScrollOffset)
+                },
+            )
         }
     }
 }

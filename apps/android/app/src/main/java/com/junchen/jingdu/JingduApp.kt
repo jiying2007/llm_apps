@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
@@ -25,8 +24,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
@@ -194,8 +193,9 @@ fun JingduApp(
 @Composable
 private fun PersistentReaderPanelLayer(visible: Boolean, content: @Composable () -> Unit) {
     Box(
-        Modifier.fillMaxSize().offset {
-            IntOffset(0, if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX)
+        Modifier.fillMaxSize().graphicsLayer {
+            translationY = if (visible) 0f else READER_PANEL_HIDDEN_OFFSET_PX.toFloat()
+            alpha = if (visible) 1f else 0f
         },
     ) { content() }
 }

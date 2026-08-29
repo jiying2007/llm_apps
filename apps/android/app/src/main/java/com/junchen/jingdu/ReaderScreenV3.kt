@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -280,8 +281,9 @@ internal fun ReaderScreenV3(
         // Keep hot controls composed for the whole reader session. Visibility changes are a
         // layout-phase placement only, so reopening controls never rebuilds the Material button tree.
         Box(
-            Modifier.align(Alignment.TopCenter).offset {
-                androidx.compose.ui.unit.IntOffset(0, if (controlsVisible) 0 else -READER_HIDDEN_LAYER_OFFSET_PX)
+            Modifier.align(Alignment.TopCenter).graphicsLayer {
+                translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
+                alpha = if (controlsVisible) 1f else 0f
             },
         ) {
             ReaderTopBarV3(book.name, currentChapter, actions) { more = true }
@@ -290,8 +292,9 @@ internal fun ReaderScreenV3(
             ReaderMoreMenuV3(state.cleanMode, actions) { more = false }
         }
         Box(
-            Modifier.align(Alignment.BottomCenter).offset {
-                androidx.compose.ui.unit.IntOffset(0, if (controlsVisible) 0 else READER_HIDDEN_LAYER_OFFSET_PX)
+            Modifier.align(Alignment.BottomCenter).graphicsLayer {
+                translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
+                alpha = if (controlsVisible) 1f else 0f
             },
         ) {
             ReaderBottomBarV3(
@@ -531,14 +534,8 @@ private fun ContinuousReaderPageV3(
     val book = state.currentBook ?: return
     val settings = state.settings
     val engine = remember(book.id) { ReaderViewportEngine(context, book.id) }
-    var scrollOffsetPx by remember(book.id) { mutableFloatStateOf(0f) }
-    var maxScrollPx by remember(book.id) { mutableFloatStateOf(0f) }
-    val scrollableState = rememberScrollableState { delta ->
-        val previous = scrollOffsetPx
-        val next = (previous - delta).coerceIn(0f, maxScrollPx)
-        scrollOffsetPx = next
-        previous - next
-    }
+    val scrollModel = remember(book.id) { ReaderContinuousScrollModel() }
+    val scrollableState = rememberScrollableState(scrollModel::consumeDelta)
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val systemLeft = WindowInsets.systemGestures.getLeft(density, layoutDirection)
@@ -576,7 +573,7 @@ private fun ContinuousReaderPageV3(
         if (w.displayText.isEmpty()) return@LaunchedEffect
         val utf = utf16IndexV3(w.displayText, w.map.displayForSource((localPosition.get() - w.start).coerceAtLeast(0)))
         val line = layout.getLineForOffset(utf.coerceIn(0, (w.displayText.length - 1).coerceAtLeast(0)))
-        scrollOffsetPx = layout.getLineTop(line).coerceIn(0f, maxScrollPx)
+        scrollModel.setOffset(layout.getLineTop(line))
     }
     fun absoluteAtContinuousOffset(y: Int): Long? {
         val currentWindow = window ?: return null
@@ -604,8 +601,8 @@ private fun ContinuousReaderPageV3(
         }
         val edge = (viewportHeight * 0.25f).roundToInt()
         val nearTop = y <= edge && currentWindow.start > 0
-        val nearBottom = maxScrollPx > 0f &&
-            maxScrollPx - y.toFloat() <= edge.toFloat() &&
+        val nearBottom = scrollModel.maxOffsetPx > 0f &&
+            scrollModel.maxOffsetPx - y.toFloat() <= edge.toFloat() &&
             currentWindow.start + currentWindow.map.sourceCodePoints < currentWindow.documentLength - 1
         if (!loading && (nearTop || nearBottom)) loadAround(absolute)
     }
@@ -614,7 +611,7 @@ private fun ContinuousReaderPageV3(
     // perform it once when the gesture settles instead of on every delta/frame.
     LaunchedEffect(scrollableState, layoutResult, window, viewportHeight) {
         snapshotFlow { scrollableState.isScrollInProgress }.distinctUntilChanged().collect { scrolling ->
-            if (!scrolling) settleContinuousPosition(scrollOffsetPx.roundToInt(), auto = false)
+            if (!scrolling) settleContinuousPosition(scrollModel.offsetPx.roundToInt(), auto = false)
         }
     }
     LaunchedEffect(state.autoScrolling, settings.autoScrollSpeedDpPerSecond, window) {
@@ -627,7 +624,7 @@ private fun ContinuousReaderPageV3(
                 if (lastFrame != 0L) {
                     val seconds = (now - lastFrame).toDouble() / 1_000_000_000.0
                     val deltaPx = with(density) { (settings.autoScrollSpeedDpPerSecond * seconds).dp.toPx() }
-                    scrollOffsetPx = (scrollOffsetPx + deltaPx).coerceIn(0f, maxScrollPx)
+                    scrollModel.setOffset(scrollModel.offsetPx + deltaPx)
                 }
                 if (lastPositionSample == 0L || now - lastPositionSample >= AUTO_SCROLL_POSITION_SAMPLE_NS) {
                     lastPositionSample = now
@@ -635,9 +632,9 @@ private fun ContinuousReaderPageV3(
                 }
                 lastFrame = now
             }
-            if (samplePosition) settleContinuousPosition(scrollOffsetPx.roundToInt(), auto = true)
+            if (samplePosition) settleContinuousPosition(scrollModel.offsetPx.roundToInt(), auto = true)
             val currentWindow = window ?: continue
-            if (maxScrollPx > 0f && scrollOffsetPx >= maxScrollPx - 1f &&
+            if (scrollModel.maxOffsetPx > 0f && scrollModel.offsetPx >= scrollModel.maxOffsetPx - 1f &&
                 currentWindow.start + currentWindow.map.sourceCodePoints >= currentWindow.documentLength - 1) {
                 actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)); break
             }
@@ -676,11 +673,7 @@ private fun ContinuousReaderPageV3(
                 style = style,
                 overflow = TextOverflow.Clip,
                 scrollableState = scrollableState,
-                scrollOffsetPx = { scrollOffsetPx },
-                onScrollRange = { range ->
-                    maxScrollPx = range.toFloat().coerceAtLeast(0f)
-                    scrollOffsetPx = scrollOffsetPx.coerceIn(0f, maxScrollPx)
-                },
+                scrollModel = scrollModel,
                 onTextLayout = { layoutResult = it },
             )
             if (loading && display.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.Center))
