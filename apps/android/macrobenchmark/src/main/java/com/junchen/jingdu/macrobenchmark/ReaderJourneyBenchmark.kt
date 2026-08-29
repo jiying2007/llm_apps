@@ -34,13 +34,17 @@ class ReaderJourneyBenchmark {
         prepareBlock = { setReaderMode("paged") },
     ) {
         val before = readerPosition()
+        var previous = before
+        check(previous >= 0) { "Reader V3 page-turn journey has no authoritative starting position: $previous" }
         repeat(6) {
-            check(device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)) { "Reader V3 volume-key page turn was not injected" }
-            device.waitForIdle()
+            // Use Android's real shell input path rather than UiAutomator's key wrapper. This still
+            // traverses InputDispatcher -> Activity dispatch, but is stable on hosted emulators.
+            device.executeShellCommand("input keyevent ${KeyEvent.KEYCODE_VOLUME_DOWN}")
+            previous = waitForReaderAdvance(previous)
         }
         val after = readerPosition()
-        check(before >= 0 && after > before) {
-            "Reader V3 volume-key journey injected keys but did not advance the authoritative reader position: before=$before after=$after"
+        check(after > before) {
+            "Reader V3 volume-key journey did not advance overall: before=$before after=$after"
         }
     }
 
@@ -48,6 +52,7 @@ class ReaderJourneyBenchmark {
         name = "continuous-scroll",
         fixtureMiB = 10,
         prepareBlock = { setReaderMode("continuous") },
+        afterOpenPrepareBlock = { waitForContinuousReady() },
     ) {
         repeat(6) {
             check(device.swipe(
@@ -55,7 +60,7 @@ class ReaderJourneyBenchmark {
                 (device.displayHeight * 0.80).toInt(),
                 device.displayWidth / 2,
                 (device.displayHeight * 0.25).toInt(),
-                32,
+                24,
             )) { "Reader V3 continuous-scroll swipe was not injected" }
         }
         device.waitForIdle()
@@ -70,12 +75,12 @@ class ReaderJourneyBenchmark {
             ensureTopControlsVisible()
             requireChaptersClick()
             device.waitForIdle()
-            device.pressBack()
+            device.executeShellCommand("input keyevent ${KeyEvent.KEYCODE_BACK}")
             device.waitForIdle()
             ensureTopControlsVisible()
             requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
-            device.pressBack()
+            device.executeShellCommand("input keyevent ${KeyEvent.KEYCODE_BACK}")
             device.waitForIdle()
         }
     }
@@ -102,6 +107,7 @@ class ReaderJourneyBenchmark {
         fixtureMiB: Int,
         iterations: Int = 5,
         prepareBlock: MacrobenchmarkScope.() -> Unit = {},
+        afterOpenPrepareBlock: MacrobenchmarkScope.() -> Unit = {},
         block: MacrobenchmarkScope.() -> Unit,
     ) = rule.measureRepeated(
         packageName = PACKAGE_NAME,
@@ -115,6 +121,7 @@ class ReaderJourneyBenchmark {
             prepareBlock()
             startTargetAndWait()
             openFixture(fixtureMiB)
+            afterOpenPrepareBlock()
         },
         measureBlock = block,
     )
@@ -139,6 +146,37 @@ class ReaderJourneyBenchmark {
         )
         return Regex("""position=(-?\d+)""").find(result)?.groupValues?.get(1)?.toLongOrNull()
             ?: error("Reader V3 benchmark position query failed: $result")
+    }
+
+    private fun MacrobenchmarkScope.waitForReaderAdvance(before: Long): Long {
+        val deadline = System.nanoTime() + INPUT_STATE_TIMEOUT_NS
+        var after = before
+        while (System.nanoTime() < deadline) {
+            device.waitForIdle()
+            after = readerPosition()
+            if (after > before) return after
+            Thread.sleep(INPUT_POLL_MS)
+        }
+        error(
+            "Reader V3 volume-key journey used the real shell input path but did not advance the authoritative reader position: " +
+                "before=$before after=$after",
+        )
+    }
+
+    private fun MacrobenchmarkScope.waitForContinuousReady() {
+        val deadline = System.nanoTime() + CONTINUOUS_READY_TIMEOUT_NS
+        var result = ""
+        while (System.nanoTime() < deadline) {
+            result = device.executeShellCommand(
+                "content call --uri content://com.junchen.jingdu.benchmarkfixture --method continuousReady",
+            )
+            if (Regex("""ready=(\d+)""").find(result)?.groupValues?.get(1) == "1") {
+                device.waitForIdle()
+                return
+            }
+            Thread.sleep(CONTINUOUS_READY_POLL_MS)
+        }
+        error("Reader V3 continuous viewport did not publish layout/raster readiness: $result")
     }
 
     private fun MacrobenchmarkScope.startTargetAndWait() {
@@ -185,11 +223,15 @@ class ReaderJourneyBenchmark {
         val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
         repeat(2) {
             for ((x, y) in taps) {
-                device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())
-                if (device.wait(Until.hasObject(By.text("Aa")), 900)) return
+                val px = (device.displayWidth * x).toInt()
+                val py = (device.displayHeight * y).toInt()
+                // Match the key journey: use the platform input command so Compose sees a normal
+                // DOWN/UP stream even when hosted UiAutomator click injection is flaky.
+                device.executeShellCommand("input tap $px $py")
+                if (device.wait(Until.hasObject(By.text("Aa")), 1_100)) return
             }
         }
-        error("Reader V3 top reading controls did not become visible")
+        error("Reader V3 top reading controls did not become visible after real shell tap input")
     }
 
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
@@ -221,6 +263,10 @@ class ReaderJourneyBenchmark {
 
     private companion object {
         const val PACKAGE_NAME = "com.junchen.jingdu"
+        const val INPUT_POLL_MS = 25L
+        const val CONTINUOUS_READY_POLL_MS = 50L
+        const val INPUT_STATE_TIMEOUT_NS = 2_500_000_000L
+        const val CONTINUOUS_READY_TIMEOUT_NS = 12_000_000_000L
 
         // This target APK already contains the curated, provenance-checked product Baseline Profile.
         // Android's Macrobenchmark contract defines Partial + Require as the fresh-install state of an

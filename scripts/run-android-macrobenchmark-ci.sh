@@ -192,7 +192,9 @@ if ! "$EMULATOR" -list-avds | grep -Fxq "$AVD_NAME"; then
   exit 1
 fi
 
-GPU_MODE="${JINGDU_EMULATOR_GPU_MODE:-auto}"
+# Pin a supported software renderer so the hosted performance gate is comparable across runner GPU
+# quality probes. `auto` previously selected swangle/lavapipe on this fleet and changed between hosts.
+GPU_MODE="${JINGDU_EMULATOR_GPU_MODE:-swiftshader}"
 : >"$EMULATOR_LOG"
 if [[ -e /dev/kvm ]]; then
   "$EMULATOR" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim -no-snapshot \

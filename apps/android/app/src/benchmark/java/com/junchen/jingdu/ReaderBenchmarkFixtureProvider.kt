@@ -36,6 +36,7 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                     "continuous" -> ReaderMode.CONTINUOUS
                     else -> error("Unsupported Reader V3 benchmark mode: $arg")
                 }
+                ReaderInteractionRuntime.continuousReady = false
                 val preferences = ReaderPreferences(context)
                 preferences.flush(
                     preferences.load().copy(
@@ -63,6 +64,7 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                 Bundle.EMPTY
             }
             "position" -> Bundle().apply { putLong("position", ReaderInteractionRuntime.foregroundPosition) }
+            "continuousReady" -> Bundle().apply { putLong("ready", if (ReaderInteractionRuntime.continuousReady) 1L else 0L) }
             "clear" -> {
                 val repository = BookRepository(context)
                 repository.list().filter { it.name.startsWith("Benchmark Novel ") }.forEach(repository::delete)

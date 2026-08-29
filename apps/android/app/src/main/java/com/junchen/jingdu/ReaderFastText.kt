@@ -168,9 +168,9 @@ internal class ReaderContinuousScrollModel {
 
 /**
  * Viewport-sized native continuous renderer. The 4K source window remains authoritative and
- * bounded, but its StaticLayout is split into viewport-height RenderNode tiles. A scroll frame
- * invalidates only this viewport and replays at most the two tiles intersecting the viewport,
- * avoiding the previous whole-window display-list replay and any synthetic measurement pulse.
+ * bounded, but its StaticLayout is split into worker-rasterized bitmap tiles. A scroll frame
+ * invalidates only this viewport and blits the visible opaque tiles, avoiding whole-window text
+ * replay, full-screen alpha blending, and any synthetic measurement pulse.
  */
 private class ReaderContinuousViewportView(context: Context) : View(context) {
     private val viewConfig = ViewConfiguration.get(context)
@@ -277,6 +277,8 @@ private class ReaderContinuousViewportView(context: Context) : View(context) {
         }
     }
 
+    override fun isOpaque(): Boolean = tileSet != null
+
     override fun onDraw(canvas: android.graphics.Canvas) {
         super.onDraw(canvas)
         val layout = textLayout ?: return
@@ -363,7 +365,6 @@ private class ReaderContinuousViewportView(context: Context) : View(context) {
     override fun computeScroll() {
         if (scroller.computeScrollOffset()) {
             scrollModel?.setOffset(scroller.currY.toFloat())
-            postInvalidateOnAnimation()
         } else if (flingRunning) {
             flingRunning = false
             onScrollSettled()
@@ -451,7 +452,11 @@ private class ReaderContinuousViewportView(context: Context) : View(context) {
     }
 }
 
-internal class ReaderStaticLayoutBitmapTileSet(layout: StaticLayout, requestedTileHeightPx: Int) {
+internal class ReaderStaticLayoutBitmapTileSet(
+    layout: StaticLayout,
+    requestedTileHeightPx: Int,
+    backgroundColor: Int,
+) {
     private data class Tile(val top: Int, val bitmap: android.graphics.Bitmap)
     private val tileHeightPx = requestedTileHeightPx.coerceIn(MIN_BITMAP_TILE_HEIGHT_PX, MAX_BITMAP_TILE_HEIGHT_PX)
     private val tiles: List<Tile>
@@ -464,12 +469,14 @@ internal class ReaderStaticLayoutBitmapTileSet(layout: StaticLayout, requestedTi
         while (top < totalHeight) {
             val tileHeight = minOf(tileHeightPx, totalHeight - top).coerceAtLeast(1)
             val bitmap = android.graphics.Bitmap.createBitmap(width, tileHeight, android.graphics.Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(backgroundColor)
             val canvas = android.graphics.Canvas(bitmap)
             canvas.save()
             canvas.clipRect(0, 0, width, tileHeight)
             canvas.translate(0f, -top.toFloat())
             layout.draw(canvas)
             canvas.restore()
+            bitmap.setHasAlpha(false)
             bitmap.prepareToDraw()
             built += Tile(top, bitmap)
             top += tileHeight
@@ -529,6 +536,7 @@ internal fun Text(
         fontSynthesis = style.fontSynthesis ?: FontSynthesis.All,
     )
     val resolvedColor = if (style.color == Color.Unspecified) MaterialTheme.colorScheme.onBackground else style.color
+    val rasterBackgroundColor = remember(settings.palette) { readerContinuousRasterBackgroundColor(settings.palette) }
     val baseModifier = modifier.fillMaxSize().clipToBounds()
     BoxWithConstraints(baseModifier) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
@@ -544,12 +552,18 @@ internal fun Text(
             density.fontScale,
             nativeTypeface,
             resolvedColor,
+            rasterBackgroundColor,
         ) {
+            ReaderInteractionRuntime.continuousReady = false
             value = withContext(Dispatchers.Default) {
                 val staticLayout = buildFastStaticLayout(text, style, density, nativeTypeface, resolvedColor, widthPx)
                 ReaderContinuousLayout(
                     staticLayout,
-                    ReaderStaticLayoutBitmapTileSet(staticLayout, viewportHeightPx.coerceAtLeast(1)),
+                    ReaderStaticLayoutBitmapTileSet(
+                        staticLayout,
+                        (viewportHeightPx * 2).coerceAtLeast(1),
+                        rasterBackgroundColor,
+                    ),
                 )
             }
         }
@@ -557,6 +571,7 @@ internal fun Text(
             layout?.let { ready ->
                 scrollModel.setRange((ready.height - viewportHeightPx).coerceAtLeast(0))
                 onTextLayout(ready)
+                ReaderInteractionRuntime.continuousReady = true
             }
         }
         val ready = layout
@@ -592,6 +607,14 @@ internal fun Text(
             )
         }
     }
+}
+
+private fun readerContinuousRasterBackgroundColor(palette: ReaderPalette): Int = when (palette) {
+    ReaderPalette.PAPER -> 0xFFF7F0DE.toInt()
+    ReaderPalette.LIGHT -> 0xFFFFFBFF.toInt()
+    ReaderPalette.SEPIA -> 0xFFF3E5C8.toInt()
+    ReaderPalette.NIGHT -> 0xFF151713.toInt()
+    ReaderPalette.OLED -> 0xFF000000.toInt()
 }
 
 private fun buildFastStaticLayout(text: AnnotatedString, style: TextStyle, density: androidx.compose.ui.unit.Density, nativeTypeface: Typeface, resolvedColor: Color, widthPx: Int): StaticLayout {
