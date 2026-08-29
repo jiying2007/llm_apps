@@ -1,0 +1,46 @@
+name: Reader V3 frame evidence repair
+
+on:
+  push:
+    branches:
+      - feat/reader-v3-prelaunch-final
+    paths:
+      - .github/workflows/reader-v3-frame-evidence.yml
+      - scripts/apply-reader-v3-frame-evidence.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: feat/reader-v3-prelaunch-final
+
+      - name: Apply and verify Reader V3 frame evidence repair
+        shell: bash
+        run: |
+          python3 scripts/apply-reader-v3-frame-evidence.py
+          python3 scripts/test-android-performance-slo.py
+          bash scripts/verify-reader-v3.sh
+          python3 scripts/verify-reader-profile-contract.py
+          git diff --check
+
+      - name: Commit business cut and self-delete
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/reader-v3-frame-evidence.yml scripts/apply-reader-v3-frame-evidence.py
+          git add \
+            apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt \
+            apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt \
+            scripts/check-android-performance-slo.py \
+            scripts/test-android-performance-slo.py \
+            scripts/verify-reader-v3.sh
+          git diff --cached --check
+          git commit -m 'fix(android): restore observable Reader V3 frame evidence'
+          git push origin HEAD:feat/reader-v3-prelaunch-final
