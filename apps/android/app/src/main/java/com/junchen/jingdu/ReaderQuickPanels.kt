@@ -73,6 +73,7 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                 height = QUICK_PANEL_HEIGHT,
                 description = title,
                 actions = accessibilityActions,
+                recordKey = listOf(colors, s.palette, s.fontSizeSp, s.lineHeightMultiplier, s.readingMode, state.autoScrolling, s.autoScrollSpeedDpPerSecond),
                 onTap = { point, width, _ ->
                     when {
                         point.y in row1 - buttonH / 2f..row1 + buttonH / 2f -> {

@@ -182,6 +182,7 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
                 height = CHAPTER_PANEL_HEIGHT,
                 description = panelTitle,
                 actions = accessibilityActions,
+                recordKey = listOf(colors, loading, windowStart, current),
                 onTap = { point, width, _ ->
                     when {
                         point.y < rowTop && point.x > width - with(density) { 72.dp.toPx() } -> addDialog = true

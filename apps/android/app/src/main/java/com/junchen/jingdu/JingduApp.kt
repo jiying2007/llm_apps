@@ -26,7 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.StateFlow
@@ -214,7 +214,7 @@ private fun PersistentReaderPanelLayer(
 ) {
     Box(
         Modifier.fillMaxSize()
-            .semantics { if (panelState.value != target) invisibleToUser() }
+            .semantics { if (panelState.value != target) hideFromAccessibility() }
             .graphicsLayer {
                 val visible = panelState.value == target
                 translationY = if (visible) 0f else READER_PANEL_HIDDEN_OFFSET_PX.toFloat()

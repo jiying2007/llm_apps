@@ -2,7 +2,9 @@ package com.junchen.jingdu
 
 import android.content.Context
 import android.graphics.Paint
+import android.graphics.RenderNode
 import android.graphics.Typeface
+import android.os.Build
 import android.graphics.text.LineBreaker
 import android.text.Layout
 import android.text.SpannableString
@@ -191,6 +193,12 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
     private var longPressTriggered = false
     private var lastCenterTapAt = 0L
     private var flingRunning = false
+    private var pendingScrollY = 0
+    private var scrollScheduled = false
+    private val applyPendingScroll = Runnable {
+        scrollScheduled = false
+        if (scrollY != pendingScrollY) scrollTo(0, pendingScrollY)
+    }
     private var velocityTracker: VelocityTracker? = null
     private var onPrevious: () -> Unit = {}
     private var onNext: () -> Unit = {}
@@ -213,7 +221,6 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
         clipToPadding = true
         setWillNotDraw(true)
         isClickable = true
-        content.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         addView(content)
     }
 
@@ -258,8 +265,11 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
     fun setScrollOffset(value: Float) {
         if (value == offsetPx) return
         offsetPx = value
-        val y = value.roundToInt()
-        if (scrollY != y) scrollTo(0, y)
+        pendingScrollY = value.roundToInt()
+        if (!scrollScheduled) {
+            scrollScheduled = true
+            postOnAnimation(applyPendingScroll)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -431,30 +441,60 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         content.layout(0, 0, measuredWidth, content.measuredHeight)
-        scrollTo(0, offsetPx.roundToInt())
-        if (changed && content.isHardwareAccelerated) {
-            content.post {
-                if (content.isHardwareAccelerated && content.layerType == View.LAYER_TYPE_HARDWARE) content.buildLayer()
-            }
-        }
+        pendingScrollY = offsetPx.roundToInt()
+        if (scrollY != pendingScrollY) scrollTo(0, pendingScrollY)
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(applyPendingScroll)
+        scrollScheduled = false
+        super.onDetachedFromWindow()
     }
 }
 
 private class ReaderContinuousTextView(context: Context) : View(context) {
     private var textLayout: StaticLayout? = null
     private var color: Int = 0
+    private var recorded: ReaderStaticLayoutRenderNode? = null
 
     fun setTextLayout(layout: StaticLayout, nextColor: Int) {
         val changed = textLayout !== layout || color != nextColor
         textLayout = layout
         color = nextColor
         layout.paint.color = nextColor
+        if (Build.VERSION.SDK_INT >= 29 && changed) {
+            recorded = (recorded ?: ReaderStaticLayoutRenderNode()).also { it.record(layout) }
+        }
         if (changed) invalidate()
     }
 
     override fun onDraw(canvas: android.graphics.Canvas) {
         super.onDraw(canvas)
+        if (Build.VERSION.SDK_INT >= 29 && recorded?.draw(canvas) == true) return
         textLayout?.draw(canvas)
+    }
+}
+
+@android.annotation.TargetApi(29)
+private class ReaderStaticLayoutRenderNode {
+    private val node = RenderNode("ReaderContinuousStaticLayout")
+
+    fun record(layout: StaticLayout) {
+        val width = layout.width.coerceAtLeast(1)
+        val height = layout.height.coerceAtLeast(1)
+        node.setPosition(0, 0, width, height)
+        val canvas = node.beginRecording(width, height)
+        try {
+            layout.draw(canvas)
+        } finally {
+            node.endRecording()
+        }
+    }
+
+    fun draw(canvas: android.graphics.Canvas): Boolean {
+        if (!canvas.isHardwareAccelerated || !node.hasDisplayList()) return false
+        canvas.drawRenderNode(node)
+        return true
     }
 }
 

@@ -79,6 +79,7 @@ panel_surface=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurfa
 smart_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
 smart_toc_cache=apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
 hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
+hot_panel_canvas=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotPanelCanvas.kt
 fast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt
 service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 player=apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
@@ -147,9 +148,12 @@ forbid_literal "$fast_text" 'scrollable(scrollableState, Orientation.Vertical)' 
 forbid_literal "$screen" 'snapshotFlow { scrollableState.isScrollInProgress }' 'Compose scroll progress observer'
 require_literal "$fast_text" 'override fun onTouchEvent(event: MotionEvent)' 'native continuous gesture ownership'
 require_literal "$fast_text" 'OverScroller(context)' 'native continuous fling'
-require_literal "$fast_text" 'scrollTo(0, y)' 'continuous viewport scroll property'
-require_literal "$fast_text" 'content.setLayerType(View.LAYER_TYPE_HARDWARE, null)' 'continuous cached text layer'
-require_literal "$fast_text" 'content.buildLayer()' 'continuous text layer prebuild'
+require_literal "$fast_text" 'postOnAnimation(applyPendingScroll)' 'vsync-coalesced continuous scroll'
+require_literal "$fast_text" 'ReaderStaticLayoutRenderNode' 'direct continuous RenderNode display list'
+require_literal "$fast_text" 'node.beginRecording(width, height)' 'continuous StaticLayout pre-record'
+require_literal "$fast_text" 'canvas.drawRenderNode(node)' 'continuous display-list replay'
+forbid_literal "$fast_text" 'content.setLayerType(View.LAYER_TYPE_HARDWARE, null)' 'oversized rasterized continuous layer'
+forbid_literal "$fast_text" 'content.buildLayer()' 'oversized raster layer prebuild'
 forbid_literal "$fast_text" 'content.translationY = -value' 'continuous tall-child translation'
 forbid_literal "$fast_text" 'fun consumeDelta(delta: Float)' 'obsolete Compose scroll adapter'
 require_literal "$fast_text" 'model.setOffset(model.offsetPx + (lastY - event.y))' 'native direct scroll property update'
@@ -189,7 +193,7 @@ require_literal "$app" 'val hotPanelState: State<ReaderPanel?>' 'stable hot pane
 require_literal "$app" 'ReaderHotPanelBackHandler(hotPanelState' 'isolated hot panel BackHandler'
 require_literal "$app" 'PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS)' 'phase-owned quick panel visibility'
 require_literal "$app" 'PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS)' 'phase-owned chapters panel visibility'
-require_literal "$app" '.semantics { if (panelState.value != target) invisibleToUser() }' 'phase-owned hidden panel semantics'
+require_literal "$app" '.semantics { if (panelState.value != target) hideFromAccessibility() }' 'phase-owned hidden panel semantics'
 forbid_literal "$app" 'PersistentReaderPanelLayer(panel ==' 'composition-owned panel visibility'
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewModel.kt 'val hotPanel: StateFlow<ReaderPanel?>' 'hot panel state flow'
 require_literal "$activity" 'readerViewModel.openHotPanel(panel)' 'hot panel publication boundary'
@@ -355,3 +359,12 @@ if git grep -n -E 'readAt\([^,]+,[[:space:]]*(Long\.MAX_VALUE|[0-9]+[[:space:]]*
 fi
 
 echo 'Reader V3 prelaunch contract OK: correctness/Media3/Room/Proto/UDF/cache/hot-path/soak/Macrobenchmark/BaselineProfile/RSS gates aligned'
+
+# Explicit display-list pre-recording keeps first visible panel draw and continuous text recording outside interaction frames.
+require_literal "$hot_panel_canvas" 'rememberGraphicsLayer()' 'hot panel graphics layer'
+require_literal "$hot_panel_canvas" 'layer.record(density, layoutDirection, layerSize)' 'hot panel pre-record'
+require_literal "$hot_panel_canvas" 'drawLayer(layer)' 'hot panel display-list replay'
+require_literal "$quick_panel" 'recordKey = listOf(colors' 'quick panel record invalidation key'
+require_literal "$smart_panel" 'recordKey = listOf(colors' 'chapters panel record invalidation key'
+require_literal "$app" 'hideFromAccessibility()' 'supported hidden panel accessibility semantics'
+forbid_literal "$app" 'invisibleToUser()' 'deprecated hidden panel accessibility semantics'
