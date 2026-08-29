@@ -169,13 +169,11 @@ internal fun ReaderScreenV3(
         }
     }
     LaunchedEffect(activity, state.panel) {
-        snapshotFlow { controlsVisible }.distinctUntilChanged().collect { visible ->
-            activity?.window?.let { window ->
-                val controller = WindowCompat.getInsetsController(window, window.decorView)
-                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                if (visible || state.panel != null) controller.show(WindowInsetsCompat.Type.systemBars())
-                else controller.hide(WindowInsetsCompat.Type.systemBars())
-            }
+        activity?.window?.let { window ->
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (state.panel != null) controller.show(WindowInsetsCompat.Type.systemBars())
+            else controller.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
     LaunchedEffect(state.panel, settings.controlsAutoHideMs) {
