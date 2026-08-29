@@ -137,6 +137,7 @@ require_literal "$screen" 'val pageDirection = state.pageTurnDirection' 'state-o
 require_literal "$activity" 'render(pageTurnDirection = 1)' 'next page direction publication'
 require_literal "$activity" 'render(pageTurnDirection = -1)' 'previous page direction publication'
 require_literal "$activity" 'override fun dispatchKeyEvent(event: KeyEvent)' 'pre-system volume key dispatch'
+require_literal "$activity" '@SuppressLint("RestrictedApi") // ComponentActivity narrows the public Activity key-dispatch hook' 'narrow documented ComponentActivity volume-dispatch lint suppression'
 require_literal "$activity" 'handleReaderVolumeKey(keyCode)' 'unified volume paging route'
 forbid_literal "$activity" 'override fun onKeyDown(keyCode: Int' 'late volume key callback residue'
 require_literal "$screen" 'SelectionContainer(state = selectionState)' 'paged selection container'
