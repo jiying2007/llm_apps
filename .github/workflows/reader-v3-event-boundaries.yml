@@ -72,7 +72,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/workflows/reader-v3-event-boundaries.yml scripts/apply-reader-v3-event-boundaries.py
+          git rm -f .github/workflows/reader-v3-event-boundaries.yml scripts/apply-reader-v3-event-boundaries.py
           git add \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt \
             apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt \
