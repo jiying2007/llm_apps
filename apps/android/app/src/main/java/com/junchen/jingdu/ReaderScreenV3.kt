@@ -107,7 +107,8 @@ internal fun ReaderScreenV3(
     val fontFamily = rememberReaderFontFamily(context, settings)
     val stats = remember(context) { ReaderStatsStore(context) }
     val skim = remember(book.id) { ReaderSkimController(context, book.id) }
-    var controlsVisible by rememberSaveable(book.id) { mutableStateOf(true) }
+    val controlsVisibility = rememberSaveable(book.id) { mutableStateOf(true) }
+    var controlsVisible by controlsVisibility
     var more by remember { mutableStateOf(false) }
     var pageDirection by remember(book.id) { mutableIntStateOf(0) }
     var selection by remember(book.id) { mutableStateOf<V3SelectionPayload?>(null) }
@@ -125,6 +126,10 @@ internal fun ReaderScreenV3(
     val fraction = if (state.length <= 0) 0f else (state.position.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
     val currentChapterIndex = remember(state.chapters, state.position) { state.chapters.indexOfLast { it.offset <= state.position } }
     val currentChapter = state.chapters.getOrNull(currentChapterIndex)?.title
+    val latestStatusState = rememberUpdatedState(state)
+    val latestStatusChapterIndex = rememberUpdatedState(currentChapterIndex)
+    val statusStateProvider = remember { { latestStatusState.value } }
+    val statusChapterIndexProvider = remember { { latestStatusChapterIndex.value } }
 
     DisposableEffect(book.id) {
         onDispose { skim.close() }
@@ -338,12 +343,14 @@ internal fun ReaderScreenV3(
                 },
             )
         }
-        if (settings.showReadingStatus) ReaderReadingStatusV3(
-            state, currentChapterIndex, textColor, background, stats,
-            Modifier.align(Alignment.BottomCenter).graphicsLayer {
-                translationY = if (controlsVisible) READER_HIDDEN_LAYER_OFFSET_PX.toFloat() else 0f
-                alpha = if (controlsVisible) 0f else 1f
-            },
+        if (settings.showReadingStatus) ReaderReadingStatusHost(
+            controlsVisibility = controlsVisibility,
+            stateProvider = statusStateProvider,
+            chapterIndexProvider = statusChapterIndexProvider,
+            color = textColor,
+            background = background,
+            stats = stats,
+            modifier = Modifier.align(Alignment.BottomCenter),
         )
         if (state.autoScrolling) AutoScrollLiveControlV3(
             settings, actions,
@@ -949,6 +956,21 @@ private fun ReaderSkimPreviewCardV3(preview: ReaderSkimPreview?, showReturn: Boo
             }
             if (showReturn) TextButton(onReturn, Modifier.align(Alignment.End)) { Text(stringResource(R.string.reader_skim_return)) }
         }
+    }
+}
+
+@Composable
+private fun ReaderReadingStatusHost(
+    controlsVisibility: State<Boolean>,
+    stateProvider: () -> AppUiState,
+    chapterIndexProvider: () -> Int,
+    color: Color,
+    background: Color,
+    stats: ReaderStatsStore,
+    modifier: Modifier = Modifier,
+) {
+    if (!controlsVisibility.value) {
+        ReaderReadingStatusV3(stateProvider(), chapterIndexProvider(), color, background, stats, modifier)
     }
 }
 

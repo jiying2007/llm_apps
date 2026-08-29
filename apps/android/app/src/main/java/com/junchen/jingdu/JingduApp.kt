@@ -19,13 +19,15 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.res.stringResource
@@ -141,6 +143,8 @@ fun JingduApp(
                 chaptersLoaded = state.chaptersLoaded,
             )
         }
+        val fallbackPanelState = rememberUpdatedState(state.panel)
+        val hotPanelState: State<ReaderPanel?> = if (hotPanel != null) hotPanel.collectAsStateWithLifecycle() else fallbackPanelState
 
         BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
             when {
@@ -155,10 +159,12 @@ fun JingduApp(
                 AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
             }
             if (state.screen == AppScreen.READER) {
-                if (hotPanel != null) ReaderHotPanelHost(hotPanel, quickPanelState, chaptersPanelState, trackedActions, currentReaderPosition)
-                else {
-                    PersistentReaderPanelLayer(state.panel == ReaderPanel.QUICK_SETTINGS) { ReaderQuickSettingsSheet(quickPanelState, trackedActions) }
-                    PersistentReaderPanelLayer(state.panel == ReaderPanel.CHAPTERS) { ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition) }
+                ReaderHotPanelBackHandler(hotPanelState, trackedActions)
+                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS) {
+                    ReaderQuickSettingsSheet(quickPanelState, trackedActions)
+                }
+                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS) {
+                    ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition)
                 }
             }
             state.busyLabel?.let { BusyOverlay(it) }
@@ -188,34 +194,32 @@ fun JingduApp(
     }
 }
 
-/** Hot overlay state is collected in this restart group only; ReaderRoute never subscribes to it. */
+/** Only this tiny restart group reads panel state in composition for Back dispatch. */
 @Composable
-private fun ReaderHotPanelHost(
-    panelFlow: StateFlow<ReaderPanel?>,
-    quickState: AppUiState,
-    chaptersState: AppUiState,
-    actions: JingduActions,
-    currentPosition: () -> Long,
-) {
-    val panel = panelFlow.collectAsStateWithLifecycle().value
-    BackHandler(enabled = panel != null) { actions.onClosePanel() }
-    PersistentReaderPanelLayer(panel == ReaderPanel.QUICK_SETTINGS) { ReaderQuickSettingsSheet(quickState, actions) }
-    PersistentReaderPanelLayer(panel == ReaderPanel.CHAPTERS) { ReaderSmartChaptersPanel(chaptersState, actions, currentPosition) }
+private fun ReaderHotPanelBackHandler(panelState: State<ReaderPanel?>, actions: JingduActions) {
+    val panel = panelState.value
+    BackHandler(enabled = panel == ReaderPanel.QUICK_SETTINGS || panel == ReaderPanel.CHAPTERS) { actions.onClosePanel() }
 }
 
 /**
- * Quick/Chapters are high-frequency reader overlays. Keep them composed after Reader opens and
- * move the complete layer outside the viewport while hidden. Graphics-layer property updates avoid
- * remeasure/recomposition of the reader, while hidden semantics are removed from accessibility.
+ * Quick/Chapters stay composed for the whole Reader session. The panel State object is stable;
+ * visibility itself is read only in semantics and graphics-layer phases, so open/close never
+ * recomposes, remeasures or rebuilds either panel subtree.
  */
 @Composable
-private fun PersistentReaderPanelLayer(visible: Boolean, content: @Composable () -> Unit) {
-    val hiddenSemantics = if (visible) Modifier else Modifier.clearAndSetSemantics { }
+private fun PersistentReaderPanelLayer(
+    panelState: State<ReaderPanel?>,
+    target: ReaderPanel,
+    content: @Composable () -> Unit,
+) {
     Box(
-        Modifier.fillMaxSize().then(hiddenSemantics).graphicsLayer {
-            translationY = if (visible) 0f else READER_PANEL_HIDDEN_OFFSET_PX.toFloat()
-            alpha = if (visible) 1f else 0f
-        },
+        Modifier.fillMaxSize()
+            .semantics { if (panelState.value != target) invisibleToUser() }
+            .graphicsLayer {
+                val visible = panelState.value == target
+                translationY = if (visible) 0f else READER_PANEL_HIDDEN_OFFSET_PX.toFloat()
+                alpha = if (visible) 1f else 0f
+            },
     ) { content() }
 }
 

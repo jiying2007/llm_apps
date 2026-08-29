@@ -162,11 +162,6 @@ internal class ReaderContinuousScrollModel {
         scrollSink?.invoke(next)
     }
 
-    fun consumeDelta(delta: Float): Float {
-        val previous = offsetPx
-        setOffset(previous - delta)
-        return previous - offsetPx
-    }
 }
 
 /**
@@ -215,7 +210,10 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
 
     init {
         clipChildren = true
+        clipToPadding = true
+        setWillNotDraw(true)
         isClickable = true
+        content.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         addView(content)
     }
 
@@ -260,7 +258,8 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
     fun setScrollOffset(value: Float) {
         if (value == offsetPx) return
         offsetPx = value
-        content.translationY = -value
+        val y = value.roundToInt()
+        if (scrollY != y) scrollTo(0, y)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -308,11 +307,16 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
             MotionEvent.ACTION_UP -> {
                 removeCallbacks(longPress)
                 val handledScroll = scrolling
-                if (pinching && settings.pinchFontEnabled && abs(pinchScale - 1f) >= 0.04f) onResizeFont(pinchScale)
-                else if (!longPressTriggered && !handledScroll) dispatchCompletedGesture(event)
+                val handledPinch = pinching
+                val handledLongPress = longPressTriggered
+                if (handledPinch && settings.pinchFontEnabled && abs(pinchScale - 1f) >= 0.04f) {
+                    onResizeFont(pinchScale)
+                } else if (!handledLongPress && !handledScroll && !handledPinch) {
+                    dispatchCompletedGesture(event)
+                    performClick()
+                }
                 if (handledScroll) finishScrollWithFling()
                 recycleTouch()
-                performClick()
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -427,7 +431,12 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         content.layout(0, 0, measuredWidth, content.measuredHeight)
-        content.translationY = -offsetPx
+        scrollTo(0, offsetPx.roundToInt())
+        if (changed && content.isHardwareAccelerated) {
+            content.post {
+                if (content.isHardwareAccelerated && content.layerType == View.LAYER_TYPE_HARDWARE) content.buildLayer()
+            }
+        }
     }
 }
 
