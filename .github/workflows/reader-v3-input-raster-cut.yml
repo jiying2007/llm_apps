@@ -29,19 +29,7 @@ jobs:
       - name: Apply Reader V3 input and raster cut
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('scripts/apply-reader-v3-input-raster-cut.py')
-          text = path.read_text()
-          stale = '''                KeyEvent.ACTION_CANCEL -> if (consumedReaderVolumeKey == keyCode) {
-                    consumedReaderVolumeKey = KeyEvent.KEYCODE_UNKNOWN
-                    return true
-                }
-'''
-          if stale not in text:
-              raise SystemExit('ACTION_CANCEL patch target drifted')
-          path.write_text(text.replace(stale, '', 1))
-          PY
+          python3 -c 'from pathlib import Path; p=Path("scripts/apply-reader-v3-input-raster-cut.py"); s=p.read_text(); a=s.index("                KeyEvent.ACTION_CANCEL ->"); marker="\n                }\n"; b=s.index(marker, a)+len(marker); p.write_text(s[:a]+s[b:])'
           python3 scripts/apply-reader-v3-input-raster-cut.py
           python3 scripts/test-android-performance-slo.py
           bash scripts/verify-reader-v3.sh
