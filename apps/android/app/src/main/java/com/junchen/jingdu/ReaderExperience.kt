@@ -11,6 +11,7 @@ import kotlin.math.roundToInt
 internal object ReaderInteractionRuntime {
     @Volatile var backgroundTtsPlaying: Boolean = false
     @Volatile var foregroundPosition: Long = -1L
+    @Volatile var continuousReady: Boolean = false
 
     fun shouldUseVolumeKeysForPaging(settings: ReaderSettings, foregroundTtsPlaying: Boolean): Boolean {
         if (settings.autoScrollEnabled) return false
