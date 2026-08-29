@@ -477,7 +477,10 @@ internal class ReaderStaticLayoutBitmapTileSet(
             layout.draw(canvas)
             canvas.restore()
             bitmap.setHasAlpha(false)
-            bitmap.prepareToDraw()
+            // Pre-upload only the opening viewport pair. Preparing the complete bounded-window tile
+            // set can evict the textures required by the immediately following hosted scroll frames;
+            // later tiles upload lazily when the real viewport reaches them.
+            if (built.size < 2) bitmap.prepareToDraw()
             built += Tile(top, bitmap)
             top += tileHeight
         }
@@ -561,7 +564,7 @@ internal fun Text(
                     staticLayout,
                     ReaderStaticLayoutBitmapTileSet(
                         staticLayout,
-                        (viewportHeightPx * 2).coerceAtLeast(1),
+                        viewportHeightPx.coerceAtLeast(1),
                         rasterBackgroundColor,
                     ),
                 )
