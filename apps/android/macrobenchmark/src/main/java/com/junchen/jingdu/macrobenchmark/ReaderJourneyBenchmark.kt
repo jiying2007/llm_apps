@@ -76,13 +76,14 @@ class ReaderJourneyBenchmark {
             ensureTopControlsVisible()
             requireChaptersClick()
             device.waitForIdle()
-            check(device.pressBack()) { "Reader V3 chapters back input was not injected" }
-            device.waitForIdle()
-            ensureTopControlsVisible()
+            // UiAutomator's boolean return is not the product state contract for BACK. Inject the
+            // real key, then prove that the reader controls became reachable again.
+            device.pressBack()
+            waitForReaderControlsAfterBack("chapters")
             requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
-            check(device.pressBack()) { "Reader V3 quick-settings back input was not injected" }
-            device.waitForIdle()
+            device.pressBack()
+            waitForReaderControlsAfterBack("quick settings")
         }
     }
 
@@ -150,6 +151,10 @@ class ReaderJourneyBenchmark {
             ?: error("Reader V3 benchmark position query failed: $result")
     }
 
+    private fun MacrobenchmarkScope.readerInputState(): String = device.executeShellCommand(
+        "content call --uri content://com.junchen.jingdu.benchmarkfixture --method inputState",
+    ).trim().ifEmpty { "<unavailable>" }
+
     private fun MacrobenchmarkScope.waitForReaderReady() {
         val deadline = System.nanoTime() + READER_READY_TIMEOUT_NS
         var position = -1L
@@ -176,10 +181,13 @@ class ReaderJourneyBenchmark {
             if (after > before) return after
             Thread.sleep(INPUT_POLL_MS)
         }
-        val focus = device.executeShellCommand("dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' || true").trim()
+        val focus = device.executeShellCommand(
+            "dumpsys activity activities | grep -m 6 -E 'mResumedActivity|topResumedActivity|ResumedActivity' || true",
+        ).trim()
         error(
             "Reader V3 volume-key journey used UiDevice key input but did not advance the authoritative reader position: " +
-                "before=$before after=$after focus=${focus.ifEmpty { "<unknown>" }}",
+                "before=$before after=$after inputState=${readerInputState()} " +
+                "focus=${focus.ifEmpty { "<unknown>" }}",
         )
     }
 
@@ -247,6 +255,16 @@ class ReaderJourneyBenchmark {
 
     private fun MacrobenchmarkScope.visibleObject(selector: BySelector): UiObject2? =
         device.findObjects(selector).firstOrNull { node -> isOnScreen(node) }
+
+    private fun MacrobenchmarkScope.waitForReaderControlsAfterBack(label: String) {
+        val deadline = System.nanoTime() + INPUT_STATE_TIMEOUT_NS
+        while (System.nanoTime() < deadline) {
+            device.waitForIdle()
+            if (visibleObject(By.text("Aa")) != null) return
+            Thread.sleep(INPUT_POLL_MS)
+        }
+        error("Reader V3 $label BACK input did not return to visible reader controls")
+    }
 
     private fun MacrobenchmarkScope.ensureTopControlsVisible() {
         if (visibleObject(By.text("Aa")) != null) return
