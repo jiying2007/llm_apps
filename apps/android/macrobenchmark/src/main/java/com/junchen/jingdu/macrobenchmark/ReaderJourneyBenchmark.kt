@@ -38,9 +38,10 @@ class ReaderJourneyBenchmark {
         var previous = before
         check(previous >= 0) { "Reader V3 page-turn journey has no authoritative starting position: $previous" }
         repeat(6) {
-            // Use Android's real shell input path rather than UiAutomator's key wrapper. This still
-            // traverses InputDispatcher -> Activity dispatch, but is stable on hosted emulators.
-            device.executeShellCommand("input keyevent ${KeyEvent.KEYCODE_VOLUME_DOWN}")
+            // Android's input shell defaults key events to INVALID_DISPLAY, while touch input defaults
+            // to display 0. Target the actual app display explicitly so volume paging traverses the
+            // same focused-window InputDispatcher route as a physical key on the hosted device.
+            device.executeShellCommand("input -d 0 keyevent ${KeyEvent.KEYCODE_VOLUME_DOWN}")
             previous = waitForReaderAdvance(previous)
         }
         val after = readerPosition()
@@ -76,12 +77,12 @@ class ReaderJourneyBenchmark {
             ensureTopControlsVisible()
             requireChaptersClick()
             device.waitForIdle()
-            device.executeShellCommand("input keyevent ${KeyEvent.KEYCODE_BACK}")
+            device.executeShellCommand("input -d 0 keyevent ${KeyEvent.KEYCODE_BACK}")
             device.waitForIdle()
             ensureTopControlsVisible()
             requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
-            device.executeShellCommand("input keyevent ${KeyEvent.KEYCODE_BACK}")
+            device.executeShellCommand("input -d 0 keyevent ${KeyEvent.KEYCODE_BACK}")
             device.waitForIdle()
         }
     }
@@ -176,9 +177,10 @@ class ReaderJourneyBenchmark {
             if (after > before) return after
             Thread.sleep(INPUT_POLL_MS)
         }
+        val focus = device.executeShellCommand("dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' || true").trim()
         error(
-            "Reader V3 volume-key journey used the real shell input path but did not advance the authoritative reader position: " +
-                "before=$before after=$after",
+            "Reader V3 volume-key journey used display-targeted real shell input but did not advance the authoritative reader position: " +
+                "before=$before after=$after focus=${focus.ifEmpty { "<unknown>" }}",
         )
     }
 
