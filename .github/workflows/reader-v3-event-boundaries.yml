@@ -23,6 +23,40 @@ jobs:
       - name: Apply and verify Reader V3 event boundaries
         shell: bash
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/verify-reader-v3.sh')
+          text = path.read_text()
+          current = '''require_literal "$screen" 'rememberScrollableState' 'continuous layer scroll state'
+          require_literal "$screen" 'scrollableState.isScrollInProgress' 'continuous gesture settling'
+          forbid_literal "$screen" '.verticalScroll(scrollState)' 'layout-driven continuous scrolling'
+          require_literal "$fast_text" 'ReaderContinuousScrollModel' 'non-snapshot continuous scroll model'
+          require_literal "$fast_text" 'ReaderContinuousViewportView' 'bounded native continuous viewport'
+          require_literal "$fast_text" 'content.translationY = -value' 'RenderNode continuous translation'
+          require_literal "$fast_text" 'AndroidView(' 'native continuous host'
+          require_literal "$fast_text" 'scrollable(scrollableState, Orientation.Vertical)' 'continuous gesture layer'
+          forbid_literal "$fast_text" 'canvas.translate(0f, -scrollOffsetPx()' 'Compose per-frame text translation'
+          require_literal "$engine" 'reusableHasHeadingStyle' 'heading-aware measured layout reuse'
+          require_literal "$screen" 'snapshotFlow { scrollableState.isScrollInProgress }' 'scroll-end continuous mapping'
+          forbid_literal "$screen" 'snapshotFlow { scrollOffsetPx.roundToInt()' 'per-delta continuous source mapping'
+          require_literal "$screen" 'settleContinuousPosition(scrollModel.offsetPx.roundToInt(), auto = false)' 'manual continuous settle'
+          '''
+          expected = '''require_literal "$screen" 'rememberScrollableState' 'continuous layer scroll state'
+          require_literal "$screen" 'scrollableState.isScrollInProgress' 'continuous gesture settling'
+          forbid_literal "$screen" '.verticalScroll(scrollState)' 'layout-driven continuous scrolling'
+          require_literal "$fast_text" 'AndroidView(' 'native continuous viewport'
+          require_literal "$fast_text" 'content.translationY = -value' 'continuous RenderNode translation'
+          forbid_literal "$fast_text" 'Canvas(Modifier.fillMaxSize()) {' 'continuous Compose viewport canvas'
+          forbid_literal "$fast_text" 'graphicsLayer { translationY = -scrollOffsetPx()' 'oversized continuous graphics layer'
+          require_literal "$fast_text" 'scrollable(scrollableState, Orientation.Vertical)' 'continuous gesture layer'
+          require_literal "$engine" 'reusableHasHeadingStyle' 'heading-aware measured layout reuse'
+          require_literal "$screen" 'snapshotFlow { scrollableState.isScrollInProgress }' 'scroll-end continuous mapping'
+          forbid_literal "$screen" 'snapshotFlow { scrollOffsetPx.roundToInt()' 'per-delta continuous source mapping'
+          require_literal "$screen" 'settleContinuousPosition(scrollModel.offsetPx.roundToInt(), auto = false)' 'manual continuous settle' '''
+          if current not in text:
+              raise SystemExit('current RenderNode continuous contract drifted')
+          path.write_text(text.replace(current, expected, 1))
+          PY
           python3 scripts/apply-reader-v3-event-boundaries.py
           bash scripts/verify-reader-v3.sh
           python3 scripts/verify-reader-profile-contract.py
