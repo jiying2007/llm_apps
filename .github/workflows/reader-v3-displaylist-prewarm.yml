@@ -23,6 +23,26 @@ jobs:
       - name: Apply and verify Reader V3 display-list prewarm
         shell: bash
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          patch = Path('scripts/apply-reader-v3-displaylist-prewarm.py')
+          source = patch.read_text()
+          needle = 'verify = verify_path.read_text()\n'
+          addition = '''verify = verify.replace(
+              "hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt\\nfast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt\\n",
+              "hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt\\nhot_panel_canvas=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotPanelCanvas.kt\\nfast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt\\n",
+              1,
+          )
+          verify = verify.replace(
+              "require_literal \\\"$app\\\" '.semantics { if (panelState.value != target) invisibleToUser() }' 'phase-owned hidden panel semantics'\\n",
+              "require_literal \\\"$app\\\" '.semantics { if (panelState.value != target) hideFromAccessibility() }' 'phase-owned hidden panel semantics'\\n",
+              1,
+          )
+          '''
+          if needle not in source:
+              raise SystemExit('verify contract staging point drifted')
+          patch.write_text(source.replace(needle, needle + addition, 1))
+          PY
           python3 scripts/apply-reader-v3-displaylist-prewarm.py
           bash scripts/verify-reader-v3.sh
           python3 scripts/verify-reader-profile-contract.py
