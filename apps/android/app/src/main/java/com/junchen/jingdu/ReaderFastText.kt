@@ -589,7 +589,7 @@ internal fun Text(
         } else if (ready != null) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
-                factory = { androidContext -> ReaderContinuousViewportView(androidContext) },
+                factory = { androidContext -> ReaderContinuousLayerViewport(androidContext) },
                 update = { viewport ->
                     viewport.setTextLayout(ready, resolvedColor.toArgb())
                     viewport.configure(
