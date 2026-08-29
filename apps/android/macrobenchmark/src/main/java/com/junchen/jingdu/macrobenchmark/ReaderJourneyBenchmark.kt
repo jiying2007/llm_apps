@@ -38,10 +38,9 @@ class ReaderJourneyBenchmark {
         var previous = before
         check(previous >= 0) { "Reader V3 page-turn journey has no authoritative starting position: $previous" }
         repeat(6) {
-            // Android's input shell defaults key events to INVALID_DISPLAY, while touch input defaults
-            // to display 0. Target the actual app display explicitly so volume paging traverses the
-            // same focused-window InputDispatcher route as a physical key on the hosted device.
-            device.executeShellCommand("input -d 0 keyevent ${KeyEvent.KEYCODE_VOLUME_DOWN}")
+            check(device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)) {
+                "Reader V3 volume-key page turn was not injected through UiDevice"
+            }
             previous = waitForReaderAdvance(previous)
         }
         val after = readerPosition()
@@ -77,12 +76,12 @@ class ReaderJourneyBenchmark {
             ensureTopControlsVisible()
             requireChaptersClick()
             device.waitForIdle()
-            device.executeShellCommand("input -d 0 keyevent ${KeyEvent.KEYCODE_BACK}")
+            check(device.pressBack()) { "Reader V3 chapters back input was not injected" }
             device.waitForIdle()
             ensureTopControlsVisible()
             requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
-            device.executeShellCommand("input -d 0 keyevent ${KeyEvent.KEYCODE_BACK}")
+            check(device.pressBack()) { "Reader V3 quick-settings back input was not injected" }
             device.waitForIdle()
         }
     }
@@ -179,7 +178,7 @@ class ReaderJourneyBenchmark {
         }
         val focus = device.executeShellCommand("dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp' || true").trim()
         error(
-            "Reader V3 volume-key journey used display-targeted real shell input but did not advance the authoritative reader position: " +
+            "Reader V3 volume-key journey used UiDevice key input but did not advance the authoritative reader position: " +
                 "before=$before after=$after focus=${focus.ifEmpty { "<unknown>" }}",
         )
     }
@@ -256,11 +255,11 @@ class ReaderJourneyBenchmark {
             for ((x, y) in taps) {
                 val px = (device.displayWidth * x).toInt()
                 val py = (device.displayHeight * y).toInt()
-                device.executeShellCommand("input tap $px $py")
+                check(device.click(px, py)) { "Reader V3 top-control tap was not injected through UiDevice" }
                 if (device.wait(Until.hasObject(By.text("Aa")), 1_100) && visibleObject(By.text("Aa")) != null) return
             }
         }
-        error("Reader V3 top reading controls did not become visibly on-screen after real shell tap input")
+        error("Reader V3 top reading controls did not become visibly on-screen after real UiDevice tap input")
     }
 
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
