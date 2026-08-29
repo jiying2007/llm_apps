@@ -33,9 +33,14 @@ class ReaderJourneyBenchmark {
         fixtureMiB = 10,
         prepareBlock = { setReaderMode("paged") },
     ) {
+        val before = readerPosition()
         repeat(6) {
             check(device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)) { "Reader V3 volume-key page turn was not injected" }
             device.waitForIdle()
+        }
+        val after = readerPosition()
+        check(before >= 0 && after > before) {
+            "Reader V3 volume-key journey injected keys but did not advance the authoritative reader position: before=$before after=$after"
         }
     }
 
@@ -126,6 +131,14 @@ class ReaderJourneyBenchmark {
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
         check(result.contains("Result: Bundle[{}]")) { "Reader V3 benchmark mode setup failed: $result" }
+    }
+
+    private fun MacrobenchmarkScope.readerPosition(): Long {
+        val result = device.executeShellCommand(
+            "content call --uri content://com.junchen.jingdu.benchmarkfixture --method position",
+        )
+        return Regex("""position=(-?\d+)""").find(result)?.groupValues?.get(1)?.toLongOrNull()
+            ?: error("Reader V3 benchmark position query failed: $result")
     }
 
     private fun MacrobenchmarkScope.startTargetAndWait() {

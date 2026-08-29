@@ -101,6 +101,7 @@ internal fun ReaderScreenV3(
     val activity = context as? Activity
     val book = state.currentBook ?: return
     val settings = state.settings
+    val pageDirection = state.pageTurnDirection
     val haptics = LocalHapticFeedback.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
     val touchExploration = accessibility.isTouchExplorationEnabled
@@ -110,7 +111,6 @@ internal fun ReaderScreenV3(
     val controlsVisibility = rememberSaveable(book.id) { mutableStateOf(true) }
     var controlsVisible by controlsVisibility
     var more by remember { mutableStateOf(false) }
-    var pageDirection by remember(book.id) { mutableIntStateOf(0) }
     var selection by remember(book.id) { mutableStateOf<V3SelectionPayload?>(null) }
     var twoStageAnchor by remember(book.id) { mutableStateOf<ReaderSelectionRange?>(null) }
     var twoStageDirection by remember(book.id) { mutableIntStateOf(0) }
@@ -201,12 +201,10 @@ internal fun ReaderScreenV3(
     fun tick() { if (settings.hapticEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
     fun previous() {
         selection?.clearNative?.invoke(); selection = null; tick()
-        pageDirection = if (settings.pageAnimation == ReaderPageAnimation.SLIDE && settings.preset != ReaderPreset.LOW_VISION) -1 else 0
         actions.onNavigatePrevious()
     }
     fun next() {
         selection?.clearNative?.invoke(); selection = null; tick()
-        pageDirection = if (settings.pageAnimation == ReaderPageAnimation.SLIDE && settings.preset != ReaderPreset.LOW_VISION) 1 else 0
         actions.onNavigateNext()
     }
     fun updateBrightness(delta: Float) {
@@ -417,7 +415,6 @@ internal fun ReaderScreenV3(
         }) { Text(stringResource(R.string.ok)) } },
         dismissButton = { TextButton({ showNoteDialog = false }) { Text(stringResource(R.string.cancel)) } },
     )
-    LaunchedEffect(state.position) { if (pageDirection != 0) { delay(220); pageDirection = 0 } }
 }
 
 @Composable
@@ -541,7 +538,6 @@ private fun PagedReaderPageV3(
                     overflow = TextOverflow.Clip,
                 )
             }
-            ReaderPageFramePulse(sourceStart, Modifier.align(Alignment.TopStart))
         }
     }
 }
@@ -782,14 +778,16 @@ private fun Modifier.readerGesturesV3(
             if (event.changes.any { it.isConsumed }) consumedByChild = true
             event.changes.firstOrNull { it.id == down.id }?.let { last = it }
         } while (last.pressed)
-        if (consumedByChild || maxPointers > 1) return@awaitEachGesture
+        if (maxPointers > 1) return@awaitEachGesture
         val delta = last.position - down.position
         val duration = last.uptimeMillis - down.uptimeMillis
         val edgeGuard = 8.dp.toPx()
-        if (settings.brightnessGestureEnabled && widthPx > 0 && down.position.x >= systemLeftInsetPx + edgeGuard && down.position.x <= systemLeftInsetPx + widthPx * 0.14f && abs(delta.y) > abs(delta.x) * 1.35f && abs(delta.y) >= swipe) {
+        // SelectionContainer consumes the pointer stream even for a short tap. Preserve consumed
+        // drags/selection, but allow a completed short tap to reach the reader's paging/control zones.
+        if (!consumedByChild && settings.brightnessGestureEnabled && widthPx > 0 && down.position.x >= systemLeftInsetPx + edgeGuard && down.position.x <= systemLeftInsetPx + widthPx * 0.14f && abs(delta.y) > abs(delta.x) * 1.35f && abs(delta.y) >= swipe) {
             onBrightnessDelta((-delta.y / heightPx.coerceAtLeast(1).toFloat()) * 0.8f); return@awaitEachGesture
         }
-        if (settings.swipePagingEnabled && down.position.x > systemLeftInsetPx + edgeGuard && down.position.x < widthPx - systemRightInsetPx - edgeGuard && abs(delta.x) >= swipe && abs(delta.x) > abs(delta.y) * 1.25f) {
+        if (!consumedByChild && settings.swipePagingEnabled && down.position.x > systemLeftInsetPx + edgeGuard && down.position.x < widthPx - systemRightInsetPx - edgeGuard && abs(delta.x) >= swipe && abs(delta.x) > abs(delta.y) * 1.25f) {
             var forward = delta.x < 0
             if (settings.reversePagingGestures) forward = !forward
             if (forward) onNext() else onPrevious()

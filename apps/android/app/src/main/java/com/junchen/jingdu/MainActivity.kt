@@ -453,13 +453,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun render() {
+    private fun render(pageTurnDirection: Int = 0) {
         val book = currentBook ?: return
         if (uiState.busyLabel != null) return
         try {
             val text = reader.page()
             val position = reader.position()
             val length = reader.length()
+            ReaderInteractionRuntime.foregroundPosition = position
             if (!cleanMode) persistProgress(book, position = position)
             statsStore.mark(book.id, position)
             val card = uiState.currentBook
@@ -468,7 +469,7 @@ class MainActivity : ComponentActivity() {
                 ?: toCard(book).copy(progress = position, charCount = length)
             uiState = uiState.copy(
                 screen = AppScreen.READER, currentBook = card, pageText = text,
-                position = position, length = length, cleanMode = cleanMode,
+                position = position, pageTurnDirection = pageTurnDirection, length = length, cleanMode = cleanMode,
             )
         } catch (error: Throwable) {
             showMessage(friendlyError(getString(R.string.error_read), error))
@@ -497,7 +498,8 @@ class MainActivity : ComponentActivity() {
             ?.takeIf { it.id == book.id && it.normalizedSha256 == book.normalizedSha256 }
             ?.copy(progress = position, charCount = length)
             ?: toCard(book).copy(progress = position, charCount = length)
-        uiState = uiState.copy(currentBook = card, position = position, length = length)
+        ReaderInteractionRuntime.foregroundPosition = position
+        uiState = uiState.copy(currentBook = card, position = position, pageTurnDirection = 0, length = length)
     }
 
     private fun navigateNext(userInitiated: Boolean) {
@@ -507,14 +509,14 @@ class MainActivity : ComponentActivity() {
         if (current >= (reader.length() - 1).coerceAtLeast(0)) return
         pageHistory.addLast(current)
         reader.move(visiblePageChars.coerceAtLeast(ReaderController.MIN_PAGE_CHARS))
-        render()
+        render(pageTurnDirection = 1)
     }
 
     private fun navigatePrevious(userInitiated: Boolean) {
         if (uiState.busyLabel != null || currentBook == null) return
         if (userInitiated) stopAllMotion()
         if (pageHistory.isNotEmpty()) reader.jump(pageHistory.removeLast()) else reader.move(-visiblePageChars.coerceAtLeast(ReaderController.MIN_PAGE_CHARS))
-        render()
+        render(pageTurnDirection = -1)
     }
 
     private fun seekFraction(fraction: Float) {

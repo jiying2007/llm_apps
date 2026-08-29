@@ -126,53 +126,6 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
     }
 }
 
-/**
- * A one-pixel compositor pulse makes real property/page commits observable to FrameTimingMetric
- * without invalidating the reader's retained text display list. The two nearly-transparent values
- * alternate so the hardware renderer cannot collapse consecutive pulses as identical content.
- */
-internal class ReaderFramePulseView(context: Context) : View(context) {
-    private val paint = Paint().apply { color = 0x01000000 }
-    private var phase = false
-    private var token = Long.MIN_VALUE
-
-    init {
-        isClickable = false
-        isFocusable = false
-        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-    }
-
-    fun pulseOnToken(next: Long) {
-        if (token == next) return
-        token = next
-        pulse()
-    }
-
-    fun pulse() {
-        phase = !phase
-        paint.color = if (phase) 0x01000000 else 0x02000000
-        postInvalidateOnAnimation()
-    }
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(1, 1)
-    }
-
-    override fun onDraw(canvas: android.graphics.Canvas) {
-        super.onDraw(canvas)
-        canvas.drawRect(0f, 0f, 1f, 1f, paint)
-    }
-}
-
-@Composable
-internal fun ReaderPageFramePulse(token: Long, modifier: Modifier = Modifier) {
-    AndroidView(
-        modifier = modifier,
-        factory = { ReaderFramePulseView(it) },
-        update = { it.pulseOnToken(token) },
-    )
-}
-
 /** Native bounded continuous layout: one worker-built StaticLayout owns geometry and drawing. */
 internal class ReaderContinuousLayout internal constructor(internal val layout: StaticLayout) {
     val lineCount: Int get() = layout.lineCount
@@ -184,8 +137,8 @@ internal class ReaderContinuousLayout internal constructor(internal val layout: 
 }
 
 /**
- * Non-snapshot scroll model for the continuous hot path. Gesture deltas must not invalidate the
- * Compose reader tree. The attached viewport consumes offset changes as RenderNode properties.
+ * Non-snapshot scroll model for the continuous hot path. Gesture deltas do not invalidate Compose;
+ * the attached native viewport consumes offsets at most once per vsync.
  */
 internal class ReaderContinuousScrollModel {
     var offsetPx: Float = 0f
@@ -210,26 +163,27 @@ internal class ReaderContinuousScrollModel {
         offsetPx = next
         scrollSink?.invoke(next)
     }
-
 }
 
 /**
- * Viewport owns a tall but bounded (4K-source-window) child display list. StaticLayout is recorded
- * only when text/style changes. Scrolling updates child.translationY, which is a RenderNode property
- * and does not re-record text or invalidate the surrounding Compose tree.
+ * Viewport-sized native continuous renderer. The 4K source window remains authoritative and
+ * bounded, but its StaticLayout is split into viewport-height RenderNode tiles. A scroll frame
+ * invalidates only this viewport and replays at most the two tiles intersecting the viewport,
+ * avoiding the previous whole-window display-list replay and any synthetic measurement pulse.
  */
-private class ReaderContinuousViewportView(context: Context) : ViewGroup(context) {
-    private val content = ReaderContinuousTextView(context)
-    private val framePulse = ReaderFramePulseView(context)
+private class ReaderContinuousViewportView(context: Context) : View(context) {
     private val viewConfig = ViewConfiguration.get(context)
     private val scroller = OverScroller(context)
     private val density = resources.displayMetrics.density
     private var textLayout: StaticLayout? = null
+    private var tileSet: ReaderStaticLayoutTileSet? = null
+    private var textColor: Int = 0
     private var scrollModel: ReaderContinuousScrollModel? = null
     private var settings = ReaderSettings()
     private var systemLeftInsetPx = 0
     private var systemRightInsetPx = 0
     private var offsetPx = 0f
+    private var renderedOffsetPx = 0
     private var downX = 0f
     private var downY = 0f
     private var lastY = 0f
@@ -245,12 +199,10 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
     private var scrollScheduled = false
     private val applyPendingScroll = Runnable {
         scrollScheduled = false
-        val translation = -pendingScrollY.toFloat()
-        if (content.translationY != translation) {
-            content.translationY = translation
-            // Keep the 4K text RenderNode retained. Only the one-pixel sibling is dirtied, so the
-            // compositor transaction is measurable without replaying the entire text display list.
-            framePulse.pulse()
+        val next = pendingScrollY.coerceAtLeast(0)
+        if (renderedOffsetPx != next) {
+            renderedOffsetPx = next
+            postInvalidateOnAnimation()
         }
     }
     private var velocityTracker: VelocityTracker? = null
@@ -271,12 +223,8 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
     }
 
     init {
-        clipChildren = true
-        clipToPadding = true
-        setWillNotDraw(true)
         isClickable = true
-        addView(content)
-        addView(framePulse)
+        isFocusable = true
     }
 
     fun configure(
@@ -311,10 +259,21 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
     }
 
     fun setTextLayout(layout: StaticLayout, color: Int) {
-        val changed = textLayout !== layout
+        val changed = textLayout !== layout || textColor != color
         textLayout = layout
-        content.setTextLayout(layout, color)
-        if (changed) requestLayout()
+        textColor = color
+        layout.paint.color = color
+        if (changed) {
+            rebuildTiles()
+            postInvalidateOnAnimation()
+        }
+    }
+
+    private fun rebuildTiles() {
+        val layout = textLayout
+        tileSet = if (Build.VERSION.SDK_INT >= 29 && layout != null && width > 0 && height > 0) {
+            ReaderStaticLayoutTileSet(layout, height.coerceAtLeast(1))
+        } else null
     }
 
     fun setScrollOffset(value: Float) {
@@ -325,6 +284,24 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
             scrollScheduled = true
             postOnAnimation(applyPendingScroll)
         }
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w != oldw || h != oldh) rebuildTiles()
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        val layout = textLayout ?: return
+        val maxOffset = (layout.height - height).coerceAtLeast(0)
+        val scrollY = renderedOffsetPx.coerceIn(0, maxOffset)
+        if (Build.VERSION.SDK_INT >= 29 && tileSet?.draw(canvas, scrollY, height) == true) return
+        canvas.save()
+        canvas.clipRect(0, 0, width, height)
+        canvas.translate(0f, -scrollY.toFloat())
+        layout.draw(canvas)
+        canvas.restore()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -363,9 +340,7 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
                 if (abs(totalX) > viewConfig.scaledTouchSlop || abs(totalY) > viewConfig.scaledTouchSlop) removeCallbacks(longPress)
                 val brightnessZone = settings.brightnessGestureEnabled && downX >= systemLeftInsetPx + 8f * density && downX <= systemLeftInsetPx + width * 0.14f
                 if (!brightnessZone && !scrolling && abs(totalY) > viewConfig.scaledTouchSlop && abs(totalY) > abs(totalX) * 1.10f) scrolling = true
-                if (scrolling) {
-                    scrollModel?.let { model -> model.setOffset(model.offsetPx + (lastY - event.y)) }
-                }
+                if (scrolling) scrollModel?.let { model -> model.setOffset(model.offsetPx + (lastY - event.y)) }
                 lastY = event.y
                 return true
             }
@@ -483,28 +458,6 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
         scrolling = false; pinching = false
     }
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val measuredW = MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast(1)
-        val measuredH = MeasureSpec.getSize(heightMeasureSpec).coerceAtLeast(1)
-        setMeasuredDimension(measuredW, measuredH)
-        val contentHeight = (textLayout?.height ?: measuredH).coerceAtLeast(measuredH)
-        content.measure(
-            MeasureSpec.makeMeasureSpec(measuredW, MeasureSpec.EXACTLY),
-            MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY),
-        )
-        framePulse.measure(
-            MeasureSpec.makeMeasureSpec(1, MeasureSpec.EXACTLY),
-            MeasureSpec.makeMeasureSpec(1, MeasureSpec.EXACTLY),
-        )
-    }
-
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        content.layout(0, 0, measuredWidth, content.measuredHeight)
-        framePulse.layout(0, 0, 1, 1)
-        pendingScrollY = offsetPx.roundToInt()
-        content.translationY = -pendingScrollY.toFloat()
-    }
-
     override fun onDetachedFromWindow() {
         removeCallbacks(applyPendingScroll)
         scrollScheduled = false
@@ -512,53 +465,54 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
     }
 }
 
-private class ReaderContinuousTextView(context: Context) : View(context) {
-    private var textLayout: StaticLayout? = null
-    private var color: Int = 0
-    private var recorded: ReaderStaticLayoutRenderNode? = null
-
-    fun setTextLayout(layout: StaticLayout, nextColor: Int) {
-        val changed = textLayout !== layout || color != nextColor
-        textLayout = layout
-        color = nextColor
-        layout.paint.color = nextColor
-        if (Build.VERSION.SDK_INT >= 29 && changed) {
-            recorded = (recorded ?: ReaderStaticLayoutRenderNode()).also { it.record(layout) }
-        }
-        if (changed) invalidate()
-    }
-
-    override fun onDraw(canvas: android.graphics.Canvas) {
-        super.onDraw(canvas)
-        if (Build.VERSION.SDK_INT >= 29 && recorded?.draw(canvas) == true) return
-        textLayout?.draw(canvas)
-    }
-}
-
 @android.annotation.TargetApi(29)
-private class ReaderStaticLayoutRenderNode {
-    private val node = RenderNode("ReaderContinuousStaticLayout")
+private class ReaderStaticLayoutTileSet(layout: StaticLayout, private val tileHeightPx: Int) {
+    private data class Tile(val top: Int, val height: Int, val node: RenderNode)
+    private val tiles: List<Tile>
 
-    fun record(layout: StaticLayout) {
+    init {
         val width = layout.width.coerceAtLeast(1)
-        val height = layout.height.coerceAtLeast(1)
-        node.setPosition(0, 0, width, height)
-        val canvas = node.beginRecording(width, height)
-        try {
-            layout.draw(canvas)
-        } finally {
-            node.endRecording()
+        val totalHeight = layout.height.coerceAtLeast(1)
+        val built = ArrayList<Tile>((totalHeight + tileHeightPx - 1) / tileHeightPx)
+        var top = 0
+        while (top < totalHeight) {
+            val tileHeight = minOf(tileHeightPx, totalHeight - top).coerceAtLeast(1)
+            val node = RenderNode("ReaderContinuousTile@$top")
+            node.setPosition(0, 0, width, tileHeight)
+            val canvas = node.beginRecording(width, tileHeight)
+            try {
+                canvas.save()
+                canvas.clipRect(0, 0, width, tileHeight)
+                canvas.translate(0f, -top.toFloat())
+                layout.draw(canvas)
+                canvas.restore()
+            } finally {
+                node.endRecording()
+            }
+            built += Tile(top, tileHeight, node)
+            top += tileHeight
         }
+        tiles = built
     }
 
-    fun draw(canvas: android.graphics.Canvas): Boolean {
-        if (!canvas.isHardwareAccelerated || !node.hasDisplayList()) return false
-        canvas.drawRenderNode(node)
+    fun draw(canvas: android.graphics.Canvas, scrollY: Int, viewportHeight: Int): Boolean {
+        if (!canvas.isHardwareAccelerated || tiles.isEmpty()) return false
+        val first = (scrollY / tileHeightPx).coerceIn(0, tiles.lastIndex)
+        val last = ((scrollY + viewportHeight.coerceAtLeast(1) - 1) / tileHeightPx).coerceIn(first, tiles.lastIndex)
+        for (index in first..last) {
+            val tile = tiles[index]
+            if (!tile.node.hasDisplayList()) return false
+            canvas.save()
+            canvas.translate(0f, (tile.top - scrollY).toFloat())
+            canvas.drawRenderNode(tile.node)
+            canvas.restore()
+        }
         return true
     }
 }
 
-/** Continuous keeps the 4K bounded window; scroll frames move one native RenderNode only. */
+/** Continuous keeps the 4K bounded window; real scroll frames replay only visible RenderNode tiles. */
+
 @Composable
 internal fun Text(
     text: AnnotatedString,

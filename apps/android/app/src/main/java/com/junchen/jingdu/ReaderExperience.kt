@@ -10,6 +10,7 @@ import kotlin.math.roundToInt
 /** Runtime-only coordination for controls that are owned by Android rather than Compose. */
 internal object ReaderInteractionRuntime {
     @Volatile var backgroundTtsPlaying: Boolean = false
+    @Volatile var foregroundPosition: Long = -1L
 
     fun shouldUseVolumeKeysForPaging(settings: ReaderSettings, foregroundTtsPlaying: Boolean): Boolean {
         if (settings.autoScrollEnabled) return false

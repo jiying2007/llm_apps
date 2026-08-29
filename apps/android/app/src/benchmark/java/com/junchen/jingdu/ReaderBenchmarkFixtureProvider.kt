@@ -40,6 +40,10 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                 preferences.flush(
                     preferences.load().copy(
                         readingMode = mode,
+                        pageAnimation = ReaderPageAnimation.SLIDE,
+                        tapPagingEnabled = true,
+                        swipePagingEnabled = true,
+                        reversePagingGestures = false,
                         autoScrollEnabled = false,
                         // Match the production default. The benchmark must not keep controls resident
                         // for 60 seconds because that changes the measured reader composition workload.
@@ -58,6 +62,7 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                 // any write failure escapes above and makes the content command fail instead.
                 Bundle.EMPTY
             }
+            "position" -> Bundle().apply { putLong("position", ReaderInteractionRuntime.foregroundPosition) }
             "clear" -> {
                 val repository = BookRepository(context)
                 repository.list().filter { it.name.startsWith("Benchmark Novel ") }.forEach(repository::delete)

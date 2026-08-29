@@ -92,6 +92,7 @@ data class AppUiState(
     val currentBook: BookCardModel? = null,
     val pageText: String = "",
     val position: Long = 0,
+    val pageTurnDirection: Int = 0,
     val length: Long = 0,
     val cleanMode: Boolean = false,
     val panel: ReaderPanel? = null,
