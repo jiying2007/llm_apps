@@ -25,6 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -62,6 +65,7 @@ fun JingduApp(
     state: AppUiState,
     actions: JingduActions,
     location: ReaderLocationState = ReaderLocationState(),
+    hotPanel: StateFlow<ReaderPanel?>? = null,
     onTrackLocation: (current: Long, target: Long, length: Long) -> Unit = { _, _, _ -> },
     onLocationBack: () -> Unit = {},
     onLocationForward: () -> Unit = {},
@@ -151,11 +155,10 @@ fun JingduApp(
                 AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
             }
             if (state.screen == AppScreen.READER) {
-                PersistentReaderPanelLayer(state.panel == ReaderPanel.QUICK_SETTINGS) {
-                    ReaderQuickSettingsSheet(quickPanelState, trackedActions)
-                }
-                PersistentReaderPanelLayer(state.panel == ReaderPanel.CHAPTERS) {
-                    ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition)
+                if (hotPanel != null) ReaderHotPanelHost(hotPanel, quickPanelState, chaptersPanelState, trackedActions, currentReaderPosition)
+                else {
+                    PersistentReaderPanelLayer(state.panel == ReaderPanel.QUICK_SETTINGS) { ReaderQuickSettingsSheet(quickPanelState, trackedActions) }
+                    PersistentReaderPanelLayer(state.panel == ReaderPanel.CHAPTERS) { ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition) }
                 }
             }
             state.busyLabel?.let { BusyOverlay(it) }
@@ -185,15 +188,31 @@ fun JingduApp(
     }
 }
 
+/** Hot overlay state is collected in this restart group only; ReaderRoute never subscribes to it. */
+@Composable
+private fun ReaderHotPanelHost(
+    panelFlow: StateFlow<ReaderPanel?>,
+    quickState: AppUiState,
+    chaptersState: AppUiState,
+    actions: JingduActions,
+    currentPosition: () -> Long,
+) {
+    val panel = panelFlow.collectAsStateWithLifecycle().value
+    BackHandler(enabled = panel != null) { actions.onClosePanel() }
+    PersistentReaderPanelLayer(panel == ReaderPanel.QUICK_SETTINGS) { ReaderQuickSettingsSheet(quickState, actions) }
+    PersistentReaderPanelLayer(panel == ReaderPanel.CHAPTERS) { ReaderSmartChaptersPanel(chaptersState, actions, currentPosition) }
+}
+
 /**
  * Quick/Chapters are high-frequency reader overlays. Keep them composed after Reader opens and
- * move the complete layer outside the viewport while hidden. Modifier.offset reads visibility in
- * layout, so open/close does not destroy and recreate the panel composition or its Canvas display list.
+ * move the complete layer outside the viewport while hidden. Graphics-layer property updates avoid
+ * remeasure/recomposition of the reader, while hidden semantics are removed from accessibility.
  */
 @Composable
 private fun PersistentReaderPanelLayer(visible: Boolean, content: @Composable () -> Unit) {
+    val hiddenSemantics = if (visible) Modifier else Modifier.clearAndSetSemantics { }
     Box(
-        Modifier.fillMaxSize().graphicsLayer {
+        Modifier.fillMaxSize().then(hiddenSemantics).graphicsLayer {
             translationY = if (visible) 0f else READER_PANEL_HIDDEN_OFFSET_PX.toFloat()
             alpha = if (visible) 1f else 0f
         },

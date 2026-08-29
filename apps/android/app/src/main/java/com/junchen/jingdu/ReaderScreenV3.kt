@@ -19,8 +19,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.gestures.rememberScrollableState
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -68,7 +66,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -163,18 +163,22 @@ internal fun ReaderScreenV3(
             else window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
-    LaunchedEffect(activity, controlsVisible, state.panel) {
-        activity?.window?.let { window ->
-            val controller = WindowCompat.getInsetsController(window, window.decorView)
-            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            if (controlsVisible || state.panel != null) controller.show(WindowInsetsCompat.Type.systemBars())
-            else controller.hide(WindowInsetsCompat.Type.systemBars())
+    LaunchedEffect(activity, state.panel) {
+        snapshotFlow { controlsVisible }.distinctUntilChanged().collect { visible ->
+            activity?.window?.let { window ->
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (visible || state.panel != null) controller.show(WindowInsetsCompat.Type.systemBars())
+                else controller.hide(WindowInsetsCompat.Type.systemBars())
+            }
         }
     }
-    LaunchedEffect(controlsVisible, state.panel, settings.controlsAutoHideMs) {
-        if (controlsVisible && state.panel == null) {
-            delay(settings.controlsAutoHideMs)
-            controlsVisible = false
+    LaunchedEffect(state.panel, settings.controlsAutoHideMs) {
+        snapshotFlow { controlsVisible }.distinctUntilChanged().collectLatest { visible ->
+            if (visible && state.panel == null) {
+                delay(settings.controlsAutoHideMs)
+                controlsVisible = false
+            }
         }
     }
     LaunchedEffect(hudText) {
@@ -233,6 +237,7 @@ internal fun ReaderScreenV3(
         controlsVisible = true
     }
 
+    val snackbarControlsShiftPx = with(LocalDensity.current) { 88.dp.toPx() }
     val background = readerBackgroundV3(settings.palette)
     val textColor = readerTextColorV3(settings.palette)
     Box(Modifier.fillMaxSize().background(background)) {
@@ -288,9 +293,12 @@ internal fun ReaderScreenV3(
         ) {
             ReaderTopBarV3(book.name, currentChapter, actions) { more = true }
         }
-        if (controlsVisible && more) Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)) {
-            ReaderMoreMenuV3(state.cleanMode, actions) { more = false }
-        }
+        if (more) Box(
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp).graphicsLayer {
+                translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
+                alpha = if (controlsVisible) 1f else 0f
+            },
+        ) { ReaderMoreMenuV3(state.cleanMode, actions) { more = false } }
         Box(
             Modifier.align(Alignment.BottomCenter).graphicsLayer {
                 translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
@@ -330,8 +338,20 @@ internal fun ReaderScreenV3(
                 },
             )
         }
-        if (!controlsVisible && settings.showReadingStatus) ReaderReadingStatusV3(state, currentChapterIndex, textColor, background, stats, Modifier.align(Alignment.BottomCenter))
-        if (state.autoScrolling && !controlsVisible) AutoScrollLiveControlV3(settings, actions, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 42.dp))
+        if (settings.showReadingStatus) ReaderReadingStatusV3(
+            state, currentChapterIndex, textColor, background, stats,
+            Modifier.align(Alignment.BottomCenter).graphicsLayer {
+                translationY = if (controlsVisible) READER_HIDDEN_LAYER_OFFSET_PX.toFloat() else 0f
+                alpha = if (controlsVisible) 0f else 1f
+            },
+        )
+        if (state.autoScrolling) AutoScrollLiveControlV3(
+            settings, actions,
+            Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 42.dp).graphicsLayer {
+                translationY = if (controlsVisible) READER_HIDDEN_LAYER_OFFSET_PX.toFloat() else 0f
+                alpha = if (controlsVisible) 0f else 1f
+            },
+        )
 
         selection?.let { selected ->
             ReaderSelectionBarV3(
@@ -371,7 +391,12 @@ internal fun ReaderScreenV3(
             )
         }
         hudText?.let { text -> ReaderHudV3(text, Modifier.align(Alignment.Center)) }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (controlsVisible) 112.dp else 24.dp))
+        SnackbarHost(
+            snackbar,
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp).graphicsLayer {
+                translationY = if (controlsVisible) -snackbarControlsShiftPx else 0f
+            },
+        )
     }
 
     if (showNoteDialog && selection != null) AlertDialog(
@@ -535,7 +560,7 @@ private fun ContinuousReaderPageV3(
     val settings = state.settings
     val engine = remember(book.id) { ReaderViewportEngine(context, book.id) }
     val scrollModel = remember(book.id) { ReaderContinuousScrollModel() }
-    val scrollableState = rememberScrollableState(scrollModel::consumeDelta)
+    val settleEvents = remember(book.id) { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val systemLeft = WindowInsets.systemGestures.getLeft(density, layoutDirection)
@@ -609,10 +634,8 @@ private fun ContinuousReaderPageV3(
 
     // A manual swipe can emit dozens of scroll deltas. Position/source mapping is not visual work;
     // perform it once when the gesture settles instead of on every delta/frame.
-    LaunchedEffect(scrollableState, layoutResult, window, viewportHeight) {
-        snapshotFlow { scrollableState.isScrollInProgress }.distinctUntilChanged().collect { scrolling ->
-            if (!scrolling) settleContinuousPosition(scrollModel.offsetPx.roundToInt(), auto = false)
-        }
+    LaunchedEffect(settleEvents, layoutResult, window, viewportHeight) {
+        settleEvents.collect { settleContinuousPosition(scrollModel.offsetPx.roundToInt(), auto = false) }
     }
     LaunchedEffect(state.autoScrolling, settings.autoScrollSpeedDpPerSecond, window) {
         if (!state.autoScrolling) return@LaunchedEffect
@@ -661,19 +684,26 @@ private fun ContinuousReaderPageV3(
     }
     val semantics = Modifier.readerAccessibilityActionsV3(onPrevious, onNext, onToggleControls, onBookmark,
         stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous), stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls), stringResource(R.string.reader_access_bookmark))
-    val gestures = if (touchExploration) Modifier else Modifier.readerGesturesV3(settings, widthPx, viewportHeight, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark) {
-        if (state.autoScrolling) actions.onSettingsChanged(settings.copy(autoScrollEnabled = false))
-    }.pointerInput(settings.pinchFontEnabled) { if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) } }
 
     SelectionContainer(state = selectionState) {
-        Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; viewportHeight = it.height }.then(semantics).then(gestures), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; viewportHeight = it.height }.then(semantics), contentAlignment = Alignment.TopCenter) {
             Text(
                 annotated,
                 Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp),
                 style = style,
                 overflow = TextOverflow.Clip,
-                scrollableState = scrollableState,
                 scrollModel = scrollModel,
+                settings = settings,
+                systemLeftInsetPx = systemLeft,
+                systemRightInsetPx = systemRight,
+                onPrevious = onPrevious,
+                onNext = onNext,
+                onToggleControls = onToggleControls,
+                onBrightnessDelta = onBrightnessDelta,
+                onResizeFont = onResizeFont,
+                onBookmark = onBookmark,
+                onAnyTouch = { if (state.autoScrolling) actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)) },
+                onScrollSettled = { settleEvents.tryEmit(Unit) },
                 onTextLayout = { layoutResult = it },
             )
             if (loading && display.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.Center))

@@ -16,6 +16,14 @@ data class ReaderLocationState(val canBack: Boolean = false, val canForward: Boo
 internal class ReaderViewModel : ViewModel() {
     private val mutableState = MutableStateFlow(AppUiState())
     val state: StateFlow<AppUiState> = mutableState.asStateFlow()
+    private val mutableHotPanel = MutableStateFlow<ReaderPanel?>(null)
+    val hotPanel: StateFlow<ReaderPanel?> = mutableHotPanel.asStateFlow()
+
+    fun openHotPanel(panel: ReaderPanel) {
+        require(panel == ReaderPanel.QUICK_SETTINGS || panel == ReaderPanel.CHAPTERS)
+        mutableHotPanel.value = panel
+    }
+    fun closeHotPanel() { mutableHotPanel.value = null }
 
     private val back = ArrayDeque<Long>()
     private val forward = ArrayDeque<Long>()
@@ -27,6 +35,7 @@ internal class ReaderViewModel : ViewModel() {
         val nextBookId = value.currentBook?.id
         if (nextBookId != locationBookId) {
             locationBookId = nextBookId
+            mutableHotPanel.value = null
             resetLocationHistory()
         }
         mutableState.value = value

@@ -32,3 +32,6 @@ HPLandroidx/compose/foundation/layout/**->**(**)**
 HPLandroidx/compose/material3/ButtonKt;->**(**)**
 HPLandroidx/compose/material3/IconButtonKt;->**(**)**
 HPLandroidx/compose/material3/IconKt;->**(**)**
+HPLcom/junchen/jingdu/ReaderContinuousScrollModel;->**(**)**
+HPLcom/junchen/jingdu/ReaderContinuousViewportView;->**(**)**
+HPLcom/junchen/jingdu/ReaderContinuousTextView;->**(**)**

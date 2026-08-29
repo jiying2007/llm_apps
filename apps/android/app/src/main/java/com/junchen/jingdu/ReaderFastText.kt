@@ -14,15 +14,16 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.LineHeightSpan
 import android.text.style.StyleSpan
+import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.widget.OverScroller
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.ScrollableState
-import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,6 +61,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 /**
@@ -173,12 +176,78 @@ internal class ReaderContinuousScrollModel {
  */
 private class ReaderContinuousViewportView(context: Context) : ViewGroup(context) {
     private val content = ReaderContinuousTextView(context)
+    private val viewConfig = ViewConfiguration.get(context)
+    private val scroller = OverScroller(context)
+    private val density = resources.displayMetrics.density
     private var textLayout: StaticLayout? = null
+    private var scrollModel: ReaderContinuousScrollModel? = null
+    private var settings = ReaderSettings()
+    private var systemLeftInsetPx = 0
+    private var systemRightInsetPx = 0
     private var offsetPx = 0f
+    private var downX = 0f
+    private var downY = 0f
+    private var lastY = 0f
+    private var downAt = 0L
+    private var scrolling = false
+    private var pinching = false
+    private var pinchStart = 0f
+    private var pinchScale = 1f
+    private var longPressTriggered = false
+    private var lastCenterTapAt = 0L
+    private var flingRunning = false
+    private var velocityTracker: VelocityTracker? = null
+    private var onPrevious: () -> Unit = {}
+    private var onNext: () -> Unit = {}
+    private var onToggleControls: () -> Unit = {}
+    private var onBrightnessDelta: (Float) -> Unit = {}
+    private var onResizeFont: (Float) -> Unit = {}
+    private var onBookmark: () -> Unit = {}
+    private var onAnyTouch: () -> Unit = {}
+    private var onScrollSettled: () -> Unit = {}
+    private var onLongPress: () -> Unit = {}
+    private val longPress = Runnable {
+        if (!scrolling && !pinching) {
+            longPressTriggered = true
+            onLongPress()
+        }
+    }
 
     init {
         clipChildren = true
+        isClickable = true
         addView(content)
+    }
+
+    fun configure(
+        model: ReaderContinuousScrollModel,
+        nextSettings: ReaderSettings,
+        leftInsetPx: Int,
+        rightInsetPx: Int,
+        previous: () -> Unit,
+        next: () -> Unit,
+        toggleControls: () -> Unit,
+        brightnessDelta: (Float) -> Unit,
+        resizeFont: (Float) -> Unit,
+        bookmark: () -> Unit,
+        anyTouch: () -> Unit,
+        scrollSettled: () -> Unit,
+        longPressAction: () -> Unit,
+    ) {
+        scrollModel = model
+        settings = nextSettings
+        systemLeftInsetPx = leftInsetPx
+        systemRightInsetPx = rightInsetPx
+        onPrevious = previous
+        onNext = next
+        onToggleControls = toggleControls
+        onBrightnessDelta = brightnessDelta
+        onResizeFont = resizeFont
+        onBookmark = bookmark
+        onAnyTouch = anyTouch
+        onScrollSettled = scrollSettled
+        onLongPress = longPressAction
+        model.attachScrollSink(::setScrollOffset)
     }
 
     fun setTextLayout(layout: StaticLayout, color: Int) {
@@ -194,13 +263,164 @@ private class ReaderContinuousViewportView(context: Context) : ViewGroup(context
         content.translationY = -value
     }
 
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        velocityTracker?.addMovement(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                if (!scroller.isFinished) scroller.abortAnimation()
+                flingRunning = false
+                velocityTracker?.recycle()
+                velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
+                downX = event.x; downY = event.y; lastY = event.y; downAt = event.eventTime
+                scrolling = false; pinching = false; pinchScale = 1f; longPressTriggered = false
+                removeCallbacks(longPress)
+                postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
+                onAnyTouch()
+                return true
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                removeCallbacks(longPress)
+                if (event.pointerCount >= 2) {
+                    pinching = true
+                    pinchStart = pointerDistance(event).coerceAtLeast(1f)
+                    pinchScale = 1f
+                }
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (pinching && event.pointerCount >= 2) {
+                    pinchScale = (pointerDistance(event) / pinchStart).coerceIn(0.55f, 1.8f)
+                    lastY = event.y
+                    return true
+                }
+                val totalX = event.x - downX
+                val totalY = event.y - downY
+                if (abs(totalX) > viewConfig.scaledTouchSlop || abs(totalY) > viewConfig.scaledTouchSlop) removeCallbacks(longPress)
+                val brightnessZone = settings.brightnessGestureEnabled && downX >= systemLeftInsetPx + 8f * density && downX <= systemLeftInsetPx + width * 0.14f
+                if (!brightnessZone && !scrolling && abs(totalY) > viewConfig.scaledTouchSlop && abs(totalY) > abs(totalX) * 1.10f) scrolling = true
+                if (scrolling) {
+                    scrollModel?.let { model -> model.setOffset(model.offsetPx + (lastY - event.y)) }
+                }
+                lastY = event.y
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                removeCallbacks(longPress)
+                val handledScroll = scrolling
+                if (pinching && settings.pinchFontEnabled && abs(pinchScale - 1f) >= 0.04f) onResizeFont(pinchScale)
+                else if (!longPressTriggered && !handledScroll) dispatchCompletedGesture(event)
+                if (handledScroll) finishScrollWithFling()
+                recycleTouch()
+                performClick()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(longPress)
+                if (scrolling) onScrollSettled()
+                recycleTouch()
+                return true
+            }
+        }
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
+    override fun computeScroll() {
+        if (scroller.computeScrollOffset()) {
+            scrollModel?.setOffset(scroller.currY.toFloat())
+            postInvalidateOnAnimation()
+        } else if (flingRunning) {
+            flingRunning = false
+            onScrollSettled()
+        }
+    }
+
+    private fun finishScrollWithFling() {
+        val model = scrollModel ?: return onScrollSettled()
+        val tracker = velocityTracker ?: return onScrollSettled()
+        tracker.computeCurrentVelocity(1000, viewConfig.scaledMaximumFlingVelocity.toFloat())
+        val velocity = (-tracker.yVelocity).roundToInt()
+        if (abs(velocity) >= viewConfig.scaledMinimumFlingVelocity && model.maxOffsetPx > 0f) {
+            scroller.fling(0, model.offsetPx.roundToInt(), 0, velocity, 0, 0, 0, model.maxOffsetPx.roundToInt())
+            flingRunning = true
+            postInvalidateOnAnimation()
+        } else onScrollSettled()
+    }
+
+    private fun dispatchCompletedGesture(event: MotionEvent) {
+        val dx = event.x - downX
+        val dy = event.y - downY
+        val swipe = 52f * density
+        val tapSlop = 14f * density
+        val edgeGuard = 8f * density
+        if (settings.brightnessGestureEnabled && downX >= systemLeftInsetPx + edgeGuard && downX <= systemLeftInsetPx + width * 0.14f && abs(dy) > abs(dx) * 1.35f && abs(dy) >= swipe) {
+            onBrightnessDelta((-dy / height.coerceAtLeast(1).toFloat()) * 0.8f)
+            return
+        }
+        if (settings.swipePagingEnabled && downX > systemLeftInsetPx + edgeGuard && downX < width - systemRightInsetPx - edgeGuard && abs(dx) >= swipe && abs(dx) > abs(dy) * 1.25f) {
+            var forward = dx < 0f
+            if (settings.reversePagingGestures) forward = !forward
+            if (forward) onNext() else onPrevious()
+            return
+        }
+        if (event.eventTime - downAt > 360L || hypot(dx.toDouble(), dy.toDouble()).toFloat() > tapSlop || width <= 0) return
+        if (downX <= systemLeftInsetPx + edgeGuard || downX >= width - systemRightInsetPx - edgeGuard) return
+        val edge = when (settings.tapZonePreset) {
+            ReaderTapZonePreset.BALANCED, ReaderTapZonePreset.CUSTOM -> width * settings.tapZoneEdgeFraction
+            ReaderTapZonePreset.RIGHT_HANDED -> width * 0.22f
+            ReaderTapZonePreset.LEFT_HANDED -> width * 0.32f
+        }
+        when {
+            downX < edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onNext() else onPrevious()
+            downX > width - edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onPrevious() else onNext()
+            else -> dispatchCenterTap(event.eventTime)
+        }
+    }
+
+    private fun dispatchCenterTap(tapAt: Long) {
+        fun dispatch(action: ReaderGestureAction) {
+            when (action) {
+                ReaderGestureAction.CONTROLS -> onToggleControls()
+                ReaderGestureAction.BOOKMARK -> onBookmark()
+                ReaderGestureAction.NEXT -> onNext()
+                ReaderGestureAction.PREVIOUS -> onPrevious()
+                ReaderGestureAction.NONE -> Unit
+            }
+        }
+        val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS
+        val doubleAction = if (settings.advancedGestureCustomizationEnabled) settings.doubleTapAction else if (settings.doubleTapBookmarkEnabled) ReaderGestureAction.BOOKMARK else ReaderGestureAction.NONE
+        if (doubleAction != ReaderGestureAction.NONE && lastCenterTapAt > 0L && tapAt - lastCenterTapAt in 40L..320L) {
+            lastCenterTapAt = 0L
+            dispatch(doubleAction)
+        } else {
+            lastCenterTapAt = tapAt
+            dispatch(centerAction)
+        }
+    }
+
+    private fun pointerDistance(event: MotionEvent): Float {
+        if (event.pointerCount < 2) return 0f
+        return hypot((event.getX(0) - event.getX(1)).toDouble(), (event.getY(0) - event.getY(1)).toDouble()).toFloat()
+    }
+
+    private fun recycleTouch() {
+        removeCallbacks(longPress)
+        velocityTracker?.recycle(); velocityTracker = null
+        scrolling = false; pinching = false
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val width = MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast(1)
-        val height = MeasureSpec.getSize(heightMeasureSpec).coerceAtLeast(1)
-        setMeasuredDimension(width, height)
-        val contentHeight = (textLayout?.height ?: height).coerceAtLeast(height)
+        val measuredW = MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast(1)
+        val measuredH = MeasureSpec.getSize(heightMeasureSpec).coerceAtLeast(1)
+        setMeasuredDimension(measuredW, measuredH)
+        val contentHeight = (textLayout?.height ?: measuredH).coerceAtLeast(measuredH)
         content.measure(
-            MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(measuredW, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY),
         )
     }
@@ -236,8 +456,18 @@ internal fun Text(
     modifier: Modifier,
     style: TextStyle,
     overflow: TextOverflow,
-    scrollableState: ScrollableState,
     scrollModel: ReaderContinuousScrollModel,
+    settings: ReaderSettings,
+    systemLeftInsetPx: Int,
+    systemRightInsetPx: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onToggleControls: () -> Unit,
+    onBrightnessDelta: (Float) -> Unit,
+    onResizeFont: (Float) -> Unit,
+    onBookmark: () -> Unit,
+    onAnyTouch: () -> Unit,
+    onScrollSettled: () -> Unit,
     onTextLayout: (ReaderContinuousLayout) -> Unit,
 ) {
     val context = LocalContext.current
@@ -253,11 +483,8 @@ internal fun Text(
         fontSynthesis = style.fontSynthesis ?: FontSynthesis.All,
     )
     val resolvedColor = if (style.color == Color.Unspecified) MaterialTheme.colorScheme.onBackground else style.color
-    val baseModifier = modifier
-        .fillMaxSize()
-        .clipToBounds()
-        .armSelectionOnLongPress(text.text) { selectionMode = true }
-    BoxWithConstraints(if (fallback) baseModifier else baseModifier.scrollable(scrollableState, Orientation.Vertical)) {
+    val baseModifier = modifier.fillMaxSize().clipToBounds()
+    BoxWithConstraints(baseModifier) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
         val viewportHeightPx = constraints.maxHeight.coerceAtLeast(1)
         val layout by produceState<ReaderContinuousLayout?>(
@@ -293,15 +520,23 @@ internal fun Text(
         } else if (ready != null) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
-                factory = { androidContext ->
-                    ReaderContinuousViewportView(androidContext).also { viewport ->
-                        viewport.setTextLayout(ready.layout, resolvedColor.toArgb())
-                        scrollModel.attachScrollSink(viewport::setScrollOffset)
-                    }
-                },
+                factory = { androidContext -> ReaderContinuousViewportView(androidContext) },
                 update = { viewport ->
                     viewport.setTextLayout(ready.layout, resolvedColor.toArgb())
-                    scrollModel.attachScrollSink(viewport::setScrollOffset)
+                    viewport.configure(
+                        scrollModel,
+                        settings,
+                        systemLeftInsetPx,
+                        systemRightInsetPx,
+                        onPrevious,
+                        onNext,
+                        onToggleControls,
+                        onBrightnessDelta,
+                        onResizeFont,
+                        onBookmark,
+                        onAnyTouch,
+                        onScrollSettled,
+                    ) { selectionMode = true }
                 },
             )
         }

@@ -141,7 +141,7 @@ class MainActivity : ComponentActivity() {
             onSeekFraction = ::seekFraction,
             onVisibleCharsChanged = { visiblePageChars = it.coerceAtLeast(ReaderController.MIN_PAGE_CHARS) },
             onOpenPanel = ::openPanel,
-            onClosePanel = { uiState = uiState.copy(panel = null) },
+            onClosePanel = ::closePanel,
             onSearchQueryChanged = { uiState = uiState.copy(searchQuery = it) },
             onSearch = ::search,
             onJump = ::jumpTo,
@@ -240,7 +240,7 @@ class MainActivity : ComponentActivity() {
             val state by readerViewModel.state.collectAsStateWithLifecycle()
             val location by readerViewModel.location.collectAsStateWithLifecycle()
             JingduApp(
-                state = state, actions = actions, location = location,
+                state = state, actions = actions, location = location, hotPanel = readerViewModel.hotPanel,
                 onTrackLocation = { current, target, length -> readerViewModel.trackLocation(current, target, length) },
                 onLocationBack = { readerViewModel.backTarget(readerViewModel.state.value.position)?.let(::jumpTo) },
                 onLocationForward = { readerViewModel.forwardTarget(readerViewModel.state.value.position)?.let(::jumpTo) },
@@ -527,6 +527,7 @@ class MainActivity : ComponentActivity() {
     private fun jumpTo(offset: Long) {
         if (uiState.busyLabel != null || currentBook == null) return
         stopAllMotion(); pageHistory.clear(); reader.jump(offset)
+        readerViewModel.closeHotPanel()
         uiState = uiState.copy(panel = null)
         render()
     }
@@ -542,6 +543,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun backToLibrary() {
+        readerViewModel.hotPanel.value?.let { readerViewModel.closeHotPanel(); return }
         uiState.panel?.let { uiState = uiState.copy(panel = null); return }
         val book = currentBook
         if (book != null && !cleanMode) persistProgress(book, force = true)
@@ -556,9 +558,19 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun closePanel() {
+        if (readerViewModel.hotPanel.value != null) readerViewModel.closeHotPanel()
+        else uiState = uiState.copy(panel = null)
+    }
+
     private fun openPanel(panel: ReaderPanel) {
         if (uiState.busyLabel != null || currentBook == null) return
         stopAutoScroll()
+        if (panel == ReaderPanel.QUICK_SETTINGS || panel == ReaderPanel.CHAPTERS) {
+            readerViewModel.openHotPanel(panel)
+            return
+        }
+        readerViewModel.closeHotPanel()
         uiState = uiState.copy(panel = panel)
         when (panel) {
             ReaderPanel.BOOKMARKS -> refreshBookmarks()
@@ -618,7 +630,7 @@ class MainActivity : ComponentActivity() {
             } catch (error: Throwable) {
                 main.post {
                     if (chapterWorkKey == key) chapterWorkKey = null
-                    if (!isDestroyed && currentBook?.id == book.id && uiState.panel == ReaderPanel.CHAPTERS) {
+                    if (!isDestroyed && currentBook?.id == book.id && readerViewModel.hotPanel.value == ReaderPanel.CHAPTERS) {
                         showMessage(friendlyError(getString(R.string.chapters), error))
                     }
                 }
