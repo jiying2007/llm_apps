@@ -1,28 +1,33 @@
-# Product Requirements — Android v2.2
+# Product Requirements — Android 2.3.x / Reader V3
 
 ## Objective
 
-Make Jingdu discoverable and worth paying for without weakening the complete Free reader or the offline/privacy architecture.
+Make Jingdu discoverable, comfortable for long daily reading and worth paying for without weakening the complete Free reader or the offline/privacy architecture.
 
 ## P0 reader requirements
 
 ### Library / import
 - Normal launch lands on Library.
 - Cards show title, encoding, size, last activity and progress.
-- Single import and SAF multi-select batch import are available without broad storage permission.
+- Single import, SAF multi-select batch import and explicit user-selected folder roots are available without broad storage permission.
 - Removing a book never deletes the external TXT.
+- Favorites/tags remain local user metadata keyed by source identity.
 
 ### Encoding / large files
 - AUTO is default; manual re-decode works from retained private source bytes.
-- Re-decode creates a new immutable normalized revision; progress/bookmarks never leak across revision changes.
+- Re-decode creates a new immutable normalized revision; progress/bookmarks/annotations never silently cross an incompatible revision boundary.
 - File-size-proportional work stays off the main thread.
 - Reopening a valid immutable revision reuses the Core `.jdx` cache when valid and safely rebuilds it when stale/corrupt.
+- First-readable preview remains bounded and cannot become the authoritative revision.
 
-### Reader
-- Viewport layout determines sequential page span.
-- Search, chapters, bookmarks, progress seeking and base TTS remain Free.
-- Paper/Light/Night, font, size, line height, margins, auto paging, sleep timer and volume-key paging remain Free.
-- Reader intent restores through stable id/revision/offset after configuration/process recreation; native handles/TTS state are recreated.
+### Reader V3
+- Paged and continuous modes use bounded source windows and one authoritative source-offset domain.
+- Search, Smart TOC, bookmarks, highlights/notes, progress seeking and base TTS remain Free.
+- Reader typography includes font/size/weight/line height/paragraph spacing/first-line indent/alignment/margins and wide-screen column policy.
+- Paper/Light/Night/OLED/Low Vision presentation, auto page/auto scroll, sleep timer and configurable volume-key behavior remain Free.
+- Reader intent restores through stable source id/revision/offset after configuration/process recreation; native handles/TTS runtime state are recreated.
+- Selection and annotation ranges map through display transformations back to source offsets.
+- Background TTS uses the local media-session path and semantic previous/next navigation.
 
 ## P0 Smart Clean requirements
 
@@ -31,17 +36,19 @@ Make Jingdu discoverable and worth paying for without weakening the complete Fre
 - It detects bounded-line high-frequency repetition, URLs/domains and common promotional/watermark markers.
 - Candidate UI shows exact text, reason, occurrence count and confidence before any purchase request.
 - User controls candidate selection; scan never modifies content.
+- KEEP/DELETE/PROTECT correction memory stores one-way fingerprints and decisions, never candidate/book text.
 
 ### Pro automation
 - Applying selected Smart Clean candidates requires Pro.
 - Safe whole-line wildcard rules use `*` matching and run in the shared Core; arbitrary regex is not accepted.
 - Existing exact literal rules remain Free.
 - Whole-line wildcard export must preserve ordinary content and change only matching lines.
+- Batch apply excludes protected/body/unsafe candidate classes unless explicit user DELETE intent makes the decision authoritative.
 
 ## P0 monetization requirements
 
 - One-time product ID is exactly `jingdu_pro_lifetime`.
-- There is no subscription in v2.2.
+- There is no subscription while the product has no recurring server service.
 - Grant Pro only for Google Play `PURCHASED` state; pending purchases never unlock.
 - Completed purchases are acknowledged.
 - Owned purchases are queried on connection/resume for restore/reinstall.
@@ -55,13 +62,19 @@ Make Jingdu discoverable and worth paying for without weakening the complete Fre
 - Pro global Clean rules apply to all books.
 - Recommended rule pack is explicit/editable, never silently destructive.
 - Global rules can be imported/exported as bounded JSON.
-- Pro local backup contains reading settings, selected offline TTS voice and global rules only; it excludes book text/private source files.
-- Import validates schema, field sizes and rule count.
+- Pro portable Reader V3 backup contains text-free user-owned state: Reader settings, global rules, annotations, favorites/tags, revision-safe progress, reading sessions/pace and Smart Clean fingerprint decisions.
+- Backup root declares `containsBookText=false`; no source/normalized/Clean book payload is included.
+- Portable progress is staged against source identity + exact `normalizedSha256` and is consumed only by that revision.
+- Schema 3 Reader V3 settings/rules/annotation backups remain importable for pre-production testers; schema 4 is the current export format.
+- Import validates schema, field sizes, rule/annotation/library/session/feedback counts and privacy markers.
+- SAF URI grants are not represented as portable credentials and must be explicitly re-selected on a destination install.
+- Imported font binaries are re-selected when unavailable; backup may retain the preference reference but must fall back safely.
 
 ## P1 retention requirements
 
 - Batch import handles partial failure and reports success/failure counts.
 - Pro can select from system TTS voices that report `isNetworkConnectionRequired == false`; Free keeps system-default TTS.
+- Reading sessions/history/pace are local-only and never require analytics SDK/network upload.
 - Play In-App Review is milestone based after meaningful use; no first-launch prompt and no sentiment pre-screen.
 - Review request frequency is locally throttled.
 
@@ -70,7 +83,7 @@ Make Jingdu discoverable and worth paying for without weakening the complete Fre
 - Default Simplified Chinese store title: `净读 - TXT 小说阅读器`.
 - Store metadata obeys Play title/short/full description length limits and avoids promotional superlatives in title.
 - Four search-intent Custom Listing specs exist: TXT reader, encoding rescue, Smart Clean/noise removal, local/private novel reading.
-- Screenshot brief tells a problem/solution story: mojibake rescue, noise detection, one-tap Pro apply, reading comfort, navigation, long-session tools, privacy.
+- Screenshot brief tells a problem/solution story: mojibake rescue, TXT Doctor/noise detection, one-tap Pro automation, reading comfort, navigation, long-session tools, privacy.
 - Store claims must be supported by product behavior/device evidence; no unverifiable “秒开/最快/#1” claims.
 
 ## Privacy requirements
@@ -79,15 +92,27 @@ Make Jingdu discoverable and worth paying for without weakening the complete Fre
 - No account, advertising SDK or runtime analytics SDK.
 - Google Play Billing and In-App Review are allowed platform commerce/feedback integrations; they must not receive private TXT content.
 - Source TXT is never modified or deleted.
-- User backup and rule exports contain no book正文.
+- Portable backup/rule/privacy/batch exports contain no book正文.
 
-## Acceptance
+## Source acceptance
 
-Exact candidate head must pass:
-- Native Release build, CTest, Smart Clean/wildcard golden tests and clang-tidy;
-- Android Debug/Release compile + lint, APK/AAB, AndroidTest assembly and product contract;
-- Play-store metadata/commercial contract;
-- Harmony source contract;
-- terminal repository contract.
+Exact candidate head must pass all six hosted jobs:
+- `native-core`;
+- `android`;
+- `android-performance`;
+- `play-store-contract`;
+- `harmony-contract`;
+- `terminal-contract`.
 
-Before Play production rollout, external Console evidence must additionally prove the one-time product is active, license-test purchase/restore/acknowledge works, listing assets are published, signing reuses the retained upload key and staged rollout checks pass.
+The Android job includes Debug/Release compile, lint, release bundle, AndroidTest assembly and Reader V3 portable-asset test compilation. Hosted performance remains regression evidence rather than physical-device release qualification.
+
+## Production acceptance
+
+Source merge/source release is not Google Play production readiness. Before production rollout, `PRODUCTION_READINESS.md` must have concrete external evidence for:
+- platform-enforced `main`/release-tag repository governance;
+- signed AAB and mapping/checksum/certificate provenance;
+- physical Android device matrix and release performance SLOs;
+- active `jingdu_pro_lifetime` plus license-test purchase/pending/cancel/restore/offline/no-ownership behavior;
+- localized listing/policy state;
+- internal/closed Play-installed testing;
+- staged rollout with Vitals/crash/ANR evidence and source-tag/AAB-checksum traceability.
