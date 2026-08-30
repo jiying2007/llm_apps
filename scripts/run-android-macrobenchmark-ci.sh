@@ -20,6 +20,7 @@ EMULATOR_LOG="$TEMP_DIR/jingdu-emulator.log"
 EMULATOR_PID=""
 REMOTE_RESULT_ROOT="/sdcard/Download/jingdu-reader-v3-ci"
 RESULT_ROOT="$ANDROID_DIR/macrobenchmark/build/outputs/direct-instrumentation"
+HOSTED_BASELINE="$ROOT/scripts/reader-v3-hosted-emulator-baseline.json"
 INSTRUMENTATION=""
 export ANDROID_AVD_HOME="$AVD_HOME"
 
@@ -148,6 +149,7 @@ preserve_failed_macro_evidence() {
 
 cd "$ROOT"
 python3 scripts/test-android-performance-slo.py
+test -s "$HOSTED_BASELINE"
 require_executable "$SDKMANAGER" sdkmanager
 require_executable "$AVDMANAGER" avdmanager
 
@@ -260,7 +262,7 @@ for pair in \
   fi
 done
 
-# Stage 1: production-like R8 target. The SLO must be decided before any generated profile exists.
+# Stage 1: production-like R8 target. The hosted result is frozen before any generated profile exists.
 install_pair "R8 Macrobenchmark" "$BENCHMARK_TARGET_APK" "$BENCHMARK_TEST_APK"
 rm -rf "$RESULT_ROOT"
 mkdir -p "$RESULT_ROOT/macro" "$RESULT_ROOT/profile"
@@ -294,19 +296,22 @@ fi
 
 cd "$ROOT"
 set +e
-python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"
+python3 scripts/check-android-performance-slo.py \
+  "$RESULT_ROOT/macro" \
+  --mode hosted-regression \
+  --baseline "$HOSTED_BASELINE"
 SLO_STATUS=$?
 set -e
 find "$RESULT_ROOT/macro" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
 
-# A red SLO is a product result. Preserve its traces before any later Profile failure can terminate
-# the shell; install_pair below re-validates/re-recovers adbd after this bulk evidence transfer.
+# A red hosted regression is a product result. Preserve its traces before any later Profile failure
+# can terminate the shell; install_pair below re-validates/re-recovers adbd after this evidence pull.
 if (( SLO_STATUS != 0 )); then
   preserve_failed_macro_evidence "$MACRO_REMOTE"
 fi
 
-# Stage 2: only after the shipped-profile R8 SLO is frozen, swap to a separate non-minified target so
-# Baseline/Startup HRF method names remain readable. Generated profile data never feeds Stage 1.
+# Stage 2: only after the shipped-profile R8 result is frozen, swap to a separate non-minified target
+# so Baseline/Startup HRF method names remain readable. Generated profile data never feeds Stage 1.
 echo "Switching from R8 Macrobenchmark target to non-minified Profile target"
 install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFILE_TEST_APK"
 PROFILE_REMOTE="$REMOTE_RESULT_ROOT/profile"
