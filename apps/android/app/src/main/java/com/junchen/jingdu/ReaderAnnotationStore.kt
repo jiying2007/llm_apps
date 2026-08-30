@@ -9,6 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 
 enum class ReaderAnnotationKind { BOOKMARK, HIGHLIGHT, NOTE }
@@ -36,7 +37,7 @@ data class ReaderAnnotation(
  * conversion and typography can never invalidate them. Re-decode/re-normalization first performs a
  * bounded contextual re-anchor and uses proportional mapping only as the final fallback.
  */
-internal class ReaderAnnotationStore(private val context: Context) {
+class ReaderAnnotationStore(private val context: Context) {
     private val dao = ReaderDatabaseProvider.get(context).annotationDao()
     private val repository = BookRepository(context.applicationContext)
 
@@ -113,7 +114,23 @@ internal class ReaderAnnotationStore(private val context: Context) {
             dao.upsertAll(remapped)
         } finally { reader.close() }
     }
-    fun remapBook(bookId: String, oldLength: Long, newLength: Long) = io { remapBookAsync(bookId, oldLength, newLength) }
+
+    /**
+     * Called by BookRepository while re-decode is already running on the serialized worker. The
+     * one-shot in-memory marker lets MainActivity's legacy success-path call return immediately,
+     * while a process restart can never leave a stale persisted skip marker behind.
+     */
+    fun remapBookForRedecode(bookId: String, revision: String, oldLength: Long, newLength: Long) {
+        io { remapBookAsync(bookId, oldLength, newLength) }
+        preparedRemaps[bookId] = remapSignature(revision, oldLength, newLength)
+    }
+
+    fun remapBook(bookId: String, oldLength: Long, newLength: Long) {
+        val revision = repository.list().firstOrNull { it.id == bookId }?.normalizedSha256.orEmpty()
+        val signature = remapSignature(revision, oldLength, newLength)
+        if (revision.isNotBlank() && preparedRemaps.remove(bookId, signature)) return
+        io { remapBookAsync(bookId, oldLength, newLength) }
+    }
 
     suspend fun exportJsonAsync(): JSONArray = JSONArray().also { array -> dao.listAll().map(::fromEntity).forEach { array.put(toJson(it)) } }
     fun exportJson(): JSONArray = io { exportJsonAsync() }
@@ -212,6 +229,8 @@ internal class ReaderAnnotationStore(private val context: Context) {
         return (value.coerceIn(0, oldLength - 1).toDouble() / (oldLength - 1).toDouble() * (newLength - 1)).toLong().coerceIn(0, newLength - 1)
     }
 
+    private fun remapSignature(revision: String, oldLength: Long, newLength: Long): String = "$revision:$oldLength:$newLength"
+
     private inline fun <T> io(crossinline block: suspend () -> T): T = runBlocking(Dispatchers.IO) { block() }
 
     private data class Anchor(val before: String, val selected: String, val after: String, val hash: String) {
@@ -219,6 +238,7 @@ internal class ReaderAnnotationStore(private val context: Context) {
     }
 
     private companion object {
+        val preparedRemaps = ConcurrentHashMap<String, String>()
         const val MAX_ANNOTATIONS = 20_000
         const val MAX_NOTE_CHARS = 8 * 1024
         const val MAX_EXCERPT_CHARS = 512
