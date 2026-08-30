@@ -1,6 +1,5 @@
 package com.junchen.jingdu.macrobenchmark
 
-import android.view.KeyEvent
 import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
@@ -37,15 +36,19 @@ class ReaderJourneyBenchmark {
         val before = readerPosition()
         var previous = before
         check(previous >= 0) { "Reader V3 page-turn journey has no authoritative starting position: $previous" }
+        // Hosted API 35 software-emulator input policy consumes injected VOLUME_DOWN before the
+        // foreground Activity even though MainActivity is RESUMED. Use the product reader's real
+        // right tap-zone CUJ here; physical-device release evidence owns hardware-volume delivery.
         repeat(6) {
-            check(device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)) {
-                "Reader V3 volume-key page turn was not injected through UiDevice"
-            }
+            check(device.click(
+                (device.displayWidth * PAGE_FORWARD_TAP_X).toInt(),
+                (device.displayHeight * PAGE_FORWARD_TAP_Y).toInt(),
+            )) { "Reader V3 forward page tap was not injected through UiDevice" }
             previous = waitForReaderAdvance(previous)
         }
         val after = readerPosition()
         check(after > before) {
-            "Reader V3 volume-key journey did not advance overall: before=$before after=$after"
+            "Reader V3 page-turn journey did not advance overall: before=$before after=$after"
         }
     }
 
@@ -76,14 +79,14 @@ class ReaderJourneyBenchmark {
             ensureTopControlsVisible()
             requireChaptersClick()
             device.waitForIdle()
-            // UiAutomator's boolean return is not the product state contract for BACK. Inject the
-            // real key, then prove that the reader controls became reachable again.
+            // BACK closes the hot panel. Reader controls may legitimately have auto-hidden while the
+            // panel was open, so prove return to the reader surface by restoring them with a real tap.
             device.pressBack()
-            waitForReaderControlsAfterBack("chapters")
+            waitForReaderSurfaceAfterBack("chapters")
             requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
             device.pressBack()
-            waitForReaderControlsAfterBack("quick settings")
+            waitForReaderSurfaceAfterBack("quick settings")
         }
     }
 
@@ -151,10 +154,6 @@ class ReaderJourneyBenchmark {
             ?: error("Reader V3 benchmark position query failed: $result")
     }
 
-    private fun MacrobenchmarkScope.readerInputState(): String = device.executeShellCommand(
-        "content call --uri content://com.junchen.jingdu.benchmarkfixture --method inputState",
-    ).trim().ifEmpty { "<unavailable>" }
-
     private fun MacrobenchmarkScope.waitForReaderReady() {
         val deadline = System.nanoTime() + READER_READY_TIMEOUT_NS
         var position = -1L
@@ -185,9 +184,8 @@ class ReaderJourneyBenchmark {
             "dumpsys activity activities | grep -m 6 -E 'mResumedActivity|topResumedActivity|ResumedActivity' || true",
         ).trim()
         error(
-            "Reader V3 volume-key journey used UiDevice key input but did not advance the authoritative reader position: " +
-                "before=$before after=$after inputState=${readerInputState()} " +
-                "focus=${focus.ifEmpty { "<unknown>" }}",
+            "Reader V3 page tap did not advance the authoritative reader position: " +
+                "before=$before after=$after focus=${focus.ifEmpty { "<unknown>" }}",
         )
     }
 
@@ -228,7 +226,8 @@ class ReaderJourneyBenchmark {
             error("fixture card missing: $title\n===== Reader V3 target diagnostics =====\n${failureDiagnostics()}")
         }
         val card = device.findObject(By.textContains(title)) ?: error("fixture card unavailable: $title")
-        card.click()
+        val bounds = runCatching { card.visibleBounds }.getOrNull() ?: error("fixture card stale: $title")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "fixture card tap was not injected: $title" }
         device.waitForIdle()
     }
 
@@ -254,16 +253,13 @@ class ReaderJourneyBenchmark {
     }
 
     private fun MacrobenchmarkScope.visibleObject(selector: BySelector): UiObject2? =
-        device.findObjects(selector).firstOrNull { node -> isOnScreen(node) }
+        device.findObjects(selector).firstOrNull { node -> runCatching { isOnScreen(node) }.getOrDefault(false) }
 
-    private fun MacrobenchmarkScope.waitForReaderControlsAfterBack(label: String) {
-        val deadline = System.nanoTime() + INPUT_STATE_TIMEOUT_NS
-        while (System.nanoTime() < deadline) {
-            device.waitForIdle()
-            if (visibleObject(By.text("Aa")) != null) return
-            Thread.sleep(INPUT_POLL_MS)
+    private fun MacrobenchmarkScope.waitForReaderSurfaceAfterBack(label: String) {
+        device.waitForIdle()
+        runCatching { ensureTopControlsVisible() }.getOrElse { cause ->
+            error("Reader V3 $label BACK input did not return to the interactive reader surface: ${cause.message}")
         }
-        error("Reader V3 $label BACK input did not return to visible reader controls")
     }
 
     private fun MacrobenchmarkScope.ensureTopControlsVisible() {
@@ -283,26 +279,37 @@ class ReaderJourneyBenchmark {
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
         check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 $label missing" }
         val target = visibleObject(selector) ?: error("Reader V3 $label exists only off-screen")
-        target.click()
+        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader V3 $label became stale before input")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 $label tap was not injected" }
     }
 
     private fun MacrobenchmarkScope.requireChaptersClick() {
-        visibleObject(By.desc("Chapters"))?.let { target -> target.click(); return }
-        visibleObject(By.descContains("Chapter"))?.let { target -> target.click(); return }
+        visibleObject(By.desc("Chapters"))?.let { target ->
+            val bounds = runCatching { target.visibleBounds }.getOrNull()
+            if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
+        }
+        visibleObject(By.descContains("Chapter"))?.let { target ->
+            val bounds = runCatching { target.visibleBounds }.getOrNull()
+            if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
+        }
 
         val aa = visibleObject(By.text("Aa")) ?: error("Reader V3 visible top reading controls missing")
-        val anchor = aa.visibleBounds
+        val anchor = runCatching { aa.visibleBounds }.getOrNull() ?: error("Reader V3 Aa control became stale")
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
-            .filter { node -> isOnScreen(node) }
-            .filter { node ->
-                val bounds = node.visibleBounds
+            .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
+            .filter { bounds ->
+                bounds.width() > 0 && bounds.height() > 0 &&
+                    bounds.right > 0 && bounds.bottom > 0 &&
+                    bounds.left < device.displayWidth && bounds.top < device.displayHeight
+            }
+            .filter { bounds ->
                 bounds.centerX() > anchor.centerX() &&
                     abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
             }
-            .minByOrNull { node -> node.visibleBounds.centerX() - anchor.centerX() }
+            .minByOrNull { bounds -> bounds.centerX() - anchor.centerX() }
             ?: error("Reader V3 visible chapters control missing beside Aa")
-        candidate.click()
+        check(device.click(candidate.centerX(), candidate.centerY())) { "Reader V3 chapters tap was not injected" }
     }
 
     private fun frameMetrics(): List<Metric> = listOf(FrameTimingMetric())
@@ -315,6 +322,8 @@ class ReaderJourneyBenchmark {
         const val INPUT_STATE_TIMEOUT_NS = 2_500_000_000L
         const val READER_READY_TIMEOUT_NS = 12_000_000_000L
         const val CONTINUOUS_READY_TIMEOUT_NS = 12_000_000_000L
+        const val PAGE_FORWARD_TAP_X = 0.86f
+        const val PAGE_FORWARD_TAP_Y = 0.52f
 
         // This target APK already contains the curated, provenance-checked product Baseline Profile.
         // Android's Macrobenchmark contract defines Partial + Require as the fresh-install state of an
