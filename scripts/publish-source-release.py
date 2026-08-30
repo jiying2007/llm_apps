@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Publish an immutable Jingdu source release from an already-gated main SHA.
+"""Publish immutable Jingdu source provenance from an already-gated main SHA.
 
 This script is intentionally stdlib-only. It is invoked only by the tail job of the
-main CI workflow after all required product gates succeed.
+main CI workflow after all required product gates succeed. New releases use annotated
+tag objects whose message binds the exact gated commit to the checked-in manifest hash.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -124,14 +126,48 @@ def read_tag(tag: str):
     return ref, sha
 
 
+def manifest_sha256(manifest: Path) -> str:
+    return hashlib.sha256(manifest.read_bytes()).hexdigest()
+
+
+def create_annotated_tag(tag: str, manifest: Path) -> None:
+    manifest_hash = manifest_sha256(manifest)
+    _, tag_object = request(
+        "/git/tags",
+        method="POST",
+        payload={
+            "tag": tag,
+            "message": (
+                f"Jingdu {tag} source provenance\n\n"
+                f"gated-main-sha: {MAIN_SHA}\n"
+                f"manifest: {manifest.as_posix()}\n"
+                f"manifest-sha256: {manifest_hash}\n"
+                "google-play-production: false"
+            ),
+            "object": MAIN_SHA,
+            "type": "commit",
+        },
+    )
+    tag_object_sha = (tag_object or {}).get("sha", "")
+    if not tag_object_sha:
+        fail("GitHub did not return annotated tag object sha")
+    request(
+        "/git/refs",
+        method="POST",
+        payload={"ref": f"refs/tags/{tag}", "sha": tag_object_sha},
+    )
+    final = read_tag(tag)
+    if final is None or final[1] != MAIN_SHA:
+        fail(f"annotated tag {tag} does not resolve to gated main {MAIN_SHA}")
+
+
 def publish(tag: str, manifest: Path) -> None:
     existing = read_tag(tag)
     encoded = urllib.parse.quote(tag, safe="")
     release_status, release = request(f"/releases/tags/{encoded}", allowed=(404,))
 
-    # A completed tag + Release is immutable historical provenance. Later main commits may
-    # legitimately retain the same source version until the next version bump; they must not
-    # move the tag or fail ordinary CI merely because main has advanced.
+    # A completed tag + Release is immutable historical provenance by publisher contract. Later
+    # main commits may retain the same version until the next bump; this script never moves a tag.
     if existing is not None and release_status != 404:
         _, target_sha = existing
         print(
@@ -140,8 +176,7 @@ def publish(tag: str, manifest: Path) -> None:
         )
         return
 
-    # An orphan tag can be completed only when it already points at this exact gated main SHA.
-    # This repairs an interrupted first publication without permitting tag movement.
+    # An orphan tag can be completed only when it already resolves to this exact gated main SHA.
     if existing is not None:
         _, target_sha = existing
         if target_sha != MAIN_SHA:
@@ -165,6 +200,7 @@ def publish(tag: str, manifest: Path) -> None:
     if release_status != 404:
         fail(f"release exists for missing tag {tag}")
 
+    create_annotated_tag(tag, manifest)
     _, release = request(
         "/releases",
         method="POST",
@@ -182,13 +218,17 @@ def publish(tag: str, manifest: Path) -> None:
     final = read_tag(tag)
     if final is None or final[1] != MAIN_SHA:
         fail(f"created release tag {tag} does not resolve to gated main {MAIN_SHA}")
-    print(f"created immutable source release: {release.get('html_url')}")
+    print(
+        f"created annotated source release: {release.get('html_url')} "
+        f"(manifest sha256 {manifest_sha256(manifest)})"
+    )
 
 
 def release_body(tag: str, manifest: Path) -> str:
     return (
         f"Jingdu {tag} source release.\n\n"
-        f"Immutable source manifest: `{manifest.as_posix()}`.\n\n"
+        f"Immutable source manifest: `{manifest.as_posix()}`.\n"
+        f"Manifest SHA-256: `{manifest_sha256(manifest)}`.\n\n"
         "This records source provenance only. It is not evidence of a signed APK/AAB or "
         "Google Play production rollout. Android production still requires the retained upload key, "
         "Play Console product/listing/license-test evidence and staged rollout documented in `docs/RELEASE.md`."
