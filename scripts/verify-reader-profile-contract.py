@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import re
 from pathlib import Path
 
@@ -6,6 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 generator = (ROOT / "apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt").read_text(encoding="utf-8")
 journey = (ROOT / "apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt").read_text(encoding="utf-8")
 runner = (ROOT / "scripts/run-android-macrobenchmark-ci.sh").read_text(encoding="utf-8")
+physical_runner_path = ROOT / "scripts/run-android-physical-release-performance.sh"
+physical_workflow_path = ROOT / ".github/workflows/android-physical-release-performance.yml"
+hosted_baseline_path = ROOT / "scripts/reader-v3-hosted-emulator-baseline.json"
 checker = (ROOT / "scripts/check-android-performance-slo.py").read_text(encoding="utf-8")
 workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 app_gradle = (ROOT / "apps/android/app/build.gradle").read_text(encoding="utf-8")
@@ -38,6 +42,7 @@ assert "includeInStartupProfile = false" in runtime_block
 assert "PAGE_FORWARD_TAP_X" in runtime_block, "hosted runtime profile must exercise the real reader tap zone"
 assert "KEYCODE_VOLUME_DOWN" not in generator, "hosted profile must not depend on emulator hardware-volume delivery"
 assert "requireChaptersClick" in runtime_block
+assert runtime_block.index("requireChaptersClick") < runtime_block.index('setProfileMode("continuous")'), "Quick/Chapters must remain paged profile CUJs before continuous mode"
 assert 'setProfileMode("continuous")' in runtime_block, "runtime profile must switch mode through deterministic provider protocol"
 assert 'requireContinuousModeClick' not in generator, "localized/UI-text profile mode switch retained"
 assert 'content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode' in generator
@@ -50,14 +55,38 @@ assert "BaselineProfileMode.Disable" not in journey
 assert "warmupIterations = 0" in journey
 assert journey.count('repeat(6) {') >= 2, "page and continuous journeys must both retain six interactions"
 assert "PAGE_FORWARD_TAP_X" in journey, "hosted page-turn journey must use a real reader tap zone"
+assert "PAGE_TURN_INPUT_ARG" in journey and 'PHYSICAL_VOLUME_INPUT = "physical-volume"' in journey, "physical volume input selector missing"
+assert "KeyEvent.KEYCODE_VOLUME_DOWN" in journey, "physical Release volume page-turn path missing"
 assert 'sampled.get("frameDurationCpuMs")' in checker
 assert "RELEASE_P95_MS = 40.0" in checker and "RELEASE_P99_MS = 80.0" in checker, "product Release SLO must remain 40/80"
-assert "HOSTED_P95_MS = 120.0" in checker and "HOSTED_P99_MS = 160.0" in checker, "hosted absolute regression ceiling missing"
+assert "HOSTED_P95_MS = 160.0" in checker and "HOSTED_P99_MS = 220.0" in checker, "evidence-derived hosted absolute regression ceiling missing"
 assert "HOSTED_MAX_REGRESSION_RATIO = 0.15" in checker, "hosted relative regression budget missing"
 assert 'choices=("release", "hosted-regression")' in checker, "two-level performance gate modes missing"
 assert "load_hosted_baseline" in checker, "checked-in hosted baseline contract missing"
 
-# Real frame SLO and profile collection intentionally use different target variants. Macrobenchmark
+assert hosted_baseline_path.is_file(), "checked-in hosted emulator baseline missing"
+hosted_baseline = json.loads(hosted_baseline_path.read_text(encoding="utf-8"))
+assert hosted_baseline.get("schemaVersion") == 1
+assert hosted_baseline.get("kind") == "reader-v3-hosted-emulator-regression-baseline"
+assert hosted_baseline.get("maxRegressionRatio") == 0.15
+assert hosted_baseline.get("absoluteCeilingMs") == {"p95": 160.0, "p99": 220.0}
+source = hosted_baseline.get("source", {})
+assert source.get("headSha") == "fa22d088df7456330244ac4dc2c00a82da888656", "hosted baseline source head drifted"
+assert source.get("workflowRunId") == 33294378785 and source.get("jobId") == 99212107479
+assert source.get("artifactId") == 9727262417
+assert source.get("artifactSha256") == "c48fbfe3e4daba9c48cba836e67478eb44043abcefb9b1f7cb479684cd1039c6"
+expected_hosted = {
+    "pageTurn10MiB": (59, 64.348030, 75.029256),
+    "continuousScroll10MiB": (687, 128.868375, 155.338134),
+    "chaptersAndSettings10MiB": (167, 135.095162, 187.723889),
+}
+for name, (samples, p95, p99) in expected_hosted.items():
+    record = hosted_baseline["benchmarks"][name]
+    assert record["samples"] == samples
+    assert abs(float(record["p95Ms"]) - p95) < 1e-6
+    assert abs(float(record["p99Ms"]) - p99) < 1e-6
+
+# Real frame gate and profile collection intentionally use different target variants. Macrobenchmark
 # must see production-like R8 code; HRF collection must see a non-obfuscated profileable target.
 benchmark_block = app_gradle[app_gradle.index("        benchmark {"):app_gradle.index("        profile {")]
 profile_block = app_gradle[app_gradle.index("        profile {"):app_gradle.index("    sourceSets {")]
@@ -82,10 +111,12 @@ assert 'putLong("modeApplied", 1L)' not in benchmark_provider, "unstable R8 Bund
 assert 'result.contains("Result: Bundle[{}]")' in journey, "deterministic empty-Bundle mode ACK contract missing"
 assert "-keep class com.junchen.jingdu.ReaderBenchmarkFixtureProvider { *; }" in proguard, "hosted fixture provider R8 keep missing"
 
-slo_call = 'python3 scripts/check-android-performance-slo.py "$RESULT_ROOT/macro"'
+slo_call = 'python3 scripts/check-android-performance-slo.py'
 profile_swap = 'install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFILE_TEST_APK"'
 profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log" "$PROFILE_CLASS"'
 assert slo_call in runner and profile_call in runner and profile_swap in runner
+assert '--mode hosted-regression' in runner, "hosted CI must use regression mode"
+assert '--baseline "$HOSTED_BASELINE"' in runner and 'reader-v3-hosted-emulator-baseline.json' in runner, "hosted CI baseline wiring missing"
 assert ':app:assembleBenchmark :macrobenchmark:assembleBenchmark' in runner
 assert ':app:assembleProfile :macrobenchmark:assembleProfile' in runner
 assert 'BENCHMARK_TARGET_APK=' in runner and 'PROFILE_TARGET_APK=' in runner
@@ -116,6 +147,18 @@ assert "attempting one bounded guest recovery" in runner
 assert "wait_for_android_ready 120" in runner
 assert "INSTRUMENTATION_ABORTED" in runner and "System has crashed" in runner
 assert runner.count("run_instrumentation Macrobenchmark") == 2, "exactly one Macrobenchmark retry is allowed"
+
+# Physical Release qualification is a separate, manually dispatched self-hosted physical-device gate.
+assert physical_runner_path.is_file() and physical_workflow_path.is_file(), "physical Release performance gate assets missing"
+physical_runner = physical_runner_path.read_text(encoding="utf-8")
+physical_workflow = physical_workflow_path.read_text(encoding="utf-8")
+assert 'ro.kernel.qemu' in physical_runner and 'refuses emulator/generic devices' in physical_runner
+assert '-e jingdu.pageTurnInput physical-volume' in physical_runner, "physical Release must force real volume-key CUJ"
+assert 'scripts/check-android-performance-slo.py "$JSON" --mode release' in physical_runner, "physical Release must use 40/80 Release mode"
+assert 'androidx.benchmark.suppressErrors EMULATOR' not in physical_runner, "physical Release gate must never suppress emulator errors"
+assert 'runs-on: [self-hosted, android, physical]' in physical_workflow
+assert 'workflow_dispatch:' in physical_workflow
+assert 'run-android-physical-release-performance.sh' in physical_workflow
 
 # The generated evidence is curated into compact product assets. Startup stays intentionally narrow.
 assert product_baseline_path.is_file() and product_startup_path.is_file(), "product Baseline/Startup Profile assets missing"
