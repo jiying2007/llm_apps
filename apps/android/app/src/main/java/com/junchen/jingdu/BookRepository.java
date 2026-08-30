@@ -130,6 +130,11 @@ final class BookRepository {
             publishImmutable(normalizedTemporary, normalizedFile(sourceSha, normalizedSha));
             normalizedTemporary = null;
 
+            Long restoredProgress = new LibraryMetadataStore(context)
+                    .consumeRestoredProgress(sourceSha, normalizedSha);
+            long initialProgress = existing != null
+                    ? existing.progress
+                    : restoredProgress != null ? restoredProgress.longValue() : 0L;
             boolean sameRevision = existing != null && existing.normalizedSha256.equals(normalizedSha);
             Book book = new Book(
                     sourceSha,
@@ -138,7 +143,7 @@ final class BookRepository {
                     size,
                     sourceSha,
                     normalizedSha,
-                    existing != null ? existing.progress : 0,
+                    initialProgress,
                     sameRevision ? existing.charCount : 0,
                     System.currentTimeMillis());
             upsert(book);
@@ -164,6 +169,8 @@ final class BookRepository {
             normalize(raw, temporary, encoding);
             String normalizedSha = NativeCore.fileSha256(temporary);
             publishImmutable(temporary, normalizedFile(book.id, normalizedSha));
+            Long restoredProgress = new LibraryMetadataStore(context)
+                    .consumeRestoredProgress(book.id, normalizedSha);
             boolean sameRevision = book.normalizedSha256.equals(normalizedSha);
             Book updated = new Book(
                     book.id,
@@ -172,7 +179,7 @@ final class BookRepository {
                     book.size,
                     book.sourceSha256,
                     normalizedSha,
-                    book.progress,
+                    restoredProgress != null ? restoredProgress.longValue() : book.progress,
                     sameRevision ? book.charCount : 0,
                     System.currentTimeMillis());
             upsert(updated);
