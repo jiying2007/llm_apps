@@ -184,7 +184,6 @@ final class BookRepository {
                 // one-shot completion marker instead of performing bounded searches on main.
                 new ReaderAnnotationStore(context).remapBookForRedecode(
                         book.id,
-                        normalizedSha,
                         oldLength,
                         newLength);
             }
