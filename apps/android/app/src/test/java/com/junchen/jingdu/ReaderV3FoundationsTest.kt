@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Locale
 import kotlin.random.Random
 
@@ -126,6 +129,15 @@ class ReaderV3FoundationsTest {
         assertNotEquals(fingerprint, ReaderTypographySpec.from(base.copy(paragraphSpacingEm = 1f)).fingerprint)
         assertNotEquals(fingerprint, ReaderTypographySpec.from(base.copy(textAlignment = ReaderTextAlignment.START)).fingerprint)
         assertNotEquals(fingerprint, ReaderTypographySpec.from(base.copy(typeface = ReaderTypeface.SERIF)).fingerprint)
+    }
+
+    @Test fun readingHistoryBucketsByLocalCivilDay() {
+        val instant = Instant.parse("2026-08-30T16:30:00Z")
+        val singapore = ZoneId.of("Asia/Singapore")
+        val utc = ZoneId.of("UTC")
+        assertEquals(LocalDate.of(2026, 8, 31).toEpochDay(), readerDayEpoch(instant.toEpochMilli(), singapore))
+        assertEquals(LocalDate.of(2026, 8, 30).toEpochDay(), readerDayEpoch(instant.toEpochMilli(), utc))
+        assertNotEquals(readerDayEpoch(instant.toEpochMilli(), singapore), readerDayEpoch(instant.toEpochMilli(), utc))
     }
 
     @Test fun lowVisionPresetIsLegibleAndFocused() {
