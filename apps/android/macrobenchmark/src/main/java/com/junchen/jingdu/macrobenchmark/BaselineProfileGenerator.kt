@@ -59,14 +59,21 @@ class BaselineProfileGenerator {
                 device.waitForIdle()
             }
 
-            // Exercise the real Quick Settings composition, but do not depend on translated or
-            // Canvas-only UI text to mutate test state. The benchmark-only provider is the same
-            // deterministic protocol used by the frame gate and synchronously persists DataStore.
+            // Quick Settings and Chapters are paged-reader CUJs. Keep both in the paged session so
+            // profile collection does not depend on the native continuous viewport exposing Compose
+            // controls after a mode restart; continuous scrolling is profiled independently below.
             ensureTopControlsVisible()
             requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
             device.pressBack()
             device.waitForIdle()
+
+            ensureTopControlsVisible()
+            requireChaptersClick()
+            device.waitForIdle()
+            device.pressBack()
+            device.waitForIdle()
+
             setProfileMode("continuous")
             startActivityAndWait()
             openFixture()
@@ -82,11 +89,6 @@ class BaselineProfileGenerator {
                 )) { "Reader V3 baseline continuous-scroll swipe was not injected" }
             }
             device.waitForIdle()
-
-            ensureTopControlsVisible()
-            requireChaptersClick()
-            device.waitForIdle()
-            device.pressBack()
         }
     }
 
