@@ -143,10 +143,17 @@ class TtsPlaybackService : MediaSessionService() {
         main.removeCallbacksAndMessages(null)
         if (::player.isInitialized) {
             val state = player.snapshot()
-            // Lifecycle teardown is the durability boundary. A direct final write happens after any
-            // already-running worker because BookRepository serializes access, then stale queued work
-            // is discarded below.
-            book?.let { current -> if (state.offset >= 0) runCatching { repository.saveProgress(current, state.offset) } }
+            book?.let { current ->
+                if (state.offset >= 0) {
+                    // Submit the durability-boundary write behind all already queued progress work,
+                    // then wait for it. This guarantees no older queued offset can overwrite final state.
+                    runCatching {
+                        progressWorkers.submit { repository.saveProgress(current, state.offset) }.get()
+                    }.getOrElse {
+                        runCatching { repository.saveProgress(current, state.offset) }
+                    }
+                }
+            }
         }
         progressWorkers.shutdownNow()
         session?.release()
