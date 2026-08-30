@@ -32,10 +32,11 @@ assert startup_at < runtime_at, "startup CUJ must remain separate from runtime C
 startup_block = generator[startup_at:runtime_at]
 runtime_block = generator[runtime_at:]
 assert "includeInStartupProfile = true" in startup_block
-assert "KEYCODE_VOLUME_DOWN" not in startup_block, "page turns must not inflate Startup Profile"
+assert "PAGE_FORWARD_TAP_X" not in startup_block, "page turns must not inflate Startup Profile"
 assert "requireChaptersClick" not in startup_block
 assert "includeInStartupProfile = false" in runtime_block
-assert "KEYCODE_VOLUME_DOWN" in runtime_block
+assert "PAGE_FORWARD_TAP_X" in runtime_block, "hosted runtime profile must exercise the real reader tap zone"
+assert "KEYCODE_VOLUME_DOWN" not in generator, "hosted profile must not depend on emulator hardware-volume delivery"
 assert "requireChaptersClick" in runtime_block
 assert 'setProfileMode("continuous")' in runtime_block, "runtime profile must switch mode through deterministic provider protocol"
 assert 'requireContinuousModeClick' not in generator, "localized/UI-text profile mode switch retained"
@@ -48,9 +49,13 @@ assert "BaselineProfileMode.Require" in journey
 assert "BaselineProfileMode.Disable" not in journey
 assert "warmupIterations = 0" in journey
 assert journey.count('repeat(6) {') >= 2, "page and continuous journeys must both retain six interactions"
-assert 'os.environ.get("JINGDU_FRAME_P95_MS", "40")' in checker
-assert 'os.environ.get("JINGDU_FRAME_P99_MS", "80")' in checker
+assert "PAGE_FORWARD_TAP_X" in journey, "hosted page-turn journey must use a real reader tap zone"
 assert 'sampled.get("frameDurationCpuMs")' in checker
+assert "RELEASE_P95_MS = 40.0" in checker and "RELEASE_P99_MS = 80.0" in checker, "product Release SLO must remain 40/80"
+assert "HOSTED_P95_MS = 120.0" in checker and "HOSTED_P99_MS = 160.0" in checker, "hosted absolute regression ceiling missing"
+assert "HOSTED_MAX_REGRESSION_RATIO = 0.15" in checker, "hosted relative regression budget missing"
+assert 'choices=("release", "hosted-regression")' in checker, "two-level performance gate modes missing"
+assert "load_hosted_baseline" in checker, "checked-in hosted baseline contract missing"
 
 # Real frame SLO and profile collection intentionally use different target variants. Macrobenchmark
 # must see production-like R8 code; HRF collection must see a non-obfuscated profileable target.
@@ -84,20 +89,20 @@ assert slo_call in runner and profile_call in runner and profile_swap in runner
 assert ':app:assembleBenchmark :macrobenchmark:assembleBenchmark' in runner
 assert ':app:assembleProfile :macrobenchmark:assembleProfile' in runner
 assert 'BENCHMARK_TARGET_APK=' in runner and 'PROFILE_TARGET_APK=' in runner
-assert runner.index(slo_call) < runner.index(profile_swap) < runner.index(profile_call), "R8 SLO must freeze before non-minified profile target is installed"
-assert "SLO_STATUS=$?" in runner, "SLO result must be retained across profile generation"
+assert runner.index(slo_call) < runner.index(profile_swap) < runner.index(profile_call), "R8 performance result must freeze before non-minified profile target is installed"
+assert "SLO_STATUS=$?" in runner, "performance result must be retained across profile generation"
 assert 'preserve_failed_macro_evidence "$MACRO_REMOTE"' in runner
-assert runner.index('if (( SLO_STATUS != 0 )); then\n  preserve_failed_macro_evidence "$MACRO_REMOTE"') < runner.index(profile_swap), "red SLO Perfetto must be retained before a later Profile failure can exit"
+assert runner.index('if (( SLO_STATUS != 0 )); then\n  preserve_failed_macro_evidence "$MACRO_REMOTE"') < runner.index(profile_swap), "red performance Perfetto must be retained before a later Profile failure can exit"
 assert 'PROFILE_RAW="$RESULT_ROOT/profile/raw"' in runner
 assert 'baseline-prof.txt' in runner and 'startup-prof.txt' in runner
 assert 'sort -u > "$RESULT_ROOT/profile/baseline-prof.txt"' in runner
 assert 'sort -u > "$RESULT_ROOT/profile/startup-prof.txt"' in runner
 last_slo_exit = runner.rfind('exit "$SLO_STATUS"')
-assert last_slo_exit > runner.index(profile_call), "red SLO must still fail after profiles are emitted"
+assert last_slo_exit > runner.index(profile_call), "red performance gate must still fail after profiles are emitted"
 assert 'GPU_MODE="${JINGDU_EMULATOR_GPU_MODE:-auto}"' in runner, "hosted emulator must use the recommended auto graphics mode by default"
 
 # Hosted instrumentation must run only the authority for each stage. This prevents unrelated
-# Startup/Profile tests from turning the frame SLO into a mixed-suite infrastructure result.
+# Startup/Profile tests from turning the frame gate into a mixed-suite infrastructure result.
 assert 'local test_class="${4:-}"' in runner, "instrumentation class filter parameter missing"
 assert 'class_args=(-e class "$test_class")' in runner, "instrumentation class filter wiring missing"
 assert 'MACRO_CLASS="com.junchen.jingdu.macrobenchmark.ReaderJourneyBenchmark"' in runner
