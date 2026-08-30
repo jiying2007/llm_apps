@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "kind": "reader-v3-hosted-emulator-regression-baseline",
+  "source": {
+    "headSha": "fa22d088df7456330244ac4dc2c00a82da888656",
+    "pullRequest": 25,
+    "workflowRunId": 33294378785,
+    "jobId": 99212107479,
+    "artifactId": 9727262417,
+    "artifactSha256": "c48fbfe3e4daba9c48cba836e67478eb44043abcefb9b1f7cb479684cd1039c6",
+    "runnerImage": "ubuntu-22.04",
+    "androidApi": 35,
+    "deviceProfile": "Pixel 6 AVD",
+    "emulatorVersion": "37.1.11.0",
+    "gpuMode": "auto",
+    "notes": "First exact-head run where pageTurn, continuousScroll and chaptersAndSettings all completed with authoritative real-journey sample floors. Hosted timings are regression evidence only, never physical-device Release SLO evidence."
+  },
+  "maxRegressionRatio": 0.15,
+  "absoluteCeilingMs": {
+    "p95": 160.0,
+    "p99": 220.0
+  },
+  "benchmarks": {
+    "pageTurn10MiB": {
+      "samples": 59,
+      "p95Ms": 64.348030,
+      "p99Ms": 75.029256
+    },
+    "continuousScroll10MiB": {
+      "samples": 687,
+      "p95Ms": 128.868375,
+      "p99Ms": 155.338134
+    },
+    "chaptersAndSettings10MiB": {
+      "samples": 167,
+      "p95Ms": 135.095162,
+      "p99Ms": 187.723889
+    }
+  }
+}
