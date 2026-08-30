@@ -120,15 +120,14 @@ class ReaderAnnotationStore(private val context: Context) {
      * one-shot in-memory marker lets MainActivity's legacy success-path call return immediately,
      * while a process restart can never leave a stale persisted skip marker behind.
      */
-    fun remapBookForRedecode(bookId: String, revision: String, oldLength: Long, newLength: Long) {
+    fun remapBookForRedecode(bookId: String, oldLength: Long, newLength: Long) {
         io { remapBookAsync(bookId, oldLength, newLength) }
-        preparedRemaps[bookId] = remapSignature(revision, oldLength, newLength)
+        preparedRemaps[bookId] = remapSignature(oldLength, newLength)
     }
 
     fun remapBook(bookId: String, oldLength: Long, newLength: Long) {
-        val revision = repository.list().firstOrNull { it.id == bookId }?.normalizedSha256.orEmpty()
-        val signature = remapSignature(revision, oldLength, newLength)
-        if (revision.isNotBlank() && preparedRemaps.remove(bookId, signature)) return
+        val signature = remapSignature(oldLength, newLength)
+        if (preparedRemaps.remove(bookId, signature)) return
         io { remapBookAsync(bookId, oldLength, newLength) }
     }
 
@@ -229,7 +228,7 @@ class ReaderAnnotationStore(private val context: Context) {
         return (value.coerceIn(0, oldLength - 1).toDouble() / (oldLength - 1).toDouble() * (newLength - 1)).toLong().coerceIn(0, newLength - 1)
     }
 
-    private fun remapSignature(revision: String, oldLength: Long, newLength: Long): String = "$revision:$oldLength:$newLength"
+    private fun remapSignature(oldLength: Long, newLength: Long): String = "$oldLength:$newLength"
 
     private inline fun <T> io(crossinline block: suspend () -> T): T = runBlocking(Dispatchers.IO) { block() }
 
