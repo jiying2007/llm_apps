@@ -133,8 +133,9 @@ jobs:
 
   android-performance:
     needs: android
-    # Pin the performance gate away from the moving Ubuntu 24.04 hosted image. The Android 35
-    # emulator, KVM, SwiftShader, journey, FrameTimingMetric and 40/80 SLO remain unchanged.
+    # Pin the hosted regression environment to Ubuntu 22.04 + Android 35. Emulator timing is
+    # guarded by the checked-in baseline + 15% budget and 160/220 anti-drift ceilings; 40/80 is
+    # exclusively the physical-device Release SLO.
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
