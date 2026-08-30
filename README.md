@@ -71,7 +71,7 @@ cd ../..
 ./scripts/verify-terminal.sh
 ```
 
-Hosted CI 运行 `native-core / android / play-store-contract / harmony-contract / terminal-contract`。Harmony 真 HAP 仍依赖官方 HarmonyOS/DevEco toolchain 与 `self-hosted,harmonyos` runner，不阻断 Android-only v2.2 source merge/release。
+Hosted CI 运行 `native-core / android / android-performance / play-store-contract / harmony-contract / terminal-contract`。Harmony 真 HAP 仍依赖官方 HarmonyOS/DevEco toolchain 与 `self-hosted,harmonyos` runner，不阻断 Android-only v2.x source merge/release。
 
 ## Google Play discovery / commerce
 
