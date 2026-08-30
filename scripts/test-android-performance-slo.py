@@ -83,7 +83,7 @@ class AndroidPerformanceSloTest(unittest.TestCase):
         baseline = 100.0
         relative = baseline * (1.0 + slo.HOSTED_MAX_REGRESSION_RATIO)
         self.assertAlmostEqual(115.0, relative)
-        self.assertEqual(115.0, min(slo.HOSTED_P95_MS, relative))
+        self.assertAlmostEqual(115.0, min(slo.HOSTED_P95_MS, relative))
         high_baseline_relative = 119.0 * (1.0 + slo.HOSTED_MAX_REGRESSION_RATIO)
         self.assertEqual(120.0, min(slo.HOSTED_P95_MS, high_baseline_relative))
 
