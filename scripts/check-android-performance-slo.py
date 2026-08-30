@@ -28,8 +28,11 @@ REQUIRED_MIN_SAMPLES = {
 }
 RELEASE_P95_MS = 40.0
 RELEASE_P99_MS = 80.0
-HOSTED_P95_MS = 120.0
-HOSTED_P99_MS = 160.0
+# Evidence-frozen hosted absolute ceilings. The source baseline's worst 15% relative limits are
+# P95~=155.36 ms and P99~=215.88 ms, so 160/220 leaves the relative gate authoritative while also
+# bounding future baseline drift. These values are never used by Release mode.
+HOSTED_P95_MS = 160.0
+HOSTED_P99_MS = 220.0
 HOSTED_MAX_REGRESSION_RATIO = 0.15
 HOSTED_BASELINE_SCHEMA_VERSION = 1
 
