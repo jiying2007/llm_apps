@@ -59,24 +59,26 @@ class BaselineProfileGenerator {
                 device.waitForIdle()
             }
 
-            // Quick Settings and Chapters are paged-reader CUJs. Keep both in the paged session so
-            // profile collection does not depend on the native continuous viewport exposing Compose
-            // controls after a mode restart; continuous scrolling is profiled independently below.
+            // Runtime profile CUJs are independent user journeys. Restart a fresh paged reader before
+            // each panel path so page-turn/control-auto-hide state from one CUJ cannot contaminate the
+            // next while still exercising the real launch, library-card tap, Reader and panel UI.
+            restartProfileReader("paged")
             ensureTopControlsVisible()
             requireClick(By.text("Aa"), "quick reading settings control")
             device.waitForIdle()
             device.pressBack()
             device.waitForIdle()
 
+            restartProfileReader("paged")
             ensureTopControlsVisible()
             requireChaptersClick()
             device.waitForIdle()
             device.pressBack()
             device.waitForIdle()
 
-            setProfileMode("continuous")
-            startActivityAndWait()
-            openFixture()
+            // Continuous is likewise an independent runtime CUJ rather than a stateful continuation
+            // of the paged/panel path above.
+            restartProfileReader("continuous")
             SystemClock.sleep(500)
 
             repeat(4) {
@@ -123,6 +125,13 @@ class BaselineProfileGenerator {
 
     private fun MacrobenchmarkScope.setProfileMode(mode: String) {
         setProfileMode(device, mode)
+    }
+
+    private fun MacrobenchmarkScope.restartProfileReader(mode: String) {
+        setProfileMode(mode)
+        startActivityAndWait()
+        openFixture()
+        device.waitForIdle()
     }
 
     private fun profileDiagnostics(device: UiDevice): String = buildString {
