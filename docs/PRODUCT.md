@@ -19,7 +19,8 @@ Store names remain localized for discovery: `净读 - TXT 小说阅读器`, `淨
 - Smart Clean: **generation 4**.
 - Built-in deterministic clean signature pack: **v3**.
 - Chinese display conversion: OpenCC-compatible **OpenccJava 1.4.2**.
-- Android product line/source release: **2.2.x** until the next explicit version bump.
+- Android product line/source release: **2.3.x / Reader V3**.
+- Portable local-user backup schema: **v4** (`schema=4`, Reader V3; schema 3 remains importable for pre-production testers).
 - First-class Android UI locales: **zh-Hans / zh-Hant / en-US**.
 
 Detailed intelligence architecture lives in `SMART_CLEAN_ARCHITECTURE.md` and `COMPETITIVE_MOAT.md`.
@@ -106,7 +107,8 @@ Training and held-out hard-negative evaluation are checked into the repository a
 - `KEEP`: do not auto-delete this candidate for the book and contributes a keep signal.
 - `DELETE`: explicit user-owned delete signal.
 - `PROTECT`: strongest protection signal for batch automation.
-- Only SHA-256 fingerprints + decision metadata are stored; candidate/book text is not retained in the feedback store.
+- Only SHA-256-derived candidate fingerprints + decision metadata are stored; candidate/book text is not retained in the feedback store.
+- Portable backup stores only `bookId + fingerprint + decision`; it never stores candidate text.
 
 ### Apply / undo
 
@@ -134,6 +136,7 @@ Conversion applies only to bounded reader/search/chapter/TTS strings. Source TXT
 - Progress persistence is throttled and force-flushed at lifecycle/navigation boundaries.
 - Paper/Light/Night, typography, margins, auto paging and sleep timer.
 - Reader intent restores from stable book/revision/offset identity, never native handles.
+- Portable backup stages progress against `sourceSha256 + normalizedSha256`; stale progress is never applied to a different normalized revision.
 
 ## Professional local TTS
 
@@ -156,9 +159,23 @@ Pro sells saved repetitive work:
 - reusable global rules/recommended rule packs;
 - global-rule import/export;
 - offline TTS voice selection;
-- local settings/global-rule backup.
+- portable local-user backup/restore of text-free Reader assets.
 
 Batch apply excludes KEEP/PROTECT, semantic BODY, inline fragment and garbled-line candidates unless an explicit DELETE decision makes the user intent authoritative. Batch reports contain identifiers/names/scores/counts only and declare `containsBookText=false`.
+
+## Portable local-user assets
+
+Reader V3 schema-4 backup intentionally excludes book/source/normalized/Clean payloads but preserves the user-owned state that can safely travel:
+
+- Reader settings and custom presentation preferences;
+- global Clean rules;
+- bookmarks, highlights and notes with source/context anchors;
+- favorites and local tags;
+- progress staged against exact source + normalized revision identity;
+- local reading sessions and pace;
+- Smart Clean KEEP/DELETE/PROTECT fingerprint memory.
+
+SAF URI grants are device/install capabilities and therefore must be re-selected on a destination installation. Imported font binaries are likewise re-selected when the referenced local font is not available. The backup declares `containsBookText=false`.
 
 ## Verifiable privacy
 
@@ -216,7 +233,7 @@ Pro includes:
 - global-rule JSON import/export;
 - batch diagnostics + explicit safe batch apply;
 - selectable installed offline TTS voices;
-- local settings/global-rule backup/restore.
+- portable local-user backup/restore.
 
 No subscription is justified while there is no recurring cloud/server service. Do not move basic reading, search, TXT Doctor, Smart TOC, bookmarks, themes or base TTS behind Pro.
 
@@ -258,6 +275,8 @@ Without adding runtime analytics SDKs, release/support/store evidence should sho
 - Pro batch dry-run precedes explicit apply and never changes source TXT;
 - background TTS survives ordinary Activity lifecycle changes and supports MediaSession controls;
 - folder sync skips reliably unchanged documents and conservatively reimports unknown metadata;
+- portable backup restores text-free user assets and applies progress only to the exact normalized revision;
 - 20/100/200 MiB real-device qualification is recorded against `PERFORMANCE_SLO.md` / `DEVICE_MATRIX.md`;
 - Android resources remain complete across en-US / zh-Hans / zh-Hant;
-- Android retains no direct INTERNET/broad-storage permission and no ads/analytics runtime SDK.
+- Android retains no direct INTERNET/broad-storage permission and no ads/analytics runtime SDK;
+- Google Play production is declared only after `PRODUCTION_READINESS.md` external evidence is complete.
