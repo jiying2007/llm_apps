@@ -1,7 +1,6 @@
 package com.junchen.jingdu.macrobenchmark
 
 import android.os.SystemClock
-import android.view.KeyEvent
 import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -49,8 +48,14 @@ class BaselineProfileGenerator {
             startActivityAndWait()
             openFixture()
 
+            // Hosted API 35 software-emulator policy consumes injected hardware-volume keys before
+            // MainActivity. Profile the same real reader tap-zone path used by the hosted frame gate;
+            // physical-device release evidence owns hardware-volume delivery validation.
             repeat(10) {
-                check(device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)) { "Reader V3 baseline volume-key page turn was not injected" }
+                check(device.click(
+                    (device.displayWidth * PAGE_FORWARD_TAP_X).toInt(),
+                    (device.displayHeight * PAGE_FORWARD_TAP_Y).toInt(),
+                )) { "Reader V3 baseline forward page tap was not injected" }
                 device.waitForIdle()
             }
 
@@ -139,7 +144,8 @@ class BaselineProfileGenerator {
         val title = "Benchmark Novel 10 MiB"
         check(device.wait(Until.hasObject(By.textContains(title)), 8_000)) { "Reader V3 baseline fixture missing" }
         val target = device.findObject(By.textContains(title)) ?: error("Reader V3 baseline fixture unavailable")
-        target.click()
+        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader V3 baseline fixture became stale")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 baseline fixture tap was not injected" }
         device.waitForIdle()
     }
 
@@ -158,27 +164,39 @@ class BaselineProfileGenerator {
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
         check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 baseline $label missing" }
         val target = device.findObject(selector) ?: error("Reader V3 baseline $label unavailable")
-        target.click()
+        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader V3 baseline $label became stale")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 baseline $label tap was not injected" }
     }
 
     private fun MacrobenchmarkScope.requireChaptersClick() {
-        device.findObject(By.desc("Chapters"))?.let { target -> target.click(); return }
-        device.findObject(By.descContains("Chapter"))?.let { target -> target.click(); return }
+        device.findObject(By.desc("Chapters"))?.let { target ->
+            val bounds = runCatching { target.visibleBounds }.getOrNull()
+            if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
+        }
+        device.findObject(By.descContains("Chapter"))?.let { target ->
+            val bounds = runCatching { target.visibleBounds }.getOrNull()
+            if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
+        }
 
-        val aa = device.findObjects(By.text("Aa")).minByOrNull { it.visibleBounds.centerY() }
-            ?: error("Reader V3 baseline top reading controls missing")
-        val anchor = aa.visibleBounds
+        val aa = device.findObjects(By.text("Aa")).minByOrNull { node ->
+            runCatching { node.visibleBounds.centerY() }.getOrDefault(Int.MAX_VALUE)
+        } ?: error("Reader V3 baseline top reading controls missing")
+        val anchor = runCatching { aa.visibleBounds }.getOrNull() ?: error("Reader V3 baseline Aa control became stale")
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
-            .filter { node ->
-                val bounds = node.visibleBounds
+            .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
+            .filter { bounds ->
                 bounds.centerX() > anchor.centerX() &&
                     abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
             }
-            .minByOrNull { node -> node.visibleBounds.centerX() - anchor.centerX() }
+            .minByOrNull { bounds -> bounds.centerX() - anchor.centerX() }
             ?: error("Reader V3 baseline chapters control missing beside Aa")
-        candidate.click()
+        check(device.click(candidate.centerX(), candidate.centerY())) { "Reader V3 baseline chapters tap was not injected" }
     }
 
-    private companion object { const val PACKAGE_NAME = "com.junchen.jingdu" }
+    private companion object {
+        const val PACKAGE_NAME = "com.junchen.jingdu"
+        const val PAGE_FORWARD_TAP_X = 0.86f
+        const val PAGE_FORWARD_TAP_Y = 0.52f
+    }
 }
