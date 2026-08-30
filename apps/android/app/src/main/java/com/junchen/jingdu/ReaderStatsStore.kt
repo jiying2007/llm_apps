@@ -8,7 +8,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 import kotlin.math.ceil
 
@@ -70,8 +71,11 @@ internal class ReaderStatsStore(context: Context) {
         val book = sessionBook ?: return
         val endElapsed = SystemClock.elapsedRealtime()
         val duration = (endElapsed - sessionStartedElapsed).coerceAtLeast(0)
+        // Snapshot every mutable session field before the asynchronous Room write. begin() may start
+        // the next book immediately after finish(), so the worker must never read live session state.
+        val startPosition = sessionStartPosition
         val endPosition = lastPosition
-        val chars = (endPosition - sessionStartPosition).coerceAtLeast(0)
+        val chars = (endPosition - startPosition).coerceAtLeast(0)
         val startedWall = sessionStartedWall
         sessionBook = null
         persistPaceAsync()
@@ -80,9 +84,9 @@ internal class ReaderStatsStore(context: Context) {
             dao.insertSession(
                 ReaderSessionEntity(
                     id = UUID.randomUUID().toString(), bookId = book,
-                    dayEpoch = LocalDate.ofEpochDay(startedWall / DAY_MS).toEpochDay(),
+                    dayEpoch = readerDayEpoch(startedWall),
                     startedAt = startedWall, durationMs = duration,
-                    startPosition = sessionStartPosition, endPosition = endPosition, charsRead = chars,
+                    startPosition = startPosition, endPosition = endPosition, charsRead = chars,
                 ),
             )
         }
@@ -119,6 +123,9 @@ internal class ReaderStatsStore(context: Context) {
         const val MAX_CPM = 1800.0
         const val PACE_PERSIST_INTERVAL_MS = 30_000L
         const val MIN_SESSION_MS = 5_000L
-        const val DAY_MS = 86_400_000L
     }
 }
+
+/** Calendar/heatmap bucketing follows the device's civil day, not UTC midnight. */
+internal fun readerDayEpoch(startedAtMillis: Long, zoneId: ZoneId = ZoneId.systemDefault()): Long =
+    Instant.ofEpochMilli(startedAtMillis).atZone(zoneId).toLocalDate().toEpochDay()
