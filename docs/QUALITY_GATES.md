@@ -6,17 +6,18 @@ A change is mergeable only when every applicable source gate passes. `main` prot
 
 1. **Native core** — Release CMake, `-Wall -Wextra -Wpedantic -Werror`, CTest and clang-tidy. Coverage includes encoding/SHA/revision, malformed UTF-8, large-file/concurrency, `.jdx` recovery, Simplified/Traditional Smart Clean candidates and whole-line wildcard golden behavior.
 2. **Android product** — Kotlin/Compose Debug/Release compile, Debug/Release lint, Debug APK, Release AAB, AndroidTest assembly and supported JNI ABIs.
-3. **Android localization** — `en-US / zh-Hans / zh-Hant` resource keys and format placeholders match; English is the unqualified fallback; generated LocaleConfig remains enabled; manifest/app/accessibility/runtime messages are resource-backed; major presentation/controller files cannot reintroduce hard-coded CJK UI copy; AndroidTest resolves expected UI text from the active locale.
-4. **Android commercial UX** — Free reader stays complete; Smart Clean candidate content is visible before paywall; Pro actions are contextual; Billing uses `jingdu_pro_lifetime`; backup/offline voice/global-rule UI exists; no first-launch paywall/review prompt.
-5. **Play store contract** — metadata length/policy checks for `zh-CN / zh-TW / zh-HK / en-US`, localized Custom Listing/screenshot production specs, Billing/Review dependency versions and fixed lifetime product id.
-6. **Large-file path** — immutable revisions, validated `.jdx`, active-session Search/Chapters, bounded/streaming Smart Clean and safe fallback/pruning.
-7. **Harmony source contract** — Stage/Node-API/TaskPool/storage/source contracts remain valid; real HAP/device qualification is a separate Harmony release gate.
-8. **Repository contract** — required product/growth/store/localization docs exist; no legacy roots, compatibility core, floating Actions tags, committed packages/signing material or direct Android `INTERNET` permission.
+3. **Android performance** — hosted Macrobenchmark executes open/page/scroll/chapter/settings journeys, enforces checked-in frame P95/P99 SLOs and completes the Reader V3 Baseline Profile journey with retained evidence.
+4. **Android localization** — `en-US / zh-Hans / zh-Hant` resource keys and format placeholders match; English is the unqualified fallback; generated LocaleConfig remains enabled; manifest/app/accessibility/runtime messages are resource-backed; major presentation/controller files cannot reintroduce hard-coded CJK UI copy; AndroidTest resolves expected UI text from the active locale.
+5. **Android commercial UX** — Free reader stays complete; Smart Clean candidate content is visible before paywall; Pro actions are contextual; Billing uses `jingdu_pro_lifetime`; backup/offline voice/global-rule UI exists; no first-launch paywall/review prompt.
+6. **Play store contract** — metadata length/policy checks for `zh-CN / zh-TW / zh-HK / en-US`, localized Custom Listing/screenshot production specs, Billing/Review dependency versions and fixed lifetime product id.
+7. **Large-file path** — immutable revisions, validated `.jdx`, active-session Search/Chapters, bounded/streaming Smart Clean and safe fallback/pruning.
+8. **Harmony source contract** — Stage/Node-API/TaskPool/storage/source contracts remain valid; real HAP/device qualification is a separate Harmony release gate.
+9. **Repository contract** — required product/growth/store/localization docs exist; no legacy roots, compatibility core, floating Actions tags, committed packages/signing material or direct Android `INTERNET` permission.
 
 ## Android merge acceptance
 
 Before Ready/merge:
-- exact PR head passes all five Hosted jobs: `native-core`, `android`, `play-store-contract`, `harmony-contract`, `terminal-contract`;
+- exact PR head passes all six Hosted jobs: `native-core`, `android`, `android-performance`, `play-store-contract`, `harmony-contract`, `terminal-contract`;
 - no unresolved PR review thread/comment remains;
 - Product/Requirements/UX/Growth/Localization/Core Contract/Testing/Device Matrix/Release/Play setup docs agree with implementation;
 - Free/Pro boundary does not lock basic reader functionality;
@@ -76,7 +77,7 @@ Source merge is not the same as Play production readiness. Before v2.2 staged ro
 
 ## Harmony production gate
 
-HarmonyOS remains source-complete/pre-release until official toolchain HAP build and device matrix execute on `self-hosted,harmonyos`. A queued workflow is not success, but does not block Android-only v2.2 source merge/release. When Harmony localization is activated it must use platform-native resources and the same locale-neutral shared-Core contracts defined in `LOCALIZATION.md`.
+HarmonyOS remains source-complete/pre-release until official toolchain HAP build and device matrix execute on `self-hosted,harmonyos`. A queued workflow is not success, but does not block Android-only v2.x source merge/release. When Harmony localization is activated it must use platform-native resources and the same locale-neutral shared-Core contracts defined in `LOCALIZATION.md`.
 
 ## Device gates
 

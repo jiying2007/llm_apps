@@ -27,15 +27,16 @@ kind: source-release
 google_play_production: false
 ```
 
-A release manifest is reviewed and merged through the normal pull-request process. Every push to `main` executes the same five required hosted gates:
+A release manifest is reviewed and merged through the normal pull-request process. Every push to `main` executes the same six required hosted gates:
 
 1. shared native Core build/tests/static analysis;
 2. Android product build, lint, AndroidTest compilation, release bundle and benchmark assembly;
-3. Harmony source/terminal contract;
-4. Play metadata and lifetime-Pro contract;
-5. terminal source/product/localization/long-form quality contract.
+3. hosted Android Macrobenchmark/frame SLO and Baseline Profile qualification;
+4. Harmony source/terminal contract;
+5. Play metadata and lifetime-Pro contract;
+6. terminal source/product/localization/long-form quality contract.
 
-`publish-source-release` has `needs` on all five jobs and runs only for `push` to `main`. Ordinary PR jobs remain read-only. Only the publication tail job receives job-scoped `contents: write` plus `pull-requests: read`.
+`publish-source-release` has `needs` on all six jobs and runs only for `push` to `main`. Ordinary PR jobs remain read-only. Only the publication tail job receives job-scoped `contents: write` plus `pull-requests: read`.
 
 `scripts/publish-source-release.py` then resolves the Android source version and matching permanent manifest. If no manifest exists for that version, source publication is skipped. If a manifest exists, the publisher uses three explicit states:
 
