@@ -40,33 +40,10 @@ internal class UserAssetBackup(context: Context) {
         }
     }
 
-    fun importLibrary(array: JSONArray): Int {
-        if (array.length() > MAX_LIBRARY_ASSETS) throw IllegalArgumentException("too many library assets")
-        val parsed = buildList {
-            for (index in 0 until array.length()) {
-                val item = array.optJSONObject(index) ?: continue
-                val bookId = item.optString("bookId")
-                if (!validSha256(bookId)) continue
-                val tags = item.optJSONArray("tags") ?: JSONArray()
-                val normalizedSha = item.optString("normalizedSha256").takeIf(::validSha256)
-                val progress = if (normalizedSha != null && item.has("progress")) item.optLong("progress").coerceAtLeast(0) else null
-                add(
-                    PortableLibraryAsset(
-                        bookId = bookId,
-                        favorite = item.optBoolean("favorite", false),
-                        tags = buildList {
-                            for (tagIndex in 0 until minOf(tags.length(), 12)) {
-                                val tag = tags.optString(tagIndex).trim().take(24)
-                                if (tag.isNotEmpty() && tag !in this) add(tag)
-                            }
-                        },
-                        normalizedSha256 = normalizedSha,
-                        progress = progress,
-                    ),
-                )
-            }
-        }.distinctBy { it.bookId }
+    fun validateLibrary(array: JSONArray): Int = parseLibrary(array).size
 
+    fun importLibrary(array: JSONArray): Int {
+        val parsed = parseLibrary(array)
         parsed.forEach { item ->
             libraryMetadata.restorePortable(item.bookId, item.favorite, item.tags, item.normalizedSha256, item.progress)
         }
@@ -95,7 +72,51 @@ internal class UserAssetBackup(context: Context) {
             .put("sessions", JSONArray().also { array -> sessions.forEach { array.put(sessionJson(it)) } })
     }
 
+    fun validateReadingStats(root: JSONObject): Int = parseReadingStats(root).sessions.size
+
     fun importReadingStats(root: JSONObject): Int {
+        val parsed = parseReadingStats(root)
+        runBlocking(Dispatchers.IO) {
+            statsDao.clearSessions()
+            statsDao.clearPace()
+            if (parsed.sessions.isNotEmpty()) statsDao.upsertSessions(parsed.sessions)
+            if (parsed.pace != null) statsDao.upsertPace(parsed.pace)
+        }
+        // ReaderStatsStore keeps a hot-path process cache. Update the shared runtime only after the
+        // Room replacement succeeds so an already-open reader immediately uses restored pace.
+        restoreReaderPaceRuntime(parsed.pace)
+        return parsed.sessions.size
+    }
+
+    private fun parseLibrary(array: JSONArray): List<PortableLibraryAsset> {
+        if (array.length() > MAX_LIBRARY_ASSETS) throw IllegalArgumentException("too many library assets")
+        return buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val bookId = item.optString("bookId")
+                if (!validSha256(bookId)) continue
+                val tags = item.optJSONArray("tags") ?: JSONArray()
+                val normalizedSha = item.optString("normalizedSha256").takeIf(::validSha256)
+                val progress = if (normalizedSha != null && item.has("progress")) item.optLong("progress").coerceAtLeast(0) else null
+                add(
+                    PortableLibraryAsset(
+                        bookId = bookId,
+                        favorite = item.optBoolean("favorite", false),
+                        tags = buildList {
+                            for (tagIndex in 0 until minOf(tags.length(), MAX_TAGS)) {
+                                val tag = tags.optString(tagIndex).trim().take(MAX_TAG_CHARS)
+                                if (tag.isNotEmpty() && tag !in this) add(tag)
+                            }
+                        },
+                        normalizedSha256 = normalizedSha,
+                        progress = progress,
+                    ),
+                )
+            }
+        }.distinctBy { it.bookId }
+    }
+
+    private fun parseReadingStats(root: JSONObject): PortableReadingStats {
         if (root.optInt("schema") != 1 || root.optString("type") != "jingdu-reading-stats" || root.optBoolean("containsBookText", true)) {
             throw IllegalArgumentException("unsupported reading stats backup")
         }
@@ -104,7 +125,7 @@ internal class UserAssetBackup(context: Context) {
         val sessions = buildList {
             for (index in 0 until sessionsArray.length()) {
                 val item = sessionsArray.optJSONObject(index) ?: continue
-                val id = item.optString("id").take(80)
+                val id = item.optString("id").take(MAX_SESSION_ID_CHARS)
                 val bookId = item.optString("bookId")
                 if (id.isBlank() || !validSha256(bookId)) continue
                 val startedAt = item.optLong("startedAt").coerceAtLeast(0)
@@ -130,19 +151,13 @@ internal class UserAssetBackup(context: Context) {
 
         val paceObject = root.optJSONObject("pace")
         val pace = paceObject?.let {
+            val raw = it.optDouble("charsPerMinute", DEFAULT_CPM)
             ReaderPaceEntity(
-                charsPerMinute = it.optDouble("charsPerMinute", 500.0).coerceIn(120.0, 1800.0),
-                samples = it.optInt("samples", 0).coerceIn(0, 1_000_000),
+                charsPerMinute = if (raw.isFinite()) raw.coerceIn(MIN_CPM, MAX_CPM) else DEFAULT_CPM,
+                samples = it.optInt("samples", 0).coerceIn(0, MAX_PACE_SAMPLES),
             )
         }
-
-        runBlocking(Dispatchers.IO) {
-            statsDao.clearSessions()
-            statsDao.clearPace()
-            if (sessions.isNotEmpty()) statsDao.upsertSessions(sessions)
-            if (pace != null) statsDao.upsertPace(pace)
-        }
-        return sessions.size
+        return PortableReadingStats(sessions, pace)
     }
 
     private fun sessionJson(value: ReaderSessionEntity) = JSONObject()
@@ -165,10 +180,22 @@ internal class UserAssetBackup(context: Context) {
         val progress: Long?,
     )
 
+    private data class PortableReadingStats(
+        val sessions: List<ReaderSessionEntity>,
+        val pace: ReaderPaceEntity?,
+    )
+
     private companion object {
         const val MAX_LIBRARY_ASSETS = 5_000
         const val MAX_READING_SESSIONS = 5_000
+        const val MAX_SESSION_ID_CHARS = 80
+        const val MAX_TAGS = 12
+        const val MAX_TAG_CHARS = 24
         const val MAX_SESSION_DURATION_MS = 24L * 60L * 60L * 1000L
         const val MAX_SESSION_CHARS = 100_000_000L
+        const val MIN_CPM = 120.0
+        const val MAX_CPM = 1800.0
+        const val DEFAULT_CPM = 500.0
+        const val MAX_PACE_SAMPLES = 1_000_000
     }
 }

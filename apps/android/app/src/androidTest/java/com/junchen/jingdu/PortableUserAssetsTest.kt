@@ -48,8 +48,9 @@ class PortableUserAssetsTest {
         store.clearBook(bookId)
     }
 
-    @Test fun readingStatsBackupRejectsBookTextContractAndRestoresBoundedSessions() {
+    @Test fun readingStatsBackupRejectsBookTextContractAndRefreshesLivePace() {
         val assets = UserAssetBackup(context)
+        val liveStats = ReaderStatsStore(context)
         val bookId = "e".repeat(64)
         val stats = JSONObject()
             .put("schema", 1)
@@ -72,8 +73,46 @@ class PortableUserAssetsTest {
             )
 
         assertEquals(1, assets.importReadingStats(stats))
+        assertEquals(640.0, liveStats.charsPerMinute(), 0.01)
         val exported = assets.exportReadingStats()
         assertFalse(exported.optBoolean("containsBookText", true))
         assertTrue(exported.optJSONArray("sessions")!!.length() >= 1)
+
+        assets.importReadingStats(
+            JSONObject()
+                .put("schema", 1)
+                .put("type", "jingdu-reading-stats")
+                .put("containsBookText", false)
+                .put("sessions", JSONArray()),
+        )
+    }
+
+    @Test fun malformedSchema4PreflightPreventsLibraryMutation() {
+        val metadata = LibraryMetadataStore(context)
+        val bookId = "f".repeat(64)
+        metadata.clear(bookId)
+        metadata.restorePortable(bookId, favorite = false, tags = listOf("backup"), normalizedSha256 = null, progress = null)
+
+        val backup = UserBackup(
+            readerPreferences = ReaderPreferences(context),
+            ruleLibrary = RuleLibrary(context),
+            annotationStore = ReaderAnnotationStore(context),
+        )
+        val root = JSONObject(backup.exportJson())
+
+        metadata.restorePortable(bookId, favorite = true, tags = listOf("current"), normalizedSha256 = null, progress = null)
+        root.getJSONObject("readingStats").put("containsBookText", true)
+
+        var rejected = false
+        try {
+            backup.importJson(root.toString())
+        } catch (_: IllegalArgumentException) {
+            rejected = true
+        }
+        assertTrue(rejected)
+        val current = metadata.load(bookId)
+        assertTrue(current.favorite)
+        assertEquals(listOf("current"), current.tags)
+        metadata.clear(bookId)
     }
 }

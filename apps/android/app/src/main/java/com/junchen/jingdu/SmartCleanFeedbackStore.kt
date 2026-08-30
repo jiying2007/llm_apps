@@ -99,6 +99,9 @@ internal class SmartCleanFeedbackStore(context: Context) {
             .put("entries", entries)
     }
 
+    /** Preflight parser used by schema-4 backup restore before any persistent state is mutated. */
+    fun validateImport(root: JSONObject): Int = parseImport(root).size
+
     fun importJson(root: JSONObject): Int {
         val parsed = parseImport(root)
         val editor = prefs.edit()

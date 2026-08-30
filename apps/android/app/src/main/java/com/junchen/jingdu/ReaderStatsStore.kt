@@ -13,6 +13,53 @@ import java.time.ZoneId
 import java.util.UUID
 import kotlin.math.ceil
 
+private const val DEFAULT_READER_CPM = 500.0
+private const val MIN_READER_CPM = 120.0
+private const val MAX_READER_CPM = 1800.0
+
+/** Process-local hot-path pace cache shared by every ReaderStatsStore instance. */
+private object ReaderPaceRuntime {
+    @Volatile var charsPerMinute = DEFAULT_READER_CPM
+        private set
+    @Volatile var samples = 0
+        private set
+    @Volatile private var generation = 0L
+
+    fun generation(): Long = generation
+
+    @Synchronized
+    fun initialize(value: ReaderPaceEntity?, expectedGeneration: Long) {
+        if (generation != expectedGeneration) return
+        apply(value)
+    }
+
+    @Synchronized
+    fun restore(value: ReaderPaceEntity?) {
+        generation++
+        apply(value)
+    }
+
+    @Synchronized
+    fun update(pace: Double, sampleCount: Int) {
+        generation++
+        charsPerMinute = pace.coerceIn(MIN_READER_CPM, MAX_READER_CPM)
+        samples = sampleCount.coerceAtLeast(0)
+    }
+
+    private fun apply(value: ReaderPaceEntity?) {
+        val pace = value?.charsPerMinute
+        charsPerMinute = if (pace != null && pace.isFinite()) {
+            pace.coerceIn(MIN_READER_CPM, MAX_READER_CPM)
+        } else {
+            DEFAULT_READER_CPM
+        }
+        samples = value?.samples?.coerceAtLeast(0) ?: 0
+    }
+}
+
+/** Update the live Reader hot-path cache only after a restored Room pace has committed. */
+internal fun restoreReaderPaceRuntime(value: ReaderPaceEntity?) = ReaderPaceRuntime.restore(value)
+
 /**
  * Local-only reader statistics. The hot scroll/page path mutates memory only; Room writes are
  * batched and sessions are committed at lifecycle boundaries. No analytics SDK or network exists.
@@ -20,8 +67,6 @@ import kotlin.math.ceil
 internal class ReaderStatsStore(context: Context) {
     private val dao = ReaderDatabaseProvider.get(context).statsDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    @Volatile private var cachedPace = DEFAULT_CPM
-    @Volatile private var paceSamples = 0
     private var sessionBook: String? = null
     private var sessionStartedElapsed = 0L
     private var sessionStartedWall = 0L
@@ -31,9 +76,8 @@ internal class ReaderStatsStore(context: Context) {
     private var lastPacePersistAt = 0L
 
     init {
-        scope.launch {
-            dao.pace()?.let { cachedPace = it.charsPerMinute.coerceIn(MIN_CPM, MAX_CPM); paceSamples = it.samples.coerceAtLeast(0) }
-        }
+        val generation = ReaderPaceRuntime.generation()
+        scope.launch { ReaderPaceRuntime.initialize(dao.pace(), generation) }
     }
 
     fun begin(bookId: String, position: Long) {
@@ -54,10 +98,11 @@ internal class ReaderStatsStore(context: Context) {
         val elapsed = now - lastAt
         val chars = position - lastPosition
         if (elapsed in 2_000L..180_000L && chars in 64L..20_000L) {
-            val sample = (chars.toDouble() * 60_000.0 / elapsed.toDouble()).coerceIn(MIN_CPM, MAX_CPM)
-            val weight = if (paceSamples < 5) 0.35 else 0.15
-            cachedPace = cachedPace * (1.0 - weight) + sample * weight
-            paceSamples++
+            val sample = (chars.toDouble() * 60_000.0 / elapsed.toDouble()).coerceIn(MIN_READER_CPM, MAX_READER_CPM)
+            val currentSamples = ReaderPaceRuntime.samples
+            val weight = if (currentSamples < 5) 0.35 else 0.15
+            val nextPace = ReaderPaceRuntime.charsPerMinute * (1.0 - weight) + sample * weight
+            ReaderPaceRuntime.update(nextPace, currentSamples + 1)
             if (now - lastPacePersistAt >= PACE_PERSIST_INTERVAL_MS) {
                 lastPacePersistAt = now
                 persistPaceAsync()
@@ -92,7 +137,7 @@ internal class ReaderStatsStore(context: Context) {
         }
     }
 
-    fun charsPerMinute(): Double = cachedPace.coerceIn(MIN_CPM, MAX_CPM)
+    fun charsPerMinute(): Double = ReaderPaceRuntime.charsPerMinute.coerceIn(MIN_READER_CPM, MAX_READER_CPM)
 
     fun sessionMinutes(): Int = if (sessionBook == null) 0 else
         ceil((SystemClock.elapsedRealtime() - sessionStartedElapsed).coerceAtLeast(0) / 60_000.0).toInt()
@@ -112,15 +157,12 @@ internal class ReaderStatsStore(context: Context) {
     fun totalBookDuration(bookId: String): Long = runBlocking(Dispatchers.IO) { dao.totalBookDuration(bookId) }
 
     private fun persistPaceAsync() {
-        val pace = cachedPace.coerceIn(MIN_CPM, MAX_CPM)
-        val samples = paceSamples
+        val pace = ReaderPaceRuntime.charsPerMinute.coerceIn(MIN_READER_CPM, MAX_READER_CPM)
+        val samples = ReaderPaceRuntime.samples
         scope.launch { dao.upsertPace(ReaderPaceEntity(charsPerMinute = pace, samples = samples)) }
     }
 
     private companion object {
-        const val DEFAULT_CPM = 500.0
-        const val MIN_CPM = 120.0
-        const val MAX_CPM = 1800.0
         const val PACE_PERSIST_INTERVAL_MS = 30_000L
         const val MIN_SESSION_MS = 5_000L
     }
