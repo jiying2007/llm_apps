@@ -41,6 +41,7 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                 ReaderInteractionRuntime.foregroundPosition = -1L
                 ReaderInteractionRuntime.backgroundTtsPlaying = false
                 ReaderInteractionRuntime.continuousReady = false
+                ReaderInteractionRuntime.resetVolumeDiagnostics()
                 val preferences = ReaderPreferences(context)
                 preferences.flush(
                     preferences.load().copy(
@@ -71,8 +72,8 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
             "continuousReady" -> Bundle().apply { putLong("ready", if (ReaderInteractionRuntime.continuousReady) 1L else 0L) }
             "inputState" -> {
                 // Read-only benchmark diagnostics. This exposes no navigation action and cannot alter
-                // product state; it only proves which persisted/runtime eligibility inputs the real
-                // Activity volume-key path should see when a hosted input journey fails.
+                // product state; it only proves whether the real Activity volume-key path reached
+                // ReaderInteractionRuntime and which persisted/runtime eligibility inputs it observed.
                 val settings = ReaderPreferences(context).load()
                 Bundle().apply {
                     putLong("position", ReaderInteractionRuntime.foregroundPosition)
@@ -81,6 +82,9 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                     putBoolean("reverseVolumeKeys", settings.reverseVolumeKeys)
                     putBoolean("autoScrollEnabled", settings.autoScrollEnabled)
                     putBoolean("backgroundTtsPlaying", ReaderInteractionRuntime.backgroundTtsPlaying)
+                    putLong("volumeEligibilityChecks", ReaderInteractionRuntime.volumeEligibilityChecks)
+                    putBoolean("lastVolumeForegroundTtsPlaying", ReaderInteractionRuntime.lastVolumeForegroundTtsPlaying)
+                    putBoolean("lastVolumeEligible", ReaderInteractionRuntime.lastVolumeEligible)
                 }
             }
             "clear" -> {
