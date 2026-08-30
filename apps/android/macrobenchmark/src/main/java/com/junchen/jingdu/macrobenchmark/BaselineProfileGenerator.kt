@@ -151,48 +151,46 @@ class BaselineProfileGenerator {
         device.waitForIdle()
     }
 
-    private fun MacrobenchmarkScope.ensureTopControlsVisible() {
-        if (device.wait(Until.hasObject(By.text("Aa")), 750)) return
-        val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
-        repeat(2) {
-            for ((x, y) in taps) {
-                device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())
-                if (device.wait(Until.hasObject(By.text("Aa")), 900)) return
-            }
-        }
-        error("Reader V3 baseline top reading controls did not become visible")
-    }
-
-    private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
-        check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 baseline $label missing" }
-        val target = device.findObject(selector) ?: error("Reader V3 baseline $label unavailable")
-        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader V3 baseline $label became stale")
-        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 baseline $label tap was not injected" }
-    }
-
-    private fun MacrobenchmarkScope.requireChaptersClick() {
-        device.findObject(By.desc("Chapters"))?.let { target ->
-            val bounds = runCatching { target.visibleBounds }.getOrNull()
-            if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
-        }
-        device.findObject(By.descContains("Chapter"))?.let { target ->
-            val bounds = runCatching { target.visibleBounds }.getOrNull()
-            if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
-        }
-
-        // UiAutomator nodes are live accessibility handles and can become stale between property
-        // reads while the retained top bar is being re-placed. Snapshot bounds exactly once, then
-        // choose the nearest visible clickable rectangle to the right of the top Aa control.
-        val anchor = device.findObjects(By.text("Aa"))
+    /** Accessibility nodes are live handles; only immutable on-screen rectangles cross helper calls. */
+    private fun MacrobenchmarkScope.visibleBounds(selector: BySelector): android.graphics.Rect? =
+        device.findObjects(selector)
             .asSequence()
             .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
-            .filter { bounds ->
+            .firstOrNull { bounds ->
                 bounds.width() > 0 && bounds.height() > 0 &&
                     bounds.right > 0 && bounds.bottom > 0 &&
                     bounds.left < device.displayWidth && bounds.top < device.displayHeight
             }
-            .minByOrNull { bounds -> bounds.centerY() }
-            ?: error("Reader V3 baseline visible top Aa control missing")
+
+    private fun MacrobenchmarkScope.ensureTopControlsVisible() {
+        if (visibleBounds(By.text("Aa")) != null) return
+        val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
+        repeat(2) {
+            for ((x, y) in taps) {
+                check(device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())) {
+                    "Reader V3 baseline top-control tap was not injected"
+                }
+                if (device.wait(Until.hasObject(By.text("Aa")), 900) && visibleBounds(By.text("Aa")) != null) return
+            }
+        }
+        error("Reader V3 baseline top reading controls did not become visibly on-screen")
+    }
+
+    private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
+        check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 baseline $label missing" }
+        val bounds = visibleBounds(selector) ?: error("Reader V3 baseline $label exists only off-screen")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 baseline $label tap was not injected" }
+    }
+
+    private fun MacrobenchmarkScope.requireChaptersClick() {
+        visibleBounds(By.desc("Chapters"))?.let { bounds ->
+            if (device.click(bounds.centerX(), bounds.centerY())) return
+        }
+        visibleBounds(By.descContains("Chapter"))?.let { bounds ->
+            if (device.click(bounds.centerX(), bounds.centerY())) return
+        }
+
+        val anchor = visibleBounds(By.text("Aa")) ?: error("Reader V3 baseline visible top Aa control missing")
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
             .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
