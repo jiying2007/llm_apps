@@ -99,6 +99,16 @@ internal interface ReaderStatsDao {
     suspend fun pace(): ReaderPaceEntity?
 
     @Upsert suspend fun insertSession(value: ReaderSessionEntity)
+    @Upsert suspend fun upsertSessions(values: List<ReaderSessionEntity>)
+
+    @Query("SELECT * FROM reader_sessions ORDER BY startedAt, id")
+    suspend fun listSessions(): List<ReaderSessionEntity>
+
+    @Query("DELETE FROM reader_sessions")
+    suspend fun clearSessions()
+
+    @Query("DELETE FROM reader_pace")
+    suspend fun clearPace()
 
     @Query("SELECT dayEpoch, SUM(durationMs) AS durationMs, SUM(charsRead) AS charsRead FROM reader_sessions GROUP BY dayEpoch ORDER BY dayEpoch DESC LIMIT :limit")
     fun observeDays(limit: Int): Flow<List<ReaderDayAggregate>>
