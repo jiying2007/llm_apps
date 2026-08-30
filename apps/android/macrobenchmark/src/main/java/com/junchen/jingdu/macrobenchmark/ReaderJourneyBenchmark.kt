@@ -1,5 +1,6 @@
 package com.junchen.jingdu.macrobenchmark
 
+import android.view.KeyEvent
 import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
@@ -9,6 +10,7 @@ import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiObject2
@@ -36,15 +38,24 @@ class ReaderJourneyBenchmark {
         val before = readerPosition()
         var previous = before
         check(previous >= 0) { "Reader V3 page-turn journey has no authoritative starting position: $previous" }
+        val physicalVolume = usePhysicalVolumePageTurn()
         // Hosted API 35 software-emulator input policy consumes injected VOLUME_DOWN before the
-        // foreground Activity even though MainActivity is RESUMED. Use the product reader's real
-        // right tap-zone CUJ here; physical-device release evidence owns hardware-volume delivery.
+        // foreground Activity even though MainActivity is RESUMED. Hosted therefore uses the real
+        // reader tap zone; an explicitly selected physical-device Release run uses hardware volume.
         repeat(6) {
-            check(device.click(
-                (device.displayWidth * PAGE_FORWARD_TAP_X).toInt(),
-                (device.displayHeight * PAGE_FORWARD_TAP_Y).toInt(),
-            )) { "Reader V3 forward page tap was not injected through UiDevice" }
-            previous = waitForReaderAdvance(previous)
+            val injected = if (physicalVolume) {
+                device.pressKeyCode(KeyEvent.KEYCODE_VOLUME_DOWN)
+            } else {
+                device.click(
+                    (device.displayWidth * PAGE_FORWARD_TAP_X).toInt(),
+                    (device.displayHeight * PAGE_FORWARD_TAP_Y).toInt(),
+                )
+            }
+            check(injected) {
+                if (physicalVolume) "Reader V3 physical volume page turn was not injected through UiDevice"
+                else "Reader V3 forward page tap was not injected through UiDevice"
+            }
+            previous = waitForReaderAdvance(previous, physicalVolume)
         }
         val after = readerPosition()
         check(after > before) {
@@ -132,6 +143,9 @@ class ReaderJourneyBenchmark {
         measureBlock = block,
     )
 
+    private fun usePhysicalVolumePageTurn(): Boolean =
+        InstrumentationRegistry.getArguments().getString(PAGE_TURN_INPUT_ARG) == PHYSICAL_VOLUME_INPUT
+
     private fun MacrobenchmarkScope.seedFixture(mib: Int) {
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg $mib",
@@ -154,6 +168,10 @@ class ReaderJourneyBenchmark {
             ?: error("Reader V3 benchmark position query failed: $result")
     }
 
+    private fun MacrobenchmarkScope.readerInputState(): String = device.executeShellCommand(
+        "content call --uri content://com.junchen.jingdu.benchmarkfixture --method inputState",
+    ).trim().ifEmpty { "<unavailable>" }
+
     private fun MacrobenchmarkScope.waitForReaderReady() {
         val deadline = System.nanoTime() + READER_READY_TIMEOUT_NS
         var position = -1L
@@ -171,7 +189,7 @@ class ReaderJourneyBenchmark {
         error("Reader V3 did not publish an authoritative rendered position before interaction: $position")
     }
 
-    private fun MacrobenchmarkScope.waitForReaderAdvance(before: Long): Long {
+    private fun MacrobenchmarkScope.waitForReaderAdvance(before: Long, physicalVolume: Boolean): Long {
         val deadline = System.nanoTime() + INPUT_STATE_TIMEOUT_NS
         var after = before
         while (System.nanoTime() < deadline) {
@@ -183,9 +201,10 @@ class ReaderJourneyBenchmark {
         val focus = device.executeShellCommand(
             "dumpsys activity activities | grep -m 6 -E 'mResumedActivity|topResumedActivity|ResumedActivity' || true",
         ).trim()
+        val input = if (physicalVolume) " inputState=${readerInputState()}" else ""
         error(
-            "Reader V3 page tap did not advance the authoritative reader position: " +
-                "before=$before after=$after focus=${focus.ifEmpty { "<unknown>" }}",
+            "Reader V3 ${if (physicalVolume) "physical volume key" else "page tap"} did not advance the authoritative reader position: " +
+                "before=$before after=$after$input focus=${focus.ifEmpty { "<unknown>" }}",
         )
     }
 
@@ -324,6 +343,8 @@ class ReaderJourneyBenchmark {
         const val CONTINUOUS_READY_TIMEOUT_NS = 12_000_000_000L
         const val PAGE_FORWARD_TAP_X = 0.86f
         const val PAGE_FORWARD_TAP_Y = 0.52f
+        const val PAGE_TURN_INPUT_ARG = "jingdu.pageTurnInput"
+        const val PHYSICAL_VOLUME_INPUT = "physical-volume"
 
         // This target APK already contains the curated, provenance-checked product Baseline Profile.
         // Android's Macrobenchmark contract defines Partial + Require as the fresh-install state of an
