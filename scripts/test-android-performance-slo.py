@@ -50,6 +50,43 @@ class AndroidPerformanceSloTest(unittest.TestCase):
         self.assertTrue(any("continuousScroll10MiB samples=2" in failure for failure in failures))
         self.assertTrue(any("missing required frame evidence: chaptersAndSettings10MiB" in failure for failure in failures))
 
+    def test_release_defaults_remain_product_slo(self) -> None:
+        self.assertEqual((40.0, 80.0), slo.resolve_limits("release", None, None))
+        self.assertEqual(40.0, slo.RELEASE_P95_MS)
+        self.assertEqual(80.0, slo.RELEASE_P99_MS)
+
+    def test_hosted_defaults_are_separate_regression_ceiling(self) -> None:
+        self.assertEqual((120.0, 160.0), slo.resolve_limits("hosted-regression", None, None))
+        self.assertEqual(0.15, slo.HOSTED_MAX_REGRESSION_RATIO)
+
+    def test_hosted_baseline_requires_complete_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "baseline.json"
+            payload = {
+                "schemaVersion": 1,
+                "kind": "reader-v3-hosted-emulator-regression-baseline",
+                "benchmarks": {
+                    "pageTurn10MiB": {"p95Ms": 80.0, "p99Ms": 110.0},
+                    "continuousScroll10MiB": {"p95Ms": 95.0, "p99Ms": 130.0},
+                    "chaptersAndSettings10MiB": {"p95Ms": 100.0, "p99Ms": 140.0},
+                },
+            }
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            loaded = slo.load_hosted_baseline(str(path))
+            self.assertEqual(95.0, loaded["continuousScroll10MiB"]["p95Ms"])
+            del payload["benchmarks"]["chaptersAndSettings10MiB"]
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "missing benchmark"):
+                slo.load_hosted_baseline(str(path))
+
+    def test_hosted_relative_limit_and_absolute_ceiling_both_apply(self) -> None:
+        baseline = 100.0
+        relative = baseline * (1.0 + slo.HOSTED_MAX_REGRESSION_RATIO)
+        self.assertAlmostEqual(115.0, relative)
+        self.assertEqual(115.0, min(slo.HOSTED_P95_MS, relative))
+        high_baseline_relative = 119.0 * (1.0 + slo.HOSTED_MAX_REGRESSION_RATIO)
+        self.assertEqual(120.0, min(slo.HOSTED_P95_MS, high_baseline_relative))
+
     def test_real_shape_file_discovery(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
