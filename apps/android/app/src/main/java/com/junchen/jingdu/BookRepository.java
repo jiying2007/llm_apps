@@ -175,7 +175,17 @@ final class BookRepository {
                     sameRevision ? book.charCount : 0,
                     System.currentTimeMillis());
             upsert(updated);
-            prewarmChapterIndex(updated);
+            long newLength = prewarmChapterIndex(updated);
+            if (!sameRevision && book.charCount > 0 && newLength > 0) {
+                // Re-decode already runs on MainActivity's serialized worker. Do contextual
+                // annotation re-anchoring here so the UI success callback only consumes the
+                // one-shot completion marker instead of performing bounded searches on main.
+                new ReaderAnnotationStore(context).remapBookForRedecode(
+                        book.id,
+                        normalizedSha,
+                        book.charCount,
+                        newLength);
+            }
             return updated;
         } finally {
             deleteTemporary(temporary);
@@ -250,21 +260,24 @@ final class BookRepository {
         }
     }
 
-    private void prewarmChapterIndex(Book book) {
+    private long prewarmChapterIndex(Book book) {
         // Chapter discovery and Smart TOC quality are derived indexes of the immutable normalized
         // TXT. Build both while import/re-decode already owns the document so first reading/panel
         // interactions consume revision-keyed caches instead of competing with the frame thread.
         // Failure is harmless: Core/SmartToc can deterministically rebuild either cache later.
         try (ReaderController source = new ReaderController(false)) {
             source.open(normalizedFile(book), 0);
+            long length = source.length();
             source.chapters();
             ReaderDerivedIndexPrewarmer.prewarm(
                     context,
                     book.id,
                     book.normalizedSha256,
-                    source.length(),
+                    length,
                     source);
+            return length;
         } catch (Throwable ignored) {
+            return 0L;
         }
     }
 
