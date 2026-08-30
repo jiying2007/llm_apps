@@ -153,20 +153,20 @@ fun JingduApp(
         val fallbackPanelState = rememberUpdatedState(state.panel)
         val hotPanelState: State<ReaderPanel?> = if (hotPanel != null) hotPanel.collectAsStateWithLifecycle() else fallbackPanelState
 
-        BackHandler(enabled = state.panel != null || state.screen == AppScreen.READER) {
-            when {
-                state.panel != null -> actions.onClosePanel()
-                location.canBack -> stableLocationBack()
-                else -> trackedActions.onBackToLibrary()
-            }
-        }
+        ReaderBackHandler(
+            hotPanelState = hotPanelState,
+            panel = state.panel,
+            screen = state.screen,
+            canLocationBack = location.canBack,
+            actions = trackedActions,
+            onLocationBack = stableLocationBack,
+        )
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
                 AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
             }
             if (state.screen == AppScreen.READER) {
-                ReaderHotPanelBackHandler(hotPanelState, trackedActions)
                 PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS, quickPanelState) {
                     ReaderQuickSettingsSheet(quickPanelState, trackedActions)
                 }
@@ -201,11 +201,25 @@ fun JingduApp(
     }
 }
 
-/** Only this tiny restart group reads panel state in composition for Back dispatch. */
+/** One deterministic Back callback owns reader navigation priority; only this tiny restart group reads hot-panel state. */
 @Composable
-private fun ReaderHotPanelBackHandler(panelState: State<ReaderPanel?>, actions: JingduActions) {
-    val panel = panelState.value
-    BackHandler(enabled = panel == ReaderPanel.QUICK_SETTINGS || panel == ReaderPanel.CHAPTERS) { actions.onClosePanel() }
+private fun ReaderBackHandler(
+    hotPanelState: State<ReaderPanel?>,
+    panel: ReaderPanel?,
+    screen: AppScreen,
+    canLocationBack: Boolean,
+    actions: JingduActions,
+    onLocationBack: () -> Unit,
+) {
+    val hotPanel = hotPanelState.value
+    BackHandler(enabled = hotPanel != null || panel != null || screen == AppScreen.READER) {
+        when {
+            hotPanel != null -> actions.onClosePanel()
+            panel != null -> actions.onClosePanel()
+            canLocationBack -> onLocationBack()
+            else -> actions.onBackToLibrary()
+        }
+    }
 }
 
 private class ReaderPanelDisplayListCache {
