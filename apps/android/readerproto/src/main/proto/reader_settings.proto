@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+package jingdu.reader;
+
+option java_package = "com.junchen.jingdu.proto";
+option java_multiple_files = true;
+
+message ReaderThemeProto {
+  string id = 1;
+  string name = 2;
+  ReaderPaletteProto palette = 3;
+  ReaderTypefaceProto typeface = 4;
+  string custom_font_id = 5;
+  float font_size_sp = 6;
+  float line_height_multiplier = 7;
+  float letter_spacing_em = 8;
+  float paragraph_spacing_em = 9;
+  float horizontal_padding_dp = 10;
+  float vertical_padding_dp = 11;
+  float first_line_indent_em = 12;
+  ReaderTextAlignmentProto text_alignment = 13;
+  ReaderFontWeightProto font_weight = 14;
+  bool compress_blank_lines = 15;
+  bool emphasize_headings = 16;
+  float extra_dim = 17;
+}
+
+message ReaderSettingsProto {
+  int32 schema = 1;
+  ReaderPaletteProto palette = 2;
+  ReaderTypefaceProto typeface = 3;
+  string custom_font_id = 4;
+  float font_size_sp = 5;
+  float line_height_multiplier = 6;
+  float letter_spacing_em = 7;
+  float paragraph_spacing_em = 8;
+  float horizontal_padding_dp = 9;
+  float vertical_padding_dp = 10;
+  float first_line_indent_em = 11;
+  ReaderTextAlignmentProto text_alignment = 12;
+  ReaderFontWeightProto font_weight = 13;
+  bool compress_blank_lines = 14;
+  bool emphasize_headings = 15;
+  ReaderPresetProto preset = 16;
+  ReaderModeProto reading_mode = 17;
+  ReaderPageAnimationProto page_animation = 18;
+  bool tap_paging_enabled = 19;
+  bool swipe_paging_enabled = 20;
+  bool reverse_paging_gestures = 21;
+  ReaderTapZonePresetProto tap_zone_preset = 22;
+  float tap_zone_edge_fraction = 23;
+  bool brightness_gesture_enabled = 24;
+  bool pinch_font_enabled = 25;
+  bool double_tap_bookmark_enabled = 26;
+  int64 controls_auto_hide_ms = 27;
+  bool use_system_brightness = 28;
+  float reader_brightness = 29;
+  ReaderOrientationProto orientation = 30;
+  ReaderVolumeKeyModeProto volume_key_mode = 31;
+  bool reverse_volume_keys = 32;
+  ReaderWideColumnsProto wide_columns = 33;
+  bool show_reading_status = 34;
+  bool show_clock = 35;
+  bool show_battery = 36;
+  int32 focus_ruler_lines = 37;
+  bool haptic_enabled = 38;
+  bool gesture_coach_dismissed = 39;
+  float auto_scroll_speed_dp_per_second = 40;
+  ReaderAutoPageModeProto auto_page_mode = 41;
+  float auto_page_pace_multiplier = 42;
+  int64 auto_page_delay_ms = 43;
+  ChineseDisplayModeProto chinese_mode = 44;
+  string chinese_overrides = 45;
+  float tts_rate = 46;
+  float tts_pitch = 47;
+  string tts_voice_name = 48;
+  float extra_dim = 49;
+  bool two_stage_selection_enabled = 50;
+  bool advanced_gesture_customization_enabled = 51;
+  bool dictionary_process_text_enabled = 52;
+  repeated ReaderThemeProto named_themes = 53;
+  string active_theme_id = 54;
+  ReaderGestureActionProto center_tap_action = 55;
+  ReaderGestureActionProto double_tap_action = 56;
+}
+
+enum ReaderPaletteProto {
+  READER_PALETTE_PAPER = 0;
+  READER_PALETTE_LIGHT = 1;
+  READER_PALETTE_SEPIA = 2;
+  READER_PALETTE_NIGHT = 3;
+  READER_PALETTE_OLED = 4;
+}
+
+enum ReaderTypefaceProto {
+  READER_TYPEFACE_SYSTEM = 0;
+  READER_TYPEFACE_SERIF = 1;
+  READER_TYPEFACE_MONOSPACE = 2;
+  READER_TYPEFACE_CUSTOM = 3;
+}
+
+enum ChineseDisplayModeProto {
+  CHINESE_DISPLAY_ORIGINAL = 0;
+  CHINESE_DISPLAY_SIMPLIFIED = 1;
+  CHINESE_DISPLAY_TRADITIONAL = 2;
+  CHINESE_DISPLAY_TAIWAN = 3;
+  CHINESE_DISPLAY_TAIWAN_PHRASES = 4;
+  CHINESE_DISPLAY_HONG_KONG = 5;
+}
+
+enum ReaderModeProto {
+  READER_MODE_PAGED = 0;
+  READER_MODE_CONTINUOUS = 1;
+}
+
+enum ReaderPageAnimationProto {
+  READER_PAGE_ANIMATION_NONE = 0;
+  READER_PAGE_ANIMATION_SLIDE = 1;
+}
+
+enum ReaderOrientationProto {
+  READER_ORIENTATION_SYSTEM = 0;
+  READER_ORIENTATION_PORTRAIT = 1;
+  READER_ORIENTATION_LANDSCAPE = 2;
+}
+
+enum ReaderTextAlignmentProto {
+  READER_TEXT_ALIGNMENT_START = 0;
+  READER_TEXT_ALIGNMENT_JUSTIFY = 1;
+}
+
+enum ReaderFontWeightProto {
+  READER_FONT_WEIGHT_NORMAL = 0;
+  READER_FONT_WEIGHT_MEDIUM = 1;
+  READER_FONT_WEIGHT_SEMIBOLD = 2;
+}
+
+enum ReaderPresetProto {
+  READER_PRESET_STANDARD = 0;
+  READER_PRESET_COMFORT = 1;
+  READER_PRESET_LARGE = 2;
+  READER_PRESET_NIGHT = 3;
+  READER_PRESET_LOW_VISION = 4;
+  READER_PRESET_CUSTOM = 5;
+}
+
+enum ReaderVolumeKeyModeProto {
+  READER_VOLUME_PAGE_WHEN_NOT_TTS = 0;
+  READER_VOLUME_ALWAYS_PAGE = 1;
+  READER_VOLUME_SYSTEM_VOLUME = 2;
+}
+
+enum ReaderWideColumnsProto {
+  READER_COLUMNS_AUTO = 0;
+  READER_COLUMNS_SINGLE = 1;
+  READER_COLUMNS_DOUBLE = 2;
+}
+
+enum ReaderTapZonePresetProto {
+  READER_TAP_BALANCED = 0;
+  READER_TAP_RIGHT_HANDED = 1;
+  READER_TAP_LEFT_HANDED = 2;
+  READER_TAP_CUSTOM = 3;
+}
+
+enum ReaderAutoPageModeProto {
+  READER_AUTO_PAGE_ADAPTIVE = 0;
+  READER_AUTO_PAGE_FIXED = 1;
+}
+
+enum ReaderGestureActionProto {
+  READER_GESTURE_CONTROLS = 0;
+  READER_GESTURE_BOOKMARK = 1;
+  READER_GESTURE_NEXT = 2;
+  READER_GESTURE_PREVIOUS = 3;
+  READER_GESTURE_NONE = 4;
+}

@@ -10,14 +10,32 @@ import kotlin.math.roundToInt
 /** Runtime-only coordination for controls that are owned by Android rather than Compose. */
 internal object ReaderInteractionRuntime {
     @Volatile var backgroundTtsPlaying: Boolean = false
+    @Volatile var foregroundPosition: Long = -1L
+    @Volatile var continuousReady: Boolean = false
+    @Volatile var volumeEligibilityChecks: Long = 0L
+    @Volatile var lastVolumeForegroundTtsPlaying: Boolean = false
+    @Volatile var lastVolumeEligible: Boolean = false
+
+    fun resetVolumeDiagnostics() {
+        volumeEligibilityChecks = 0L
+        lastVolumeForegroundTtsPlaying = false
+        lastVolumeEligible = false
+    }
 
     fun shouldUseVolumeKeysForPaging(settings: ReaderSettings, foregroundTtsPlaying: Boolean): Boolean {
-        if (settings.autoScrollEnabled) return false
-        return when (settings.volumeKeyMode) {
-            ReaderVolumeKeyMode.SYSTEM_VOLUME -> false
-            ReaderVolumeKeyMode.ALWAYS_PAGE -> true
-            ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS -> !foregroundTtsPlaying && !backgroundTtsPlaying
+        val eligible = if (settings.autoScrollEnabled) {
+            false
+        } else {
+            when (settings.volumeKeyMode) {
+                ReaderVolumeKeyMode.SYSTEM_VOLUME -> false
+                ReaderVolumeKeyMode.ALWAYS_PAGE -> true
+                ReaderVolumeKeyMode.PAGE_WHEN_NOT_TTS -> !foregroundTtsPlaying && !backgroundTtsPlaying
+            }
         }
+        lastVolumeForegroundTtsPlaying = foregroundTtsPlaying
+        lastVolumeEligible = eligible
+        volumeEligibilityChecks += 1L
+        return eligible
     }
 }
 

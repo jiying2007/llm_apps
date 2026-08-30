@@ -113,27 +113,31 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
     val store = remember { TocOverrideStore(context) }
     var base by remember(book?.id) { mutableStateOf<TocQualityReport?>(null) }
     var report by remember(book?.id) { mutableStateOf<TocQualityReport?>(null) }
-    var loading by remember(book?.id) { mutableStateOf(true) }
+    var loading by remember(book?.id) { mutableStateOf(!state.chaptersLoaded) }
     var addDialog by rememberSaveable { mutableStateOf(false) }
     var title by rememberSaveable { mutableStateOf("") }
 
-    suspend fun load() {
-        if (book == null) return
-        loading = true
-        val computed = withContext(Dispatchers.IO) {
-            val repo = BookRepository(context)
-            val source = repo.list().firstOrNull { it.id == book.id } ?: return@withContext null
-            ReaderController().use { reader ->
-                reader.open(repo.normalizedFile(source), source.progress)
-                SmartToc.analyze(reader)
-            }
+    // MainActivity.ensureChapters() is the single TOC authority. The sheet must never reopen the
+    // document and run SmartToc.analyze() a second time while the first analysis is already active.
+    LaunchedEffect(book?.id, state.chaptersLoaded, state.chapters, state.length) {
+        if (book == null) {
+            base = null
+            report = null
+            loading = false
+            return@LaunchedEffect
+        }
+        if (!state.chaptersLoaded) {
+            loading = true
+            actions.onEnsureChapters()
+            return@LaunchedEffect
+        }
+        val computed = withContext(Dispatchers.Default) {
+            SmartToc.evaluate(state.chapters.map { SmartChapter(it.offset, it.title, it.source, it.confidence) })
         }
         base = computed
-        report = computed?.let { store.apply(it, store.load(book.id, state.length)) }
+        report = store.apply(computed, store.load(book.id, state.length))
         loading = false
     }
-
-    LaunchedEffect(book?.id, state.length) { load() }
 
     ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
@@ -198,7 +202,7 @@ private data class LabCandidate(
 internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
     val context = LocalContext.current
     val book = state.currentBook
-    val feedbackStore = remember { SmartCleanFeedbackStore(context) }
+    val feedbackStore = remember(book?.id) { SmartCleanFeedbackStore(context) }
     var candidates by remember(book?.id) { mutableStateOf<List<LabCandidate>>(emptyList()) }
     var loading by remember(book?.id) { mutableStateOf(true) }
 

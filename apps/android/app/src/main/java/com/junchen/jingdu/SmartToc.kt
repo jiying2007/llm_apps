@@ -21,10 +21,12 @@ data class TocQualityReport(
 
 /**
  * Candidate-only TOC intelligence layered on top of Core offsets. The Core remains authoritative
- * for offsets; this layer augments special Chinese headings by exact native search and evaluates
- * structure quality without whole-document managed copies or arbitrary regex.
+ * for offsets; this layer augments sparse TOCs with special Chinese headings by exact native search
+ * and evaluates structure quality without whole-document managed copies or arbitrary regex.
  */
 internal object SmartToc {
+    private const val MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC = 20
+
     private val specialHeadings = listOf(
         "序章", "楔子", "引子", "前言", "序言", "后记", "後記", "尾声", "尾聲",
         "大结局", "大結局", "终章", "終章", "番外", "番外篇",
@@ -36,14 +38,23 @@ internal object SmartToc {
             merged[chapter.offset()] = SmartChapter(chapter.offset(), chapter.title().trim(), "core", 100)
         }
 
-        specialHeadings.forEach { marker ->
-            reader.search(marker).take(80).forEach { hit ->
-                val verified = verifyLineHeading(reader, hit.offset(), marker) ?: return@forEach
-                merged.putIfAbsent(hit.offset(), SmartChapter(hit.offset(), verified, "special", 92))
+        // Native Core already provides authoritative chapter offsets. Exact full-document searches
+        // are only useful when that TOC is sparse; on normal novels they add repeated O(document)
+        // work with no user-visible benefit.
+        if (merged.size < MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC) {
+            specialHeadings.forEach { marker ->
+                reader.search(marker).take(80).forEach { hit ->
+                    val verified = verifyLineHeading(reader, hit.offset(), marker) ?: return@forEach
+                    merged.putIfAbsent(hit.offset(), SmartChapter(hit.offset(), verified, "special", 92))
+                }
             }
         }
 
-        val chapters = merged.values.sortedBy(SmartChapter::offset)
+        return evaluate(merged.values)
+    }
+
+    fun evaluate(values: Collection<SmartChapter>): TocQualityReport {
+        val chapters = values.distinctBy(SmartChapter::offset).sortedBy(SmartChapter::offset)
         val duplicateTitles = chapters.groupingBy { normalizeTitle(it.title) }.eachCount().values.sumOf { (it - 1).coerceAtLeast(0) }
         val numeric = chapters.mapIndexedNotNull { index, chapter -> parseOrdinal(chapter.title)?.let { index to it } }
         var numericGaps = 0

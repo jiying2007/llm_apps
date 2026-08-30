@@ -32,4 +32,10 @@ if(JINGDU_BUILD_TESTS)
   target_compile_options(jingdu_core_performance_gate_test PRIVATE -Wall -Wextra -Wpedantic -Werror)
   add_test(NAME jingdu_core_performance_gate_test COMMAND jingdu_core_performance_gate_test)
   set_tests_properties(jingdu_core_performance_gate_test PROPERTIES TIMEOUT 120)
+
+  # Near-1GiB bounded-memory contract: same behavior gate, much larger source, fixed RSS ceiling.
+  add_test(NAME jingdu_core_near_1gib_rss_gate_test COMMAND jingdu_core_performance_gate_test)
+  set_tests_properties(jingdu_core_near_1gib_rss_gate_test PROPERTIES
+    ENVIRONMENT "JINGDU_PERF_FIXTURE_MIB=960"
+    TIMEOUT 300)
 endif()

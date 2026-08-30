@@ -1,5 +1,6 @@
 package com.junchen.jingdu
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
@@ -12,12 +13,12 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -31,9 +32,19 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
+    private val readerViewModel: ReaderViewModel by viewModels()
     private val main = Handler(Looper.getMainLooper())
     private val workers: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "jingdu-worker").apply { isDaemon = true }
+    }
+    private val progressWorkers: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "jingdu-progress").apply { isDaemon = true }
+    }
+    private val tocWorkers: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread({
+            runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) }
+            runnable.run()
+        }, "jingdu-toc").apply { isDaemon = true }
     }
     private val workGeneration = AtomicLong()
     private val session = ReaderSession()
@@ -52,7 +63,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var annotationStore: ReaderAnnotationStore
     private lateinit var fontStore: ReaderFontStore
     private lateinit var statsStore: ReaderStatsStore
+    private lateinit var smartTocCache: SmartTocCacheStore
     @Volatile private var proUnlocked = false
+    @Volatile private var chapterWorkKey: String? = null
     private var reader: ReaderController
         get() = session.reader
         set(value) { session.reader = value }
@@ -69,7 +82,10 @@ class MainActivity : ComponentActivity() {
     private var pendingExport: File? = null
     private var lastProgressPersistAt = 0L
     private var lastProgressPersistPosition = -1L
-    private var uiState by mutableStateOf(AppUiState())
+    private var consumedReaderVolumeKey = KeyEvent.KEYCODE_UNKNOWN
+    private var uiState: AppUiState
+        get() = readerViewModel.state.value
+        set(value) { readerViewModel.replace(value) }
 
     private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importUri(it) } }
     private val batchImportLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> if (uris.isNotEmpty()) batchImportUris(uris) }
@@ -127,7 +143,7 @@ class MainActivity : ComponentActivity() {
             onSeekFraction = ::seekFraction,
             onVisibleCharsChanged = { visiblePageChars = it.coerceAtLeast(ReaderController.MIN_PAGE_CHARS) },
             onOpenPanel = ::openPanel,
-            onClosePanel = { uiState = uiState.copy(panel = null) },
+            onClosePanel = ::closePanel,
             onSearchQueryChanged = { uiState = uiState.copy(searchQuery = it) },
             onSearch = ::search,
             onJump = ::jumpTo,
@@ -195,6 +211,7 @@ class MainActivity : ComponentActivity() {
         annotationStore = ReaderAnnotationStore(this)
         fontStore = ReaderFontStore(this)
         statsStore = ReaderStatsStore(this)
+        smartTocCache = SmartTocCacheStore(this)
         ttsCatalog = TtsController(this)
         userBackup = UserBackup(readerPreferences, ruleLibrary, annotationStore)
         uiState = uiState.copy(globalRules = ruleLibrary.load())
@@ -221,7 +238,16 @@ class MainActivity : ComponentActivity() {
             onMessage = ::showMessage,
         )
         billing.start()
-        setContent { JingduApp(uiState, actions) }
+        setContent {
+            val state by readerViewModel.state.collectAsStateWithLifecycle()
+            val location by readerViewModel.location.collectAsStateWithLifecycle()
+            JingduApp(
+                state = state, actions = actions, location = location, hotPanel = readerViewModel.hotPanel,
+                onTrackLocation = { current, target, length -> readerViewModel.trackLocation(current, target, length) },
+                onLocationBack = { readerViewModel.backTarget(readerViewModel.state.value.position)?.let(::jumpTo) },
+                onLocationForward = { readerViewModel.forwardTarget(readerViewModel.state.value.position)?.let(::jumpTo) },
+            )
+        }
         workers.execute {
             val settings = readerPreferences.load()
             main.post {
@@ -357,6 +383,7 @@ class MainActivity : ComponentActivity() {
 
         if (previousBook != null && !previousClean) repository.saveProgress(previousBook, previousPosition)
         val token = workGeneration.incrementAndGet()
+        chapterWorkKey = null
         uiState = uiState.copy(
             screen = AppScreen.READER,
             busyLabel = getString(if (clean) R.string.busy_clean_preview else R.string.busy_open),
@@ -378,6 +405,16 @@ class MainActivity : ComponentActivity() {
             try {
                 val file = if (clean) buildClean(book) else repository.normalizedFile(book)
                 candidate.open(file, restored)
+                if (!clean) {
+                    runCatching {
+                        prewarmReaderSmartChaptersPanel(
+                            applicationContext,
+                            book.id,
+                            book.normalizedSha256,
+                            candidate.length(),
+                        )
+                    }
+                }
                 if (token != workGeneration.get() || isDestroyed) { candidate.close(); return@execute }
                 main.post {
                     if (token != workGeneration.get() || isDestroyed) { candidate.close(); return@post }
@@ -418,30 +455,53 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun render() {
+    private fun render(pageTurnDirection: Int = 0) {
         val book = currentBook ?: return
         if (uiState.busyLabel != null) return
         try {
             val text = reader.page()
-            if (!cleanMode) persistProgress(book)
-            statsStore.mark(book.id, reader.position())
+            val position = reader.position()
+            val length = reader.length()
+            ReaderInteractionRuntime.foregroundPosition = position
+            if (!cleanMode) persistProgress(book, position = position)
+            statsStore.mark(book.id, position)
+            val card = uiState.currentBook
+                ?.takeIf { it.id == book.id && it.normalizedSha256 == book.normalizedSha256 }
+                ?.copy(progress = position, charCount = length)
+                ?: toCard(book).copy(progress = position, charCount = length)
             uiState = uiState.copy(
-                screen = AppScreen.READER, currentBook = toCard(book), pageText = text,
-                position = reader.position(), length = reader.length(), cleanMode = cleanMode,
+                screen = AppScreen.READER, currentBook = card, pageText = text,
+                position = position, pageTurnDirection = pageTurnDirection, length = length, cleanMode = cleanMode,
             )
         } catch (error: Throwable) {
             showMessage(friendlyError(getString(R.string.error_read), error))
         }
     }
 
-    private fun persistProgress(book: BookRepository.Book, force: Boolean = false) {
+    private fun persistProgress(book: BookRepository.Book, force: Boolean = false, position: Long = reader.position()) {
         val now = SystemClock.elapsedRealtime()
-        val position = reader.position()
         if (!force && now - lastProgressPersistAt < PROGRESS_SAVE_INTERVAL_MS &&
             abs(position - lastProgressPersistPosition) < PROGRESS_SAVE_CHAR_DELTA) return
-        repository.saveProgress(book, position)
         lastProgressPersistAt = now
         lastProgressPersistPosition = position
+        if (force) {
+            runCatching { progressWorkers.submit { repository.saveProgress(book, position) }.get() }
+                .getOrElse { repository.saveProgress(book, position) }
+        } else {
+            progressWorkers.execute { runCatching { repository.saveProgress(book, position) } }
+        }
+    }
+
+    private fun publishPositionOnly(book: BookRepository.Book, position: Long) {
+        val length = reader.length()
+        persistProgress(book, position = position)
+        statsStore.mark(book.id, position)
+        val card = uiState.currentBook
+            ?.takeIf { it.id == book.id && it.normalizedSha256 == book.normalizedSha256 }
+            ?.copy(progress = position, charCount = length)
+            ?: toCard(book).copy(progress = position, charCount = length)
+        ReaderInteractionRuntime.foregroundPosition = position
+        uiState = uiState.copy(currentBook = card, position = position, pageTurnDirection = 0, length = length)
     }
 
     private fun navigateNext(userInitiated: Boolean) {
@@ -451,14 +511,14 @@ class MainActivity : ComponentActivity() {
         if (current >= (reader.length() - 1).coerceAtLeast(0)) return
         pageHistory.addLast(current)
         reader.move(visiblePageChars.coerceAtLeast(ReaderController.MIN_PAGE_CHARS))
-        render()
+        render(pageTurnDirection = 1)
     }
 
     private fun navigatePrevious(userInitiated: Boolean) {
         if (uiState.busyLabel != null || currentBook == null) return
         if (userInitiated) stopAllMotion()
         if (pageHistory.isNotEmpty()) reader.jump(pageHistory.removeLast()) else reader.move(-visiblePageChars.coerceAtLeast(ReaderController.MIN_PAGE_CHARS))
-        render()
+        render(pageTurnDirection = -1)
     }
 
     private fun seekFraction(fraction: Float) {
@@ -471,24 +531,28 @@ class MainActivity : ComponentActivity() {
     private fun jumpTo(offset: Long) {
         if (uiState.busyLabel != null || currentBook == null) return
         stopAllMotion(); pageHistory.clear(); reader.jump(offset)
+        readerViewModel.closeHotPanel()
         uiState = uiState.copy(panel = null)
         render()
     }
 
     private fun syncTtsPosition(offset: Long) {
-        if (uiState.busyLabel != null || currentBook == null || cleanMode || reader.length() <= 0) return
+        val book = currentBook ?: return
+        if (uiState.busyLabel != null || cleanMode || reader.length() <= 0) return
         val bounded = offset.coerceIn(0L, (reader.length() - 1).coerceAtLeast(0L))
         if (bounded == reader.position()) return
         reader.jump(bounded)
-        render()
+        if (uiState.settings.readingMode == ReaderMode.CONTINUOUS && !uiState.tts.active) publishPositionOnly(book, bounded)
+        else render()
     }
 
     private fun backToLibrary() {
+        readerViewModel.hotPanel.value?.let { readerViewModel.closeHotPanel(); return }
         uiState.panel?.let { uiState = uiState.copy(panel = null); return }
         val book = currentBook
         if (book != null && !cleanMode) persistProgress(book, force = true)
         stopAllMotion(); reader.close()
-        currentBook = null; cleanMode = false; pageHistory.clear(); refreshLibrary()
+        currentBook = null; cleanMode = false; pageHistory.clear(); chapterWorkKey = null; refreshLibrary()
         uiState = uiState.copy(
             screen = AppScreen.LIBRARY, currentBook = null, pageText = "", position = 0, length = 0,
             cleanMode = false, panel = null, busyLabel = null, searchQuery = "", searchResults = emptyList(),
@@ -498,9 +562,19 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun closePanel() {
+        if (readerViewModel.hotPanel.value != null) readerViewModel.closeHotPanel()
+        else uiState = uiState.copy(panel = null)
+    }
+
     private fun openPanel(panel: ReaderPanel) {
         if (uiState.busyLabel != null || currentBook == null) return
         stopAutoScroll()
+        if (panel == ReaderPanel.QUICK_SETTINGS || panel == ReaderPanel.CHAPTERS) {
+            readerViewModel.openHotPanel(panel)
+            return
+        }
+        readerViewModel.closeHotPanel()
         uiState = uiState.copy(panel = panel)
         when (panel) {
             ReaderPanel.BOOKMARKS -> refreshBookmarks()
@@ -529,19 +603,43 @@ class MainActivity : ComponentActivity() {
 
     private fun ensureChapters() {
         val book = currentBook ?: return
-        if (uiState.chaptersLoaded) return
-        runWork(
-            label = getString(R.string.busy_search),
-            task = {
-                ReaderController().use { source ->
-                    source.open(repository.normalizedFile(book), reader.position())
-                    val base = SmartToc.analyze(source)
-                    TocOverrideStore(this).apply(base, TocOverrideStore(this).load(book.id, source.length()))
+        if (uiState.chaptersLoaded || cleanMode) return
+        val length = reader.length()
+        if (length <= 0) return
+        val revision = book.normalizedSha256
+        val position = reader.position()
+        val key = "${book.id}:$revision:$length"
+        if (chapterWorkKey == key) return
+        chapterWorkKey = key
+        tocWorkers.execute {
+            try {
+                val base = smartTocCache.load(book.id, revision, length) ?: ReaderController().use { source ->
+                    source.open(repository.normalizedFile(book), position)
+                    SmartToc.analyze(source).also { report -> smartTocCache.save(book.id, revision, length, report) }
                 }
-            },
-            success = { report -> uiState = uiState.copy(chaptersLoaded = true, chapters = report.chapters.map { ChapterModel(it.offset, it.title, it.source, it.confidence) }) },
-            errorTitle = getString(R.string.chapters),
-        )
+                val overrides = TocOverrideStore(this).load(book.id, length)
+                val report = TocOverrideStore(this).apply(base, overrides)
+                // Materialize the potentially large chapter projection on the background TOC worker.
+                // The main thread only publishes an already-built immutable list.
+                val chapterModels = report.chapters.map { ChapterModel(it.offset, it.title, it.source, it.confidence) }
+                main.post {
+                    if (chapterWorkKey == key) chapterWorkKey = null
+                    val active = currentBook
+                    if (isDestroyed || active == null || active.id != book.id || active.normalizedSha256 != revision || cleanMode) return@post
+                    uiState = uiState.copy(
+                        chaptersLoaded = true,
+                        chapters = chapterModels,
+                    )
+                }
+            } catch (error: Throwable) {
+                main.post {
+                    if (chapterWorkKey == key) chapterWorkKey = null
+                    if (!isDestroyed && currentBook?.id == book.id && readerViewModel.hotPanel.value == ReaderPanel.CHAPTERS) {
+                        showMessage(friendlyError(getString(R.string.chapters), error))
+                    }
+                }
+            }
+        }
     }
 
     private fun refreshAnnotations() {
@@ -867,6 +965,7 @@ class MainActivity : ComponentActivity() {
             success = { (updated, newLength) ->
                 val mappedProgress = mapOffset(oldPosition, oldLength, newLength)
                 annotationStore.remapBook(book.id, oldLength, newLength)
+                smartTocCache.clear(book.id)
                 repository.saveProgress(updated, mappedProgress)
                 repository.updateCharCount(updated, newLength)
                 reviewPrompter.recordEncodingRescue()
@@ -887,6 +986,7 @@ class MainActivity : ComponentActivity() {
 
     private fun updateSettings(settings: ReaderSettings) {
         if (settings.ttsVoiceName != uiState.settings.ttsVoiceName && !proUnlocked) { billing.purchase(); return }
+        val previousReadingMode = uiState.settings.readingMode
         var normalized = settings.copy(
             fontSizeSp = settings.fontSizeSp.coerceIn(14f, 40f),
             lineHeightMultiplier = settings.lineHeightMultiplier.coerceIn(1.15f, 2.2f),
@@ -913,6 +1013,7 @@ class MainActivity : ComponentActivity() {
         ttsCatalog.setRate(normalized.ttsRate); ttsCatalog.setPitch(normalized.ttsPitch); ttsCatalog.setVoiceName(normalized.ttsVoiceName)
         ReaderPageLayoutCache.clear()
         uiState = uiState.copy(settings = normalized, motion = motionController.state)
+        if (previousReadingMode != normalized.readingMode && normalized.readingMode == ReaderMode.PAGED && currentBook != null) render()
     }
 
     private fun beginMotion(target: ReaderMotionState) {
@@ -937,8 +1038,9 @@ class MainActivity : ComponentActivity() {
         if (uiState.tts.active || motionController.state == ReaderMotionState.TTS) {
             runCatching { startService(Intent(this, TtsPlaybackService::class.java).setAction(TtsPlaybackService.ACTION_STOP)) }
         }
+        val needsPublish = motionController.state != ReaderMotionState.IDLE || uiState.motion != ReaderMotionState.IDLE || uiState.settings.autoScrollEnabled
         motionController.stop()
-        uiState = uiState.copy(motion = ReaderMotionState.IDLE, settings = uiState.settings.copy(autoScrollEnabled = false))
+        if (needsPublish) uiState = uiState.copy(motion = ReaderMotionState.IDLE, settings = uiState.settings.copy(autoScrollEnabled = false))
     }
 
     private fun startTtsPlayback() {
@@ -1010,8 +1112,9 @@ class MainActivity : ComponentActivity() {
         cleanHistory.clearAllForBook(book.id)
         smartCleanFeedback.clearBook(book.id)
         annotationStore.clearBook(book.id)
+        smartTocCache.clear(book.id)
         TocOverrideStore(this).reset(book.id)
-        currentBook = null; cleanMode = false; pageHistory.clear(); refreshLibrary()
+        currentBook = null; cleanMode = false; pageHistory.clear(); chapterWorkKey = null; refreshLibrary()
         uiState = uiState.copy(
             screen = AppScreen.LIBRARY, currentBook = null, pageText = "", position = 0, length = 0,
             cleanMode = false, panel = null, chaptersLoaded = false, repairRules = emptyList(),
@@ -1028,6 +1131,7 @@ class MainActivity : ComponentActivity() {
         cleanHistory.clearAllForBook(book.id)
         smartCleanFeedback.clearBook(book.id)
         annotationStore.clearBook(book.id)
+        smartTocCache.clear(book.id)
         TocOverrideStore(this).reset(book.id)
         refreshLibrary()
         showMessage(getString(R.string.removed_from_library))
@@ -1081,16 +1185,40 @@ class MainActivity : ComponentActivity() {
         else -> reason
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (uiState.screen == AppScreen.READER && uiState.busyLabel == null &&
-            motionController.state == ReaderMotionState.IDLE && ReaderInteractionRuntime.shouldUseVolumeKeysForPaging(uiState.settings, uiState.tts.active)
-        ) {
-            val nextKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
-            val previousKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_DOWN else KeyEvent.KEYCODE_VOLUME_UP
-            if (keyCode == nextKey) { navigateNext(userInitiated = true); return true }
-            if (keyCode == previousKey) { navigatePrevious(userInitiated = true); return true }
+    private fun handleReaderVolumeKey(keyCode: Int): Boolean {
+        if (uiState.screen != AppScreen.READER || uiState.busyLabel != null ||
+            motionController.state != ReaderMotionState.IDLE ||
+            !ReaderInteractionRuntime.shouldUseVolumeKeysForPaging(uiState.settings, uiState.tts.active)
+        ) return false
+        val nextKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
+        val previousKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_DOWN else KeyEvent.KEYCODE_VOLUME_UP
+        return when (keyCode) {
+            nextKey -> { navigateNext(userInitiated = true); true }
+            previousKey -> { navigatePrevious(userInitiated = true); true }
+            else -> false
         }
-        return super.onKeyDown(keyCode, event)
+    }
+
+    @SuppressLint("RestrictedApi") // ComponentActivity narrows the public Activity key-dispatch hook; required to intercept volume paging before system handling.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
+        val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+        if (isVolumeKey) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (consumedReaderVolumeKey == keyCode) return true
+                    if (event.repeatCount == 0 && handleReaderVolumeKey(keyCode)) {
+                        consumedReaderVolumeKey = keyCode
+                        return true
+                    }
+                }
+                KeyEvent.ACTION_UP -> if (consumedReaderVolumeKey == keyCode) {
+                    consumedReaderVolumeKey = KeyEvent.KEYCODE_UNKNOWN
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onPause() {
@@ -1102,11 +1230,13 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        workGeneration.incrementAndGet(); main.removeCallbacksAndMessages(null); workers.shutdownNow()
+        workGeneration.incrementAndGet(); chapterWorkKey = null; main.removeCallbacksAndMessages(null)
+        tocWorkers.shutdownNow(); progressWorkers.shutdownNow(); workers.shutdownNow()
         runCatching { unregisterReceiver(ttsStateReceiver) }
         if (::billing.isInitialized) billing.close()
         if (::ttsCatalog.isInitialized) ttsCatalog.close()
         if (::statsStore.isInitialized) statsStore.finish()
+        if (::readerPreferences.isInitialized) readerPreferences.flush(uiState.settings)
         reader.close(); super.onDestroy()
     }
 

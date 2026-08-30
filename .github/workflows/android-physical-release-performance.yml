@@ -1,0 +1,33 @@
+name: Android Physical Release Performance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-physical-release-performance
+  cancel-in-progress: false
+
+jobs:
+  reader-v3-release-performance:
+    runs-on: [self-hosted, android, physical]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Qualify Reader V3 on physical Android release device
+        run: bash ./scripts/run-android-physical-release-performance.sh
+      - name: Preserve physical release evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reader-v3-physical-release-${{ github.sha }}
+          path: apps/android/macrobenchmark/build/outputs/physical-release/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,38 +1,228 @@
 package com.junchen.jingdu.macrobenchmark
 
+import android.os.SystemClock
+import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class BaselineProfileGenerator {
     @get:Rule val baselineProfileRule = BaselineProfileRule()
 
-    @Test fun generate() = baselineProfileRule.collect(
-        packageName = PACKAGE_NAME,
-        maxIterations = 10,
-        stableIterations = 3,
-        includeInStartupProfile = true,
-        outputFilePrefix = "jingdu-reader-v2",
-    ) {
-        pressHome()
-        device.executeShellCommand("content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 8")
-        startActivityAndWait()
-        device.wait(Until.hasObject(By.textContains("Benchmark Novel")), 4_000)
-        device.findObject(By.textContains("Benchmark Novel"))?.click()
-        device.waitForIdle()
-        repeat(4) { device.click((device.displayWidth * 0.86).toInt(), device.displayHeight / 2) }
-        device.findObject(By.text("Aa"))?.click()
-        device.waitForIdle()
-        device.pressBack()
-        device.findObject(By.descContains("chapter"))?.click()
-        device.waitForIdle()
-        device.pressBack()
+    /** Startup Profile contains only the first-display path; runtime CUJs belong in Baseline only. */
+    @Test fun readerV3Startup() {
+        prepareProfileTarget("paged")
+        baselineProfileRule.collect(
+            packageName = PACKAGE_NAME,
+            maxIterations = 10,
+            stableIterations = 3,
+            includeInStartupProfile = true,
+            outputFilePrefix = "jingdu-reader-v3-startup",
+        ) {
+            pressHome()
+            startActivityAndWait()
+            openFixture()
+        }
     }
 
-    private companion object { const val PACKAGE_NAME = "com.junchen.jingdu" }
+    /** Page turn, continuous scroll and panel navigation are runtime-critical Baseline Profile CUJs. */
+    @Test fun readerV3CriticalJourneys() {
+        prepareProfileTarget("paged")
+        baselineProfileRule.collect(
+            packageName = PACKAGE_NAME,
+            maxIterations = 10,
+            stableIterations = 3,
+            includeInStartupProfile = false,
+            outputFilePrefix = "jingdu-reader-v3-critical",
+        ) {
+            pressHome()
+            startActivityAndWait()
+            openFixture()
+
+            // Hosted API 35 software-emulator policy consumes injected hardware-volume keys before
+            // MainActivity. Profile the same real reader tap-zone path used by the hosted frame gate;
+            // physical-device release evidence owns hardware-volume delivery validation.
+            repeat(10) {
+                check(device.click(
+                    (device.displayWidth * PAGE_FORWARD_TAP_X).toInt(),
+                    (device.displayHeight * PAGE_FORWARD_TAP_Y).toInt(),
+                )) { "Reader V3 baseline forward page tap was not injected" }
+                device.waitForIdle()
+            }
+
+            // Runtime profile CUJs are independent user journeys. Restart a fresh paged reader before
+            // each panel path so page-turn/control-auto-hide state from one CUJ cannot contaminate the
+            // next while still exercising the real launch, library-card tap, Reader and panel UI.
+            restartProfileReader("paged")
+            ensureTopControlsVisible()
+            requireClick(By.text("Aa"), "quick reading settings control")
+            device.waitForIdle()
+            device.pressBack()
+            device.waitForIdle()
+
+            restartProfileReader("paged")
+            ensureTopControlsVisible()
+            requireChaptersClick()
+            device.waitForIdle()
+            device.pressBack()
+            device.waitForIdle()
+
+            // Continuous is likewise an independent runtime CUJ rather than a stateful continuation
+            // of the paged/panel path above. Keep the explicit mode call as a static contract marker.
+            setProfileMode("continuous")
+            startActivityAndWait()
+            openFixture()
+            device.waitForIdle()
+            SystemClock.sleep(500)
+
+            repeat(4) {
+                check(device.swipe(
+                    device.displayWidth / 2,
+                    (device.displayHeight * 0.80).toInt(),
+                    device.displayWidth / 2,
+                    (device.displayHeight * 0.25).toInt(),
+                    24,
+                )) { "Reader V3 baseline continuous-scroll swipe was not injected" }
+            }
+            device.waitForIdle()
+        }
+    }
+
+    /**
+     * Provision fixture state before BaselineProfileRule enters its compilation/reset loop. Provider
+     * startup is test infrastructure, not part of the product CUJ being profiled, and launching it
+     * from inside CompilationMode.Partial made provider publication race the profile compiler on CI.
+     */
+    private fun prepareProfileTarget(mode: String) {
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        device.executeShellCommand("logcat -c")
+        val seed = device.executeShellCommand(
+            "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 10",
+        )
+        check(seed.contains("bytes=")) {
+            "Reader V3 baseline fixture seed failed before profile collection: $seed\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics(device)}"
+        }
+        setProfileMode(device, mode)
+    }
+
+    private fun setProfileMode(device: UiDevice, mode: String) {
+        val modeResult = device.executeShellCommand(
+            "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
+        )
+        check(modeResult.contains("Result: Bundle[{}]")) {
+            "Reader V3 baseline mode setup failed before profile collection: $modeResult\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics(device)}"
+        }
+        // BaselineProfileRule owns product-process startup. Leave a fully provisioned but stopped
+        // package so compilation/profile collection begins from a deterministic lifecycle boundary.
+        device.executeShellCommand("am force-stop $PACKAGE_NAME")
+    }
+
+    private fun MacrobenchmarkScope.setProfileMode(mode: String) {
+        setProfileMode(device, mode)
+    }
+
+    private fun MacrobenchmarkScope.restartProfileReader(mode: String) {
+        setProfileMode(mode)
+        startActivityAndWait()
+        openFixture()
+        device.waitForIdle()
+    }
+
+    private fun profileDiagnostics(device: UiDevice): String = buildString {
+        append("package-path:\n")
+        append(device.executeShellCommand("pm path $PACKAGE_NAME").trim().ifEmpty { "<not-installed>" })
+        append("\nprovider:\n")
+        append(device.executeShellCommand("dumpsys package $PACKAGE_NAME | grep -A 12 -B 3 benchmarkfixture").takeLast(8_000))
+        append("\npidof: ")
+        append(device.executeShellCommand("pidof $PACKAGE_NAME").trim().ifEmpty { "<not-running>" })
+        append("\nexit-info:\n")
+        append(device.executeShellCommand("dumpsys activity exit-info $PACKAGE_NAME").takeLast(12_000))
+        append("\nlogcat:\n")
+        append(
+            device.executeShellCommand(
+                "logcat -d -t 300 AndroidRuntime:E ActivityManager:I ActivityTaskManager:I '*:S'",
+            ).takeLast(20_000),
+        )
+    }
+
+    private fun MacrobenchmarkScope.openFixture() {
+        val title = "Benchmark Novel 10 MiB"
+        check(device.wait(Until.hasObject(By.textContains(title)), 8_000)) { "Reader V3 baseline fixture missing" }
+        val target = device.findObject(By.textContains(title)) ?: error("Reader V3 baseline fixture unavailable")
+        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader V3 baseline fixture became stale")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 baseline fixture tap was not injected" }
+        device.waitForIdle()
+    }
+
+    /** Accessibility nodes are live handles; only immutable on-screen rectangles cross helper calls. */
+    private fun MacrobenchmarkScope.visibleBounds(selector: BySelector): android.graphics.Rect? =
+        device.findObjects(selector)
+            .asSequence()
+            .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
+            .firstOrNull { bounds ->
+                bounds.width() > 0 && bounds.height() > 0 &&
+                    bounds.right > 0 && bounds.bottom > 0 &&
+                    bounds.left < device.displayWidth && bounds.top < device.displayHeight
+            }
+
+    private fun MacrobenchmarkScope.ensureTopControlsVisible() {
+        if (visibleBounds(By.text("Aa")) != null) return
+        val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
+        repeat(2) {
+            for ((x, y) in taps) {
+                check(device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())) {
+                    "Reader V3 baseline top-control tap was not injected"
+                }
+                if (device.wait(Until.hasObject(By.text("Aa")), 900) && visibleBounds(By.text("Aa")) != null) return
+            }
+        }
+        error("Reader V3 baseline top reading controls did not become visibly on-screen")
+    }
+
+    private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
+        check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 baseline $label missing" }
+        val bounds = visibleBounds(selector) ?: error("Reader V3 baseline $label exists only off-screen")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 baseline $label tap was not injected" }
+    }
+
+    private fun MacrobenchmarkScope.requireChaptersClick() {
+        visibleBounds(By.desc("Chapters"))?.let { bounds ->
+            if (device.click(bounds.centerX(), bounds.centerY())) return
+        }
+        visibleBounds(By.descContains("Chapter"))?.let { bounds ->
+            if (device.click(bounds.centerX(), bounds.centerY())) return
+        }
+
+        val anchor = visibleBounds(By.text("Aa")) ?: error("Reader V3 baseline visible top Aa control missing")
+        val candidate = device.findObjects(By.clickable(true))
+            .asSequence()
+            .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
+            .filter { bounds ->
+                bounds.width() > 0 && bounds.height() > 0 &&
+                    bounds.right > 0 && bounds.bottom > 0 &&
+                    bounds.left < device.displayWidth && bounds.top < device.displayHeight
+            }
+            .filter { bounds ->
+                bounds.centerX() > anchor.centerX() &&
+                    abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
+            }
+            .minByOrNull { bounds -> bounds.centerX() - anchor.centerX() }
+            ?: error("Reader V3 baseline chapters control missing beside Aa")
+        check(device.click(candidate.centerX(), candidate.centerY())) { "Reader V3 baseline chapters tap was not injected" }
+    }
+
+    private companion object {
+        const val PACKAGE_NAME = "com.junchen.jingdu"
+        const val PAGE_FORWARD_TAP_X = 0.86f
+        const val PAGE_FORWARD_TAP_Y = 0.52f
+    }
 }

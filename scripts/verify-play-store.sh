@@ -67,13 +67,13 @@ grep -q 'acknowledgePurchase' apps/android/app/src/main/java/com/junchen/jingdu/
 
 grep -q 'R.string.scan_noise_free' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
 grep -q 'R.string.unlock_pro_apply' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt
-grep -q 'R.string.offline_voice' apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
-grep -q 'R.string.local_asset_backup' apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
+grep -q 'R.string.offline_voice' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
+grep -q 'R.string.local_asset_backup' apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
 grep -q 'OpenMultipleDocuments' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 grep -q 'ReviewManagerFactory' apps/android/app/src/main/java/com/junchen/jingdu/ReviewPrompter.kt
 
 if grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml; then
-  echo 'direct INTERNET permission is forbidden by v2.2 privacy position' >&2
+  echo 'direct INTERNET permission is forbidden by local/private product position' >&2
   exit 1
 fi
 

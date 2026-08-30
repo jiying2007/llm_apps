@@ -142,6 +142,7 @@ final class BookRepository {
                     sameRevision ? existing.charCount : 0,
                     System.currentTimeMillis());
             upsert(book);
+            prewarmChapterIndex(book);
             return book;
         } finally {
             deleteTemporary(sourceTemporary);
@@ -153,6 +154,7 @@ final class BookRepository {
         if (book == null) throw new IOException("no book selected");
         File raw = rawFile(book.id);
         if (!raw.isFile()) throw new IOException("private source copy is missing");
+        long oldLength = documentLength(book);
 
         String encoding = requestedEncoding == null ? AUTO : requestedEncoding;
         if (AUTO.equals(encoding)) encoding = detect(raw);
@@ -174,6 +176,17 @@ final class BookRepository {
                     sameRevision ? book.charCount : 0,
                     System.currentTimeMillis());
             upsert(updated);
+            prewarmChapterIndex(updated);
+            long newLength = documentLength(updated);
+            if (oldLength > 0 && newLength > 0) {
+                // Re-decode already runs on MainActivity's serialized worker. Do contextual
+                // annotation re-anchoring here so the UI success callback only consumes the
+                // one-shot completion marker instead of performing bounded searches on main.
+                new ReaderAnnotationStore(context).remapBookForRedecode(
+                        book.id,
+                        oldLength,
+                        newLength);
+            }
             return updated;
         } finally {
             deleteTemporary(temporary);
@@ -245,6 +258,36 @@ final class BookRepository {
             } else if (name.equals("clean.txt") || name.equals("clean.revision")) {
                 deleteTemporary(file);
             }
+        }
+    }
+
+    private long documentLength(Book book) {
+        try (ReaderController source = new ReaderController(false)) {
+            source.open(normalizedFile(book), 0);
+            return source.length();
+        } catch (Throwable ignored) {
+            return book.charCount;
+        }
+    }
+
+    private long prewarmChapterIndex(Book book) {
+        // Chapter discovery and Smart TOC quality are derived indexes of the immutable normalized
+        // TXT. Build both while import/re-decode already owns the document so first reading/panel
+        // interactions consume revision-keyed caches instead of competing with the frame thread.
+        // Failure is harmless: Core/SmartToc can deterministically rebuild either cache later.
+        try (ReaderController source = new ReaderController(false)) {
+            source.open(normalizedFile(book), 0);
+            long length = source.length();
+            source.chapters();
+            ReaderDerivedIndexPrewarmer.prewarm(
+                    context,
+                    book.id,
+                    book.normalizedSha256,
+                    length,
+                    source);
+            return length;
+        } catch (Throwable ignored) {
+            return 0L;
         }
     }
 

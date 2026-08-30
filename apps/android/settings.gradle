@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "JingduAndroid"
-include(":app", ":macrobenchmark")
+include(":app", ":macrobenchmark", ":readerproto")

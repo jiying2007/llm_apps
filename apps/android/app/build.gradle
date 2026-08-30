@@ -1,6 +1,7 @@
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.plugin.compose"
+    id "com.google.devtools.ksp"
 }
 
 def applicationIdValue = providers.gradleProperty("jingduApplicationId").getOrElse("com.junchen.jingdu")
@@ -38,12 +39,29 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             if (releaseSigningConfigured) signingConfig = signingConfigs.release
         }
+        // Macrobenchmark SLO target: production-like DEX/resource layout, but debug-signed for hosted CI.
         benchmark {
+            initWith release; signingConfig = signingConfigs.debug; matchingFallbacks = ["release"]
+            debuggable = false; minifyEnabled = true; shrinkResources = true
+        }
+        // Baseline/Startup Profile collection must remain non-obfuscated so HRF method names are stable.
+        // It is deliberately a different target from the R8 benchmark measured above.
+        profile {
             initWith release; signingConfig = signingConfigs.debug; matchingFallbacks = ["release"]
             debuggable = false; minifyEnabled = false; shrinkResources = false
         }
     }
-    sourceSets { main { assets.srcDir rootProject.file("../../third_party") } }
+    sourceSets {
+        main { assets.srcDir rootProject.file("../../third_party") }
+        // Hosted-only fixture/provider/profileable manifest are shared by both CI target variants and
+        // never enter the production release source set. AGP 9 built-in Kotlin has an independent
+        // Kotlin source directory; java.srcDir alone does not compile the benchmark .kt provider.
+        profile {
+            java.srcDir "src/benchmark/java"
+            kotlin.srcDir "src/benchmark/java"
+            manifest.srcFile "src/benchmark/AndroidManifest.xml"
+        }
+    }
     buildFeatures { compose = true; buildConfig = false }
     androidResources { generateLocaleConfig = true }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
@@ -56,6 +74,7 @@ kotlin { compilerOptions { freeCompilerArgs.add("-opt-in=androidx.compose.materi
 
 dependencies {
     def composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    implementation project(":readerproto")
     implementation composeBom
     androidTestImplementation composeBom
     implementation "androidx.activity:activity-compose:1.13.0"
@@ -66,8 +85,15 @@ dependencies {
     implementation "androidx.compose.material:material-icons-extended"
     implementation "androidx.compose.ui:ui-tooling-preview"
     implementation "androidx.core:core-ktx:1.19.0"
-    implementation "androidx.datastore:datastore-preferences:1.2.1"
+    implementation "androidx.datastore:datastore:1.2.1"
+    implementation "androidx.room3:room3-runtime:3.0.1"
+    implementation "androidx.sqlite:sqlite-bundled:2.7.0"
+    ksp "androidx.room3:room3-compiler:3.0.1"
+    implementation "androidx.media3:media3-common:1.11.0"
+    implementation "androidx.media3:media3-session:1.11.0"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.11.0"
+    implementation "androidx.lifecycle:lifecycle-runtime-compose:2.11.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0"
     implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0"
     implementation "androidx.profileinstaller:profileinstaller:1.4.1"
     implementation "io.github.laisuk:openccjava:1.4.2"

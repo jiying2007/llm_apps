@@ -1,23 +1,23 @@
 # Performance SLO — Long-form TXT
 
-Jingdu treats large local TXT as a first-class product workload. These SLOs turn the existing performance contract into measurable release criteria without pretending hosted CI is a phone.
+Jingdu treats large local TXT as a first-class product workload. The performance system intentionally separates deterministic Hosted-CI regression guardrails from physical Release qualification so emulator numbers are never presented as phone performance.
 
 ## Qualification corpus
 
-Every release is qualified with deterministic or representative files at four sizes:
+Every release is qualified with deterministic or representative files at four tiers:
 
 | Size | Purpose |
 | --- | --- |
 | 1–5 MiB | ordinary novel / cold-start path |
-| 20 MiB | long novel |
-| 100 MiB | very long novel |
-| 200 MiB | stress / memory / recovery |
+| 10 MiB | Android Reader V3 interaction journeys |
+| 100 MiB | very-long-book Android soak journey |
+| 960 MiB | near-1GiB native bounded-memory/RSS qualification |
 
-The corpus includes UTF-8, GB18030/GBK and Big5 source imports where device evidence is required. Source files are never rewritten in place.
+The release-device corpus additionally includes UTF-8, GB18030/GBK and Big5 source imports where device evidence is required. Source files are never rewritten in place.
 
-## Android release-device SLOs
+## Android physical Release SLOs
 
-Measure a minified release build on the device classes listed in `DEVICE_MATRIX.md`. Report median and P95 where the tool supports repeated measurements.
+Measure the release-derived minified Benchmark target on the physical device classes listed in `DEVICE_MATRIX.md`. Report median and P95 where the tool supports repeated measurements.
 
 | Metric | Target |
 | --- | ---: |
@@ -27,46 +27,83 @@ Measure a minified release build on the device classes listed in `DEVICE_MATRIX.
 | new 100 MiB TXT, time to first readable page | < 2.0 s |
 | chapter jump with active index | P95 < 100 ms |
 | indexed exact search, ordinary query | P95 < 100 ms |
-| page next/previous interaction | no visible main-thread stall |
 | Smart Clean scan, 20 MiB | < 1.0 s target |
 | Smart Clean scan, 100 MiB | < 3.0 s target |
 | TTS next-chunk scheduling | P95 < 150 ms |
 | 200 MiB open/search/Clean qualification | no OOM / ANR |
 
+The Reader V3 frame-tail product SLO is independently enforced for every frame-producing journey:
+
+| Physical Release frame metric | Product SLO |
+| --- | ---: |
+| `frameDurationCpuMs` P95 | **<= 40 ms** |
+| `frameDurationCpuMs` P99 | **<= 80 ms** |
+
+Required evidence floors are unchanged: `pageTurn10MiB >= 20`, `continuousScroll10MiB >= 500`, and `chaptersAndSettings10MiB >= 50` CPU-frame samples.
+
+Physical qualification is executed by `scripts/run-android-physical-release-performance.sh` through `.github/workflows/android-physical-release-performance.yml`. The workflow requires a self-hosted runner labeled `[self-hosted, android, physical]`; the script rejects QEMU/generic emulator devices and forces `jingdu.pageTurnInput=physical-volume`. Six real `KEYCODE_VOLUME_DOWN` events must advance the authoritative Reader position. The physical gate invokes `scripts/check-android-performance-slo.py --mode release`; Hosted thresholds cannot satisfy it.
+
 Targets are qualification goals for the release matrix, not guarantees across every Android device. A regression must be investigated and recorded rather than hidden by widening the target without evidence.
 
-## Host Core regression gate
+## Host Core regression gates
 
-`jingdu_core_performance_gate_test` is a deterministic hosted-CI guardrail. It defaults to a 64 MiB UTF-8 fixture and checks:
+`jingdu_core_performance_gate_test` is the fast deterministic hosted-CI guardrail. It checks bounded first open/index, validated `.jdx` reopen, end-of-file full-text search, random bounded reads, coarse RSS and accidental whole-document materialization.
 
-- first open/index completes within a generous hosted-runner ceiling;
-- validated `.jdx` reopen is bounded;
-- end-of-file full-text search remains bounded;
-- 1000 random bounded reads remain responsive;
-- peak RSS remains below a coarse anti-regression ceiling;
-- no whole-document managed-language materialization is introduced.
-
-Run the 200 MiB host stress form before a major reader/Core release:
-
-```bash
-JINGDU_PERF_FIXTURE_MIB=200 ctest --test-dir build/native \
-  -R jingdu_core_performance_gate_test --output-on-failure
-```
+`jingdu_core_near_1gib_rss_gate_test` runs the bounded-access contract with `JINGDU_PERF_FIXTURE_MIB=960`. Its peak RSS ceiling remains below 640 MiB, independent of the 960 MiB source size. This specifically catches accidental whole-document materialization.
 
 Hosted wall-clock ceilings are intentionally loose. Real experience is measured on Android release devices.
 
-## Android benchmark evidence
+## Hosted Android regression gate
 
-Android performance evidence follows the platform-recommended Macrobenchmark/Baseline Profile workflow. Measure at minimum:
+Pull requests run the Reader V3 Macrobenchmark suite on Android 35, a Pixel 6 AVD and pinned Ubuntu 22.04 after the normal Android build/test/lint/R8 gate passes. The emulator uses the repository contract `JINGDU_EMULATOR_GPU_MODE:-auto`. It is a stable regression environment, not Release-device performance evidence.
 
-1. cold launch to Library;
-2. reopen an unchanged imported book;
-3. open Search/Chapters from an active reader session;
-4. scroll/page a long book;
-5. import/open 20/100/200 MiB fixtures;
-6. Smart Clean scan on 20/100 MiB fixtures.
+The required journeys are:
 
-Record startup timing, frame timing/jank, memory and trace links in `DEVICE_MATRIX.md`. Use release-like compilation and a stable thermal/device state.
+1. open a 10 MiB TXT;
+2. open a 100 MiB TXT soak fixture;
+3. perform six real right-side Reader tap-zone page turns on the 10 MiB fixture;
+4. switch to continuous mode and perform six real swipes;
+5. execute two Chapters → Back → Aa → Back cycles;
+6. independently execute the Reader V3 Baseline/Startup Profile collection contract.
+
+Hosted page-turn intentionally uses the Reader tap zone because API-35 hosted emulator input policy can consume injected hardware volume keys before the foreground Activity. Hardware volume-key behavior remains a product feature and is explicitly covered by the physical Release gate.
+
+### Frozen Hosted baseline
+
+`scripts/reader-v3-hosted-emulator-baseline.json` is frozen from exact-head `fa22d088df7456330244ac4dc2c00a82da888656`, workflow run `33294378785`, performance job `99212107479`, artifact `9727262417` (artifact SHA-256 `c48fbfe3e4daba9c48cba836e67478eb44043abcefb9b1f7cb479684cd1039c6`). This was the first run where all three interaction journeys completed with the authoritative sample floors.
+
+| Journey | Samples | Frozen P95 | Frozen P99 |
+| --- | ---: | ---: | ---: |
+| `pageTurn10MiB` | 59 | 64.348 ms | 75.029 ms |
+| `continuousScroll10MiB` | 687 | 128.868 ms | 155.338 ms |
+| `chaptersAndSettings10MiB` | 167 | 135.095 ms | 187.724 ms |
+
+For each Hosted benchmark/percentile, the effective gate is:
+
+`min(frozen baseline × 1.15, absolute Hosted ceiling)`
+
+The absolute Hosted ceilings are:
+
+| Hosted anti-drift metric | Absolute ceiling |
+| --- | ---: |
+| `frameDurationCpuMs` P95 | **160 ms** |
+| `frameDurationCpuMs` P99 | **220 ms** |
+
+These are not product SLOs. With the frozen baseline, the 15% relative limit is tighter than 160/220 for every current journey, so the checked-in baseline remains the effective regression authority. Baseline changes require new exact-head complete evidence and explicit provenance; changing it merely to make a regression green is forbidden.
+
+The Macrobenchmark JSON and Perfetto traces are retained as CI artifacts. Missing/truncated percentile evidence fails the build before threshold comparison.
+
+## Baseline Profile contract
+
+`BaselineProfileGenerator.readerV3CriticalJourneys` covers the Reader V3 runtime hot paths without contaminating Startup Profile:
+
+- real Reader tap-zone page turns;
+- Quick Settings and Chapters while the Reader remains in paged mode;
+- continuous mode restart followed by real continuous swipes.
+
+Quick/Chapters are intentionally profiled before switching to continuous mode so profile collection does not depend on a cross-mode controls-visibility transition. Hosted profile collection does not use emulator hardware volume keys.
+
+Macrobenchmark frame measurement runs first against the release-derived R8 target using `CompilationMode.Partial(BaselineProfileMode.Require, warmupIterations = 0)`. Only after the Hosted result is frozen does CI swap to the non-minified profile target to collect readable Baseline/Startup HRF evidence. Newly generated rules never feed the same frame measurement.
 
 ## Architectural performance invariants
 
@@ -77,3 +114,4 @@ Record startup timing, frame timing/jank, memory and trace links in `DEVICE_MATR
 5. First readable page and background indexing are separate product milestones; full-book secondary work must not unnecessarily block reading.
 6. Library rendering uses metadata only and never opens every book to draw the grid.
 7. A performance cache can always be discarded/rebuilt without changing product identity or user data.
+8. Hosted emulator thresholds and physical Release SLOs are separate authorities and cannot substitute for each other.
