@@ -1,6 +1,6 @@
-# Google Play Console Setup — Android v2.2+
+# Google Play Console Setup — Android 2.3.x
 
-This repository contains the code and store-copy SSOT. It does not have a connected Google Play Console automation provider, so the Console actions below must be performed in Play Console and then verified against this contract.
+This repository contains the code and store-copy SSOT. It does not have a connected Google Play Console automation provider, so the Console actions below must be performed in Play Console and then verified against this contract and `PRODUCTION_READINESS.md`.
 
 ## 1. Lifetime Pro one-time product
 
@@ -8,7 +8,7 @@ Create one one-time in-app product for application `com.junchen.jingdu`:
 
 - Product ID: `jingdu_pro_lifetime`
 - Type: non-consumable / one-time product
-- Product value: local Smart Clean automation and reusable rule assets
+- Product value: local Smart Clean automation and reusable local Reader assets
 - Do not describe core reading as paid-only.
 
 Localize the product name/description in all supported Play locales:
@@ -18,7 +18,7 @@ Localize the product name/description in all supported Play locales:
 | `zh-CN` | `净读 Pro 永久版` | 一次买断的智能净读自动化、全局规则、离线 voice 与本地资产备份 |
 | `zh-TW` | `淨讀 Pro 永久版` | 一次買斷的智慧淨讀自動化、全域規則、離線 voice 與本機資產備份 |
 | `zh-HK` | `淨讀 Pro 永久版` | 一次買斷的智慧淨讀自動化、全域規則、離線 voice 與本機資產備份 |
-| `en-US` | `Jingdu Pro Lifetime` | One-time unlock for Smart Clean automation, global rules, offline voice selection and local asset backup |
+| `en-US` | `Jingdu Pro Lifetime` | One-time unlock for Smart Clean automation, global rules, offline voice selection and local Reader asset backup |
 
 Activate an eligible one-time purchase offer and configure localized prices. The app never hard-codes a price; it renders Play’s localized `formattedPrice`.
 
@@ -40,6 +40,7 @@ Before production rollout:
 - verify completed purchase unlocks Pro and is acknowledged;
 - verify reinstall/clear-data restore through the same Play account;
 - verify offline use after a previously Play-verified entitlement;
+- verify authoritative no-ownership refresh removes stale entitlement;
 - verify a device without Play Billing keeps all Free reading capabilities functional;
 - verify product-not-configured state shows a localized unavailable/retry message rather than blocking Clean or reading.
 
@@ -103,7 +104,19 @@ Android ships `zh-Hans`, `zh-Hant` and `en-US` UI resources and uses generated p
 
 See `LOCALIZATION.md` and `DEVICE_MATRIX.md`.
 
-## 7. Store listing experiments
+## 7. Portable local-user backup verification
+
+Before advertising local backup as a Pro value:
+
+- verify Reader settings/global rules/annotations round-trip;
+- verify favorites/tags round-trip by source identity;
+- verify progress restores only for the exact `normalizedSha256` and remains staged until that revision is present;
+- verify reading sessions/pace round-trip without book text;
+- verify Smart Clean KEEP/DELETE/PROTECT memory round-trips as fingerprints/decisions only;
+- verify backup root declares `containsBookText=false`;
+- verify SAF folder grants and unavailable imported fonts require user re-selection rather than pretending those capabilities are portable.
+
+## 8. Store listing experiments
 
 Recommended order:
 
@@ -114,19 +127,21 @@ Recommended order:
 
 Change one major variable per test. Compare install conversion and downstream user quality rather than chasing clicks alone.
 
-## 8. Release safety
+## 9. Release safety
 
-Before uploading v2.2+:
+Before uploading Android 2.3.x:
 
-- use the retained Android upload key from the existing production signing identity;
+- use the retained Android upload key from the existing signing identity;
 - run `androidStoreCheck` with explicit version properties;
 - archive signed APK/AAB, mapping, SHA256 manifest and signing certificate fingerprint;
+- complete physical-device matrix and release SLO evidence from `PRODUCTION_READINESS.md`;
 - confirm Billing product and all four localized product descriptions are active before advertising Pro as purchasable;
 - confirm all four default listings and intended Custom Listings are uploaded from repository SSOT;
 - confirm Data safety / privacy declarations remain consistent with no text upload, no advertising SDK and no analytics SDK;
-- use staged rollout rather than immediately exposing 100% of production users after major monetization/billing/localization changes.
+- capture actual GitHub `main`/`v*` protection evidence;
+- use internal/closed testing and staged rollout rather than immediately exposing 100% of production users after the Reader V3 + commerce hardening changes.
 
-## 9. Post-release checks
+## 10. Post-release checks
 
 Verify in production Play:
 
@@ -136,4 +151,5 @@ Verify in production Play:
 - purchase/restore works on a real production-installed build;
 - unsupported system language falls back to English in-app;
 - no unexpected INTERNET/runtime analytics dependency was introduced;
-- review prompt appears only after meaningful milestones and never as a first-launch gate.
+- review prompt appears only after meaningful milestones and never as a first-launch gate;
+- staged rollout expansion is tied to the exact source tag/AAB checksum and Android vitals evidence.
