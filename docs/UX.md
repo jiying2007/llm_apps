@@ -1,8 +1,8 @@
-# UX — Android v2.2
+# UX — Android 2.3.x / Reader V3
 
 ## Design direction
 
-Jingdu is a calm Material 3 reading product, not an engineering toolbar and not a paywall-first app. Library and Reader are the two product states. Search, chapters, bookmarks, Clean, encoding and settings are contextual sheets.
+Jingdu is a calm Material 3 reading product, not an engineering toolbar and not a paywall-first app. Library and Reader are the two product states. TXT Doctor, Search, Smart TOC, annotations, Clean, encoding and settings are contextual/product surfaces around the reading loop.
 
 Commercial UX follows one rule: **show useful local results before asking for money**. Free users must be able to read normally and inspect Smart Clean candidates; Pro appears only when automation/reusable assets are requested.
 
@@ -12,30 +12,33 @@ All user-facing copy is resource-backed. Android supports Simplified Chinese, Tr
 
 - In-app brand follows the active locale (`净读` / `淨讀` / `Jingdu`); store discovery titles may include localized TXT-reader keywords.
 - Supporting privacy promise is localized from resources rather than embedded in Compose source.
-- Primary action imports one TXT; batch import is secondary and uses SAF multi-select.
-- Cards prioritize title/progress; encoding/size/last-read are secondary.
-- Empty state explains mojibake rescue, Clean and privacy before file selection.
+- Primary action imports one TXT; batch import/folder library are secondary explicit SAF actions.
+- Cards prioritize title/progress; favorite/tags/encoding/size/last-read are secondary.
+- Empty state explains mojibake rescue, TXT Doctor/Clean and privacy before file selection.
 
-## Reader
+## Reader V3
 
-- Text owns the screen.
-- Search and chapters are top-level actions.
-- Previous/progress/next/TTS are persistent bottom actions and have localized accessibility descriptions.
-- Bookmarks/Clean/encoding/settings/delete remain progressive-disclosure actions.
-- System back closes a sheet before Reader → Library; predictive back remains compatible.
+- Text owns the screen; controls are overlays and can auto-hide for immersive reading.
+- Paged and continuous modes share the same authoritative source-offset model.
+- Search, Smart TOC, annotations and reading settings remain discoverable without permanently consuming text space.
+- Page tap zones, horizontal swipe and optional volume-key paging must arbitrate cleanly with text selection/TTS/auto motion.
+- Reader settings use categorized full-screen navigation for advanced configuration rather than one oversized sheet.
+- Selection/highlight/note ranges are mapped back to source coordinates even when display transformations are active.
+- Reading Map/history/remaining-time surfaces are local Reader aids, not analytics.
+- System back closes an active panel before Reader → Library; predictive back remains compatible.
 - Long English or Traditional-Chinese labels must wrap/ellipsize according to Material hierarchy instead of forcing fixed widths.
 
 ## Clean conversion flow
 
 ### Smart Clean is not a hidden Pro teaser
-1. User opens Clean.
+1. User opens Clean/Smart Clean.
 2. The localized free-scan action runs locally.
-3. Results show localized reason plus exact text, count and confidence.
-4. User can include/exclude candidates.
+3. Results show localized reason plus exact text, count and confidence/model signals.
+4. User can include/exclude candidates and record KEEP/PROTECT/DELETE intent.
 5. Only applying selected suggestions asks for Pro when not owned.
 6. After purchase, the same selection is applied and Clean preview opens.
 
-Core candidate reasons are stable codes (`url`, `promo`, `repeated`, `promo_repeated`); the Android UI maps those codes to the active locale. Smart Clean content detection itself covers Simplified and Traditional common promotion/watermark forms and never follows the UI locale.
+Core candidate reasons are stable codes; the Android UI maps those codes to the active locale. Smart Clean content detection itself covers Simplified and Traditional common promotion/watermark forms and never follows the UI locale.
 
 No first-launch Pro modal and no artificial blur/hidden candidate text.
 
@@ -43,7 +46,7 @@ No first-launch Pro modal and no artificial blur/hidden candidate text.
 - Exact literal rules remain Free.
 - Empty replacement means delete.
 - Safe whole-line wildcard `*` is labeled Pro and explains that it matches a whole line.
-- No arbitrary regex editor in v2.2.
+- No arbitrary regex editor in the current product line.
 
 ### Global rule library
 - Clearly labeled Pro/user-owned asset.
@@ -51,29 +54,52 @@ No first-launch Pro modal and no artificial blur/hidden candidate text.
 - Import/export is visible only as an explicit user action.
 - Applying rules never mutates source TXT.
 
-## Search
+## Search / Smart TOC / annotations
 
 - Exact text search remains primary.
 - Android may additionally try curated one-to-one Simplified/Traditional character variants and merge duplicate offsets.
 - The UI does not claim general-purpose conversion; ambiguous mappings are intentionally not guessed.
 - Cross-script search behavior follows document/query text, not the selected UI language.
+- Smart TOC may diagnose/hide/add chapter headings as metadata overlays without rewriting the TXT.
+- Bookmarks/highlights/notes are source-range assets and expose search/filter/export affordances without creating a second coordinate system.
 
 ## Reading settings
 
-Free groups:
-1. page tone;
-2. font/font size/line height/margins;
+Free groups include:
+1. reading mode and page tone/theme;
+2. font/font size/weight/line height/paragraph spacing/indent/alignment/margins/columns;
 3. base TTS rate/pitch and start/stop;
-4. auto paging;
-5. sleep timer.
+4. auto page / auto scroll;
+5. sleep timer, gesture defaults and accessibility-oriented presets.
 
-Pro groups:
+Pro groups include:
 - offline TTS voice selection, showing only voices the system engine marks as not requiring network;
-- local settings/global-rule backup and restore.
+- portable local-user backup/restore.
 
 When no voice has been explicitly selected, Android infers a suitable `zh-CN`, `zh-TW`, `zh-HK` or English TTS locale from the current document text. A user-selected offline voice always has priority over automatic language selection.
 
-Backup copy explicitly says book正文 is excluded and nothing is uploaded.
+## Portable backup UX
+
+The Pro backup surface represents **user-owned local Reader assets**, not books/cloud sync.
+
+Current Reader V3 schema-4 backup includes:
+- Reader settings;
+- global Clean rules;
+- bookmarks/highlights/notes;
+- favorites/tags;
+- progress staged against exact source + normalized revision identity;
+- reading sessions/pace;
+- Smart Clean KEEP/DELETE/PROTECT fingerprint memory.
+
+Backup copy must explicitly state:
+- `containsBookText=false` / book正文 is excluded;
+- nothing is uploaded by Jingdu;
+- source/normalized/Clean files are not embedded;
+- progress is restored only to the exact normalized revision;
+- SAF folder access must be selected again on a new install/device;
+- unavailable imported font files must be re-selected and otherwise fall back safely.
+
+The user must never be led to believe this JSON is a cloud/book-library backup.
 
 ## Pro purchase surface
 
@@ -87,34 +113,36 @@ Backup copy explicitly says book正文 is excluded and nothing is uploaded.
 ## Review prompt
 
 - No review on first launch.
-- Request only after meaningful local milestones such as multiple book opens, Smart Clean use or encoding rescue.
+- Request only after meaningful local milestones such as multiple book opens, Smart Clean use, encoding rescue or successful batch automation.
 - No “Do you like Jingdu?” pre-gate.
 - Respect Play’s system UI and local cooldown.
 
 ## Reading surface / navigation
 
-- 16–34sp base type, adjustable line height/margins, system sans/serif, Paper/Light/Night.
-- Expanded windows cap text measure rather than stretching paragraphs.
+- Base type remains adjustable across the supported comfort/accessibility range; Low Vision is an explicit preset rather than a separate app mode.
+- Expanded windows cap text measure and may use columns rather than stretching paragraphs.
 - Viewport layout reports visible code-point span for sequential paging.
-- Search/chapter jumps reset sequential page history.
-- Clean offsets never persist into original progress/bookmarks.
+- Search/chapter/annotation/progress jumps participate in bounded location history.
+- Clean/display-conversion offsets never persist into normalized-source progress/bookmarks/annotations.
+- Auto page, auto scroll and TTS are mutually arbitrated so the user always has a direct pause/stop path.
 
 ## Adaptive / accessibility
 
 - Material controls retain 48dp targets.
 - Icon-only actions have localized content descriptions.
 - 200% font scale keeps primary navigation usable.
+- Low Vision preset increases type/line-height and uses a focused alignment/ruler policy.
 - Color is never the sole state signal.
 - Busy work has progress indicator + localized descriptive text.
 - Destructive actions require confirmation.
 - Pro is never communicated by color alone; use text/icon labels.
-- Locale changes must not alter document identity, reader offset semantics, rule persistence or TTS voice preference.
+- Locale changes must not alter document identity, reader offset semantics, rules, annotations or TTS voice preference.
 
 ## Error language
 
 Errors explain next action rather than exposing native status codes. Translation belongs in Android resources; stable internal error/reason codes may cross business boundaries, but localized display text must not be persisted as identity or protocol data.
 
-Representative categories include encoding/import failure, Google Play unavailability, TTS readiness/audio focus, invalid rule/backup format and export destination failure. All active locales must retain equivalent actionability rather than literal machine translation.
+Representative categories include encoding/import failure, Google Play unavailability, TTS readiness/audio focus, invalid rule/backup format, backup size/privacy validation and export destination failure. All active locales must retain equivalent actionability rather than literal machine translation.
 
 ## Localization verification
 
@@ -128,4 +156,6 @@ See `LOCALIZATION.md` for resource and store-locale structure.
 
 ## Store-to-product continuity
 
-The first-run experience must deliver the same promises shown in localized Play screenshots: encoding rescue, local Smart Clean, long-form comfort and privacy. Store imagery must not advertise features that are only roadmap items, and English localization must not imply EPUB/cloud catalog support that the product does not provide.
+The first-run experience must deliver the same promises shown in localized Play screenshots: encoding rescue, TXT Doctor/local Smart Clean, long-form comfort and privacy. Store imagery must not advertise roadmap-only features, and English localization must not imply EPUB/cloud catalog support that the product does not provide.
+
+Google Play production wording is allowed only after the external evidence contract in `PRODUCTION_READINESS.md` is complete for the exact production AAB/source tag.
