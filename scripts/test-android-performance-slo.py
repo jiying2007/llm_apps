@@ -11,6 +11,7 @@ import unittest
 
 MODULE_PATH = pathlib.Path(__file__).with_name("check-android-performance-slo.py")
 HOSTED_BASELINE_PATH = pathlib.Path(__file__).with_name("reader-v3-hosted-emulator-baseline.json")
+PHYSICAL_RUNNER_PATH = pathlib.Path(__file__).with_name("run-android-physical-release-performance.sh")
 spec = importlib.util.spec_from_file_location("jingdu_android_performance_slo", MODULE_PATH)
 assert spec and spec.loader
 slo = importlib.util.module_from_spec(spec)
@@ -99,6 +100,22 @@ class AndroidPerformanceSloTest(unittest.TestCase):
         self.assertAlmostEqual(115.0, min(slo.HOSTED_P95_MS, relative))
         high_baseline_relative = 150.0 * (1.0 + slo.HOSTED_MAX_REGRESSION_RATIO)
         self.assertEqual(160.0, min(slo.HOSTED_P95_MS, high_baseline_relative))
+
+    def test_physical_release_runner_is_shell_valid_and_release_only(self) -> None:
+        result = subprocess.run(
+            ["bash", "-n", str(PHYSICAL_RUNNER_PATH)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stdout)
+        source = PHYSICAL_RUNNER_PATH.read_text(encoding="utf-8")
+        self.assertIn("ro.kernel.qemu", source)
+        self.assertIn("refuses emulator/generic devices", source)
+        self.assertIn("-e jingdu.pageTurnInput physical-volume", source)
+        self.assertIn('scripts/check-android-performance-slo.py "$JSON" --mode release', source)
+        self.assertNotIn("androidx.benchmark.suppressErrors EMULATOR", source)
 
     def test_real_shape_file_discovery(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
