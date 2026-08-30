@@ -154,6 +154,7 @@ final class BookRepository {
         if (book == null) throw new IOException("no book selected");
         File raw = rawFile(book.id);
         if (!raw.isFile()) throw new IOException("private source copy is missing");
+        long oldLength = documentLength(book);
 
         String encoding = requestedEncoding == null ? AUTO : requestedEncoding;
         if (AUTO.equals(encoding)) encoding = detect(raw);
@@ -176,14 +177,14 @@ final class BookRepository {
                     System.currentTimeMillis());
             upsert(updated);
             long newLength = prewarmChapterIndex(updated);
-            if (!sameRevision && book.charCount > 0 && newLength > 0) {
+            if (!sameRevision && oldLength > 0 && newLength > 0) {
                 // Re-decode already runs on MainActivity's serialized worker. Do contextual
                 // annotation re-anchoring here so the UI success callback only consumes the
                 // one-shot completion marker instead of performing bounded searches on main.
                 new ReaderAnnotationStore(context).remapBookForRedecode(
                         book.id,
                         normalizedSha,
-                        book.charCount,
+                        oldLength,
                         newLength);
             }
             return updated;
@@ -257,6 +258,15 @@ final class BookRepository {
             } else if (name.equals("clean.txt") || name.equals("clean.revision")) {
                 deleteTemporary(file);
             }
+        }
+    }
+
+    private long documentLength(Book book) {
+        try (ReaderController source = new ReaderController(false)) {
+            source.open(normalizedFile(book), 0);
+            return source.length();
+        } catch (Throwable ignored) {
+            return book.charCount;
         }
     }
 
