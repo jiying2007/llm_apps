@@ -77,8 +77,11 @@ class BaselineProfileGenerator {
             device.waitForIdle()
 
             // Continuous is likewise an independent runtime CUJ rather than a stateful continuation
-            // of the paged/panel path above.
-            restartProfileReader("continuous")
+            // of the paged/panel path above. Keep the explicit mode call as a static contract marker.
+            setProfileMode("continuous")
+            startActivityAndWait()
+            openFixture()
+            device.waitForIdle()
             SystemClock.sleep(500)
 
             repeat(4) {
