@@ -178,7 +178,7 @@ final class BookRepository {
             upsert(updated);
             prewarmChapterIndex(updated);
             long newLength = documentLength(updated);
-            if (!sameRevision && oldLength > 0 && newLength > 0) {
+            if (oldLength > 0 && newLength > 0) {
                 // Re-decode already runs on MainActivity's serialized worker. Do contextual
                 // annotation re-anchoring here so the UI success callback only consumes the
                 // one-shot completion marker instead of performing bounded searches on main.
