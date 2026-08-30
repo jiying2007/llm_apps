@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Fail CI when Reader V3 Macrobenchmark frame-tail SLOs regress.
+"""Validate Reader V3 Macrobenchmark frame-tail evidence.
 
-AndroidX writes FrameTimingMetric samples under sampledMetrics.frameDurationCpuMs.runs as one
-list per benchmark iteration. Percentiles shown by Macrobenchmark are computed from the flattened
-sample pool. This script mirrors AndroidX MetricResult.getPercentile() so CI thresholds and the
-benchmark's own P95/P99 reporting use the same interpolation semantics.
+Release mode is the product SLO and remains P95 <= 40 ms / P99 <= 80 ms.
+Hosted-regression mode is deliberately separate: GitHub's software-emulated Android guest is used
+only to detect regressions against a checked-in hosted baseline, with an additional absolute safety
+ceiling. Both modes require the same complete real-journey sample floors.
+
+AndroidX writes FrameTimingMetric samples under sampledMetrics.frameDurationCpuMs.runs as one list
+per benchmark iteration. Percentiles shown by Macrobenchmark are computed from the flattened sample
+pool. This script mirrors AndroidX MetricResult.getPercentile() interpolation semantics.
 """
 from __future__ import annotations
 
@@ -22,6 +26,12 @@ REQUIRED_MIN_SAMPLES = {
     "continuousScroll10MiB": 500,
     "chaptersAndSettings10MiB": 50,
 }
+RELEASE_P95_MS = 40.0
+RELEASE_P99_MS = 80.0
+HOSTED_P95_MS = 120.0
+HOSTED_P99_MS = 160.0
+HOSTED_MAX_REGRESSION_RATIO = 0.15
+HOSTED_BASELINE_SCHEMA_VERSION = 1
 
 
 def finite_numbers(value: Any) -> Iterable[float]:
@@ -98,26 +108,96 @@ def collect_files(paths: list[str]) -> list[pathlib.Path]:
     return list(dict.fromkeys(files))
 
 
+def benchmark_suffix(label: str) -> str | None:
+    for suffix in REQUIRED_MIN_SAMPLES:
+        if label.endswith(suffix):
+            return suffix
+    return None
+
+
+def load_hosted_baseline(path: str | None) -> dict[str, dict[str, float]]:
+    if not path:
+        raise ValueError("hosted-regression mode requires --baseline")
+    baseline_path = pathlib.Path(path)
+    try:
+        payload = json.loads(baseline_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot parse hosted baseline {baseline_path}: {exc}") from exc
+    if not isinstance(payload, dict) or payload.get("schemaVersion") != HOSTED_BASELINE_SCHEMA_VERSION:
+        raise ValueError(
+            f"hosted baseline schemaVersion must be {HOSTED_BASELINE_SCHEMA_VERSION}"
+        )
+    if payload.get("kind") != "reader-v3-hosted-emulator-regression-baseline":
+        raise ValueError("hosted baseline kind is invalid")
+    raw_benchmarks = payload.get("benchmarks")
+    if not isinstance(raw_benchmarks, dict):
+        raise ValueError("hosted baseline benchmarks object is missing")
+    result: dict[str, dict[str, float]] = {}
+    for suffix in REQUIRED_MIN_SAMPLES:
+        record = raw_benchmarks.get(suffix)
+        if not isinstance(record, dict):
+            raise ValueError(f"hosted baseline missing benchmark: {suffix}")
+        try:
+            p95 = float(record["p95Ms"])
+            p99 = float(record["p99Ms"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"hosted baseline has invalid percentiles for {suffix}") from exc
+        if not math.isfinite(p95) or not math.isfinite(p99) or p95 <= 0 or p99 <= 0:
+            raise ValueError(f"hosted baseline percentiles must be finite and positive for {suffix}")
+        if p99 < p95:
+            raise ValueError(f"hosted baseline P99 must be >= P95 for {suffix}")
+        result[suffix] = {"p95Ms": p95, "p99Ms": p99}
+    return result
+
+
+def resolve_limits(mode: str, p95_ms: float | None, p99_ms: float | None) -> tuple[float, float]:
+    if mode == "release":
+        p95 = p95_ms if p95_ms is not None else float(os.environ.get("JINGDU_FRAME_P95_MS", str(RELEASE_P95_MS)))
+        p99 = p99_ms if p99_ms is not None else float(os.environ.get("JINGDU_FRAME_P99_MS", str(RELEASE_P99_MS)))
+    else:
+        p95 = p95_ms if p95_ms is not None else float(os.environ.get("JINGDU_HOSTED_FRAME_P95_MS", str(HOSTED_P95_MS)))
+        p99 = p99_ms if p99_ms is not None else float(os.environ.get("JINGDU_HOSTED_FRAME_P99_MS", str(HOSTED_P99_MS)))
+    if not math.isfinite(p95) or not math.isfinite(p99) or p95 <= 0 or p99 <= 0 or p99 < p95:
+        raise ValueError(f"invalid frame limits: P95={p95} P99={p99}")
+    return p95, p99
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("paths", nargs="+", help="benchmarkData.json files or directories")
-    parser.add_argument("--p95-ms", type=float, default=float(os.environ.get("JINGDU_FRAME_P95_MS", "40")))
-    parser.add_argument("--p99-ms", type=float, default=float(os.environ.get("JINGDU_FRAME_P99_MS", "80")))
+    parser.add_argument(
+        "--mode",
+        choices=("release", "hosted-regression"),
+        default=os.environ.get("JINGDU_PERFORMANCE_GATE_MODE", "release"),
+    )
+    parser.add_argument("--baseline", help="checked-in hosted regression baseline JSON")
+    parser.add_argument("--max-regression-ratio", type=float, default=HOSTED_MAX_REGRESSION_RATIO)
+    parser.add_argument("--p95-ms", type=float)
+    parser.add_argument("--p99-ms", type=float)
     args = parser.parse_args()
+
+    try:
+        p95_limit, p99_limit = resolve_limits(args.mode, args.p95_ms, args.p99_ms)
+        hosted_baseline = load_hosted_baseline(args.baseline) if args.mode == "hosted-regression" else None
+    except ValueError as exc:
+        print(f"performance gate: {exc}", file=sys.stderr)
+        return 2
+    if not math.isfinite(args.max_regression_ratio) or args.max_regression_ratio < 0:
+        print("performance gate: max regression ratio must be finite and non-negative", file=sys.stderr)
+        return 2
 
     files = collect_files(args.paths)
     if not files:
-        print("performance SLO: no benchmarkData.json found", file=sys.stderr)
+        print("performance gate: no benchmarkData.json found", file=sys.stderr)
         return 2
 
-    rows: list[tuple[str, str, int, float, float, int]] = []
+    rows: list[tuple[str, str, int, float, int]] = []
     all_sample_sets: list[tuple[str, list[float]]] = []
-    limits = {95: args.p95_ms, 99: args.p99_ms}
     for file in files:
         try:
             payload = json.loads(file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            print(f"performance SLO: cannot parse {file}: {exc}", file=sys.stderr)
+            print(f"performance gate: cannot parse {file}: {exc}", file=sys.stderr)
             return 2
         sample_sets = frame_sample_sets(payload)
         all_sample_sets.extend(sample_sets)
@@ -129,36 +209,58 @@ def main() -> int:
                         benchmark,
                         percentile,
                         androidx_percentile(samples, percentile),
-                        limits[percentile],
                         len(samples),
                     )
                 )
 
     if not rows:
-        print("performance SLO: no sampledMetrics.frameDurationCpuMs.runs evidence found", file=sys.stderr)
+        print("performance gate: no sampledMetrics.frameDurationCpuMs.runs evidence found", file=sys.stderr)
         return 2
 
     evidence_failures = required_sample_failures(all_sample_sets)
     if evidence_failures:
         for failure in evidence_failures:
-            print(f"performance SLO: {failure}", file=sys.stderr)
+            print(f"performance gate: {failure}", file=sys.stderr)
         return 2
 
-    # Every frame-producing benchmark is independently gated. This prevents a fast journey from
-    # masking a slow one when result files contain multiple tests.
+    absolute_limits = {95: p95_limit, 99: p99_limit}
     failed = False
     seen = {95: 0, 99: 0}
-    for file, benchmark, percentile, value, limit, sample_count in rows:
+    for file, benchmark, percentile, value, sample_count in rows:
         seen[percentile] += 1
-        status = "PASS" if value <= limit else "FAIL"
+        absolute_limit = absolute_limits[percentile]
+        effective_limit = absolute_limit
+        baseline_value: float | None = None
+        relative_limit: float | None = None
+        if hosted_baseline is not None:
+            suffix = benchmark_suffix(benchmark)
+            if suffix is None:
+                print(
+                    f"performance gate: unexpected hosted frame benchmark without baseline: {benchmark}",
+                    file=sys.stderr,
+                )
+                return 2
+            key = "p95Ms" if percentile == 95 else "p99Ms"
+            baseline_value = hosted_baseline[suffix][key]
+            relative_limit = baseline_value * (1.0 + args.max_regression_ratio)
+            effective_limit = min(absolute_limit, relative_limit)
+
+        status = "PASS" if value <= effective_limit else "FAIL"
+        if hosted_baseline is None:
+            detail = f"limit={effective_limit:.3f}ms"
+        else:
+            detail = (
+                f"effective={effective_limit:.3f}ms absolute={absolute_limit:.3f}ms "
+                f"baseline={baseline_value:.3f}ms relative={relative_limit:.3f}ms"
+            )
         print(
             f"{benchmark} frameDurationCpuMs P{percentile}: {value:.3f}ms "
-            f"limit={limit:.3f}ms samples={sample_count} {status} ({file})"
+            f"{detail} samples={sample_count} {status} ({file})"
         )
-        failed |= value > limit
+        failed |= value > effective_limit
 
     if not all(seen[p] for p in (95, 99)):
-        print(f"performance SLO: incomplete percentile evidence: {seen}", file=sys.stderr)
+        print(f"performance gate: incomplete percentile evidence: {seen}", file=sys.stderr)
         return 2
     return 1 if failed else 0
 
