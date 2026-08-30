@@ -180,13 +180,27 @@ class BaselineProfileGenerator {
             if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
         }
 
-        val aa = device.findObjects(By.text("Aa")).minByOrNull { node ->
-            runCatching { node.visibleBounds.centerY() }.getOrDefault(Int.MAX_VALUE)
-        } ?: error("Reader V3 baseline top reading controls missing")
-        val anchor = runCatching { aa.visibleBounds }.getOrNull() ?: error("Reader V3 baseline Aa control became stale")
+        // UiAutomator nodes are live accessibility handles and can become stale between property
+        // reads while the retained top bar is being re-placed. Snapshot bounds exactly once, then
+        // choose the nearest visible clickable rectangle to the right of the top Aa control.
+        val anchor = device.findObjects(By.text("Aa"))
+            .asSequence()
+            .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
+            .filter { bounds ->
+                bounds.width() > 0 && bounds.height() > 0 &&
+                    bounds.right > 0 && bounds.bottom > 0 &&
+                    bounds.left < device.displayWidth && bounds.top < device.displayHeight
+            }
+            .minByOrNull { bounds -> bounds.centerY() }
+            ?: error("Reader V3 baseline visible top Aa control missing")
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
             .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
+            .filter { bounds ->
+                bounds.width() > 0 && bounds.height() > 0 &&
+                    bounds.right > 0 && bounds.bottom > 0 &&
+                    bounds.left < device.displayWidth && bounds.top < device.displayHeight
+            }
             .filter { bounds ->
                 bounds.centerX() > anchor.centerX() &&
                     abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
