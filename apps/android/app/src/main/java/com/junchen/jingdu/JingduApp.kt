@@ -153,14 +153,7 @@ fun JingduApp(
         val fallbackPanelState = rememberUpdatedState(state.panel)
         val hotPanelState: State<ReaderPanel?> = if (hotPanel != null) hotPanel.collectAsStateWithLifecycle() else fallbackPanelState
 
-        ReaderBackHandler(
-            hotPanelState = hotPanelState,
-            panel = state.panel,
-            screen = state.screen,
-            canLocationBack = location.canBack,
-            actions = trackedActions,
-            onLocationBack = stableLocationBack,
-        )
+        ReaderHotPanelBackHandler(hotPanelState, state.panel, state.screen, location.canBack, trackedActions, stableLocationBack)
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
@@ -203,7 +196,7 @@ fun JingduApp(
 
 /** One deterministic Back callback owns reader navigation priority; only this tiny restart group reads hot-panel state. */
 @Composable
-private fun ReaderBackHandler(
+private fun ReaderHotPanelBackHandler(
     hotPanelState: State<ReaderPanel?>,
     panel: ReaderPanel?,
     screen: AppScreen,
