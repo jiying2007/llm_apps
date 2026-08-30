@@ -4,11 +4,15 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import kotlin.math.abs
 
 /**
  * Single Android speech playback authority. Media3 owns session/controller/notification lifecycle;
@@ -17,10 +21,15 @@ import java.io.File
 @OptIn(UnstableApi::class)
 class TtsPlaybackService : MediaSessionService() {
     private val main = Handler(Looper.getMainLooper())
+    private val progressWorkers: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "jingdu-tts-progress").apply { isDaemon = true }
+    }
     private lateinit var repository: BookRepository
     private lateinit var player: ReaderTtsPlayer
     private var session: MediaSession? = null
     private var book: BookRepository.Book? = null
+    private var lastProgressPersistAt = 0L
+    private var lastProgressPersistOffset = -1L
 
     override fun onCreate() {
         super.onCreate()
@@ -73,7 +82,14 @@ class TtsPlaybackService : MediaSessionService() {
             player.stopTts("missing document")
             return
         }
+        val previous = book
+        if (previous != null && previous.id != matched.id) {
+            val previousOffset = player.snapshot().offset
+            if (previousOffset >= 0) persistProgress(previous, previousOffset, force = true)
+        }
         book = matched
+        lastProgressPersistAt = 0L
+        lastProgressPersistOffset = -1L
         runCatching {
             player.load(
                 file = source,
@@ -93,13 +109,13 @@ class TtsPlaybackService : MediaSessionService() {
         main.postAtTime(
             { player.stopTts("sleep") },
             SLEEP_TOKEN,
-            android.os.SystemClock.uptimeMillis() + minutes * 60_000L,
+            SystemClock.uptimeMillis() + minutes * 60_000L,
         )
     }
 
     private fun onPlayerState(state: ReaderTtsState) {
         book?.let { current ->
-            if (state.offset >= 0) repository.saveProgress(current, state.offset)
+            if (state.offset >= 0) persistProgress(current, state.offset, force = !state.active || !state.playing)
         }
         val broadcast = Intent(ACTION_STATE)
             .setPackage(packageName)
@@ -114,12 +130,25 @@ class TtsPlaybackService : MediaSessionService() {
         if (!state.active && state.reason !in setOf(null, "paused", "focus-paused")) stopSelf()
     }
 
+    private fun persistProgress(current: BookRepository.Book, offset: Long, force: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastProgressPersistAt < PROGRESS_SAVE_INTERVAL_MS &&
+            abs(offset - lastProgressPersistOffset) < PROGRESS_SAVE_CHAR_DELTA) return
+        lastProgressPersistAt = now
+        lastProgressPersistOffset = offset
+        progressWorkers.execute { runCatching { repository.saveProgress(current, offset) } }
+    }
+
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
         if (::player.isInitialized) {
             val state = player.snapshot()
-            book?.let { current -> if (state.offset >= 0) repository.saveProgress(current, state.offset) }
+            // Lifecycle teardown is the durability boundary. A direct final write happens after any
+            // already-running worker because BookRepository serializes access, then stale queued work
+            // is discarded below.
+            book?.let { current -> if (state.offset >= 0) runCatching { repository.saveProgress(current, state.offset) } }
         }
+        progressWorkers.shutdownNow()
         session?.release()
         session = null
         if (::player.isInitialized) player.release()
@@ -152,6 +181,8 @@ class TtsPlaybackService : MediaSessionService() {
         const val EXTRA_RANGE_END = "rangeEnd"
         const val EXTRA_REASON = "reason"
 
+        private const val PROGRESS_SAVE_INTERVAL_MS = 15_000L
+        private const val PROGRESS_SAVE_CHAR_DELTA = 2_048L
         private val SLEEP_TOKEN = Any()
     }
 }
