@@ -1,0 +1,33 @@
+name: Reader center tap test fix
+
+on:
+  push:
+    branches:
+      - "ux/reader-comprehensive"
+    paths:
+      - ".github/workflows/reader-center-tap-test-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Use visibility assertion for resident chrome
+        run: python3 -c "from pathlib import Path; p=Path('apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt'); s=p.read_text(); assert s.count('import androidx.compose.ui.test.assertDoesNotExist')==1 and s.count('.assertDoesNotExist()')==1; s=s.replace('import androidx.compose.ui.test.assertDoesNotExist','import androidx.compose.ui.test.assertIsNotDisplayed').replace('.assertDoesNotExist()','.assertIsNotDisplayed()'); p.write_text(s)"
+      - run: |
+          git diff --check
+          grep -Fq 'assertIsNotDisplayed' apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
+      - name: Commit test fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-center-tap-test-fix.yml
+          git add apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
+          git commit -m 'test: assert hidden reader chrome visibility'
+          git push origin HEAD:ux/reader-comprehensive
