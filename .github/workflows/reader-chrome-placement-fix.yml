@@ -40,8 +40,17 @@ jobs:
           new = '        layout(placeable.width, placeable.height) {\n            val placedVisible = visibility.value\n            placeable.placeWithLayer(\n                x = 0,\n                y = if (placedVisible) 0 else hiddenOffsetPx,\n            ) { alpha = if (placedVisible) 1f else 0f }\n        }'
           assert text.count(old) == 1, 'readerControlLayer placement anchor mismatch'
           screen.write_text(text.replace(old, new))
+
           contract = Path('scripts/verify-reader.sh')
           text = contract.read_text()
+          replacements = {
+              "require_literal \"$screen\" 'y = if (visible) 0 else hiddenOffsetPx' 'layout-owned reader control visibility'": "require_literal \"$screen\" 'y = if (placedVisible) 0 else hiddenOffsetPx' 'layout-owned reader control visibility'",
+              "require_literal \"$screen\" '.readerControlLayer(controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)' 'top reader control placement'": "require_literal \"$screen\" '.readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)' 'top reader control placement'",
+              "require_literal \"$screen\" '.readerControlLayer(controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)' 'bottom reader control placement'": "require_literal \"$screen\" '.readerControlLayer(controlsVisibility, controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)' 'bottom reader control placement'",
+          }
+          for old, new in replacements.items():
+              assert text.count(old) == 1, f'legacy placement contract anchor mismatch: {old}'
+              text = text.replace(old, new)
           anchor = "require_literal \"$screen\" '{ controlsVisibility.value = !controlsVisibility.value }' 'current-state controls toggle callback'\n"
           addition = "require_literal \"$screen\" '.readerControlLayer(controlsVisibility, controlsVisible,' 'state-backed reader chrome placement wiring'\nrequire_literal \"$screen\" 'val placedVisible = visibility.value' 'state-backed reader chrome placement read'\n"
           assert text.count(anchor) == 1, 'reader placement contract anchor mismatch'
