@@ -515,45 +515,51 @@ private fun PagedReaderPage(
     val gestures = if (touchExploration) Modifier else Modifier
         .readerGestures(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onResizeFont, onBookmark)
 
+    val pageContent: @Composable () -> Unit = {
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+        val ready = preparedValue ?: return@Box
+        val annotated = ready.annotated
+        if (columns == 2 && annotated.isNotEmpty()) {
+            val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
+            Row(
+                Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                horizontalArrangement = Arrangement.spacedBy(28.dp),
+            ) {
+                Text(
+                    annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style,
+                    overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
+                    onRequestSelection = { fastSelectionMode = true },
+                )
+                Text(
+                    annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style,
+                    overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
+                    onRequestSelection = { fastSelectionMode = true },
+                )
+            }
+        } else if (annotated.isNotEmpty()) {
+            Text(
+                annotated,
+                Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                style = style,
+                overflow = TextOverflow.Clip,
+                selectionMode = fastSelectionMode,
+                onRequestSelection = { fastSelectionMode = true },
+            )
+        }
+        }
+    }
+
     Box(
         Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
         contentAlignment = Alignment.TopCenter,
     ) {
-        SelectionContainer(state = selectionState) {
-            Box(
-                Modifier.fillMaxSize(),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-            val ready = preparedValue ?: return@Box
-            val annotated = ready.annotated
-            if (columns == 2 && annotated.isNotEmpty()) {
-                val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
-                Row(
-                    Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
-                ) {
-                    Text(
-                        annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style,
-                        overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
-                        onRequestSelection = { fastSelectionMode = true },
-                    )
-                    Text(
-                        annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style,
-                        overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
-                        onRequestSelection = { fastSelectionMode = true },
-                    )
-                }
-            } else if (annotated.isNotEmpty()) {
-                Text(
-                    annotated,
-                    Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
-                    style = style,
-                    overflow = TextOverflow.Clip,
-                    selectionMode = fastSelectionMode,
-                    onRequestSelection = { fastSelectionMode = true },
-                )
-            }
-            }
+        if (fastSelectionMode) {
+            SelectionContainer(state = selectionState) { pageContent() }
+        } else {
+            pageContent()
         }
     }
 }

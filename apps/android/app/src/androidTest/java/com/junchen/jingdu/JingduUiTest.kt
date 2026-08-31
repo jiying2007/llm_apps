@@ -4,11 +4,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -45,6 +47,27 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.start_read_aloud)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.bookmarks)).assertIsDisplayed()
+    }
+
+    @Test fun centerTapRestoresReaderChromeAfterAutoHide() {
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(),
+                    pageText = "Chapter 1\nA stable body used for center-tap restoration verification.",
+                    position = 500, length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
+                    settings = ReaderSettings(gestureCoachDismissed = true, controlsAutoHideMs = 80L),
+                ), noOpActions(),
+            )
+        }
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
+        Thread.sleep(240L)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).performTouchInput { click() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
     }
 
     @Test fun quickReadingSettingsStayTouchableAcrossRepeatedStateChanges() {
