@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.BookmarkAdd
@@ -56,7 +57,11 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
 
     ReaderPanelSurface(onDismiss = actions.onClosePanel) {
         Column(
-            Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 18.dp, vertical = 10.dp),
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
