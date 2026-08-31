@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  reader-v3-release-performance:
+  reader-release-performance:
     runs-on: [self-hosted, android, physical]
     timeout-minutes: 60
     steps:
@@ -21,13 +21,13 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Qualify Reader V3 on physical Android release device
+      - name: Qualify Reader on physical Android release device
         run: bash ./scripts/run-android-physical-release-performance.sh
       - name: Preserve physical release evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: reader-v3-physical-release-${{ github.sha }}
+          name: reader-physical-release-${{ github.sha }}
           path: apps/android/macrobenchmark/build/outputs/physical-release/
           if-no-files-found: warn
           retention-days: 30

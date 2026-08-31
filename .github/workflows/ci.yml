@@ -52,84 +52,15 @@ jobs:
           else
             echo "No lint text report was produced; failure occurred before lint reporting."
           fi
-      - name: Android Reader V3, localization and monetization contract
+      - name: Android Reader and localization contract
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
-          for path in \
-            apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/LibraryScreen.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderSession.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderMotionController.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderTypographySpec.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderSelectionController.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderSkimController.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderFontStore.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewModel.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderSheets.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt \
-            apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt \
-            apps/android/readerproto/src/main/proto/reader_settings.proto \
-            apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt \
-            apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt \
-            apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt \
-            apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt \
-            scripts/check-android-performance-slo.py \
-            scripts/run-android-macrobenchmark-ci.sh; do
-            test -f "$path"
-          done
-          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ProductSettingsSheet.kt
-          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt
-          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt
-          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
-          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java
-          test ! -f apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java
-          ! grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManifest.xml
-          ! grep -R -q 'Reader V2' apps/android/app/src/benchmark apps/android/macrobenchmark
           python3 scripts/verify-android-i18n.py
-          bash ./scripts/verify-reader-v3.sh
+          bash ./scripts/verify-reader.sh
           python3 -m py_compile scripts/check-android-performance-slo.py
           bash -n scripts/run-android-macrobenchmark-ci.sh
-          grep -q 'ReaderViewModel by viewModels' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-          grep -q 'collectAsStateWithLifecycle' apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
-          grep -q 'ReaderScreenV3' apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
-          grep -q 'rememberSelectionState' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
-          grep -q 'ReaderSkimController' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
-          grep -q 'ReaderGestureAction' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
-          grep -q 'MediaSessionService' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
-          grep -q 'SimpleBasePlayer' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
-          ! grep -q 'android.media.session.MediaSession' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
-          grep -q 'jingdu_pro_lifetime' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
-          grep -q 'queryPurchasesAsync' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
-          grep -q 'acknowledgePurchase' apps/android/app/src/main/java/com/junchen/jingdu/BillingManager.kt
-          grep -q 'billing:9.1.0' apps/android/app/build.gradle
-          grep -q 'media3-session:1.11.0' apps/android/app/build.gradle
-          grep -q 'room3-runtime:3.0.1' apps/android/app/build.gradle
-          grep -q 'compose-bom:2026.08.00' apps/android/app/build.gradle
-          grep -q 'compileSdk = 37' apps/android/app/build.gradle
-          grep -q 'generateLocaleConfig = true' apps/android/app/build.gradle
-          grep -q 'open10MiBTxt' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
-          grep -q 'open100MiBTxt' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
-          grep -q 'androidx.benchmark.suppressErrors.*EMULATOR' apps/android/macrobenchmark/build.gradle
-          grep -q 'preserve_failed_macro_evidence' scripts/run-android-macrobenchmark-ci.sh
 
   android-performance:
     needs: android
@@ -145,13 +76,13 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Run Reader V3 hosted Macrobenchmark and enforce frame SLO
+      - name: Run Reader hosted Macrobenchmark and enforce frame SLO
         run: bash ./scripts/run-android-macrobenchmark-ci.sh
       - name: Preserve Macrobenchmark evidence and failure Perfetto traces
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: reader-v3-macrobenchmark-${{ github.sha }}
+          name: reader-macrobenchmark-${{ github.sha }}
           path: |
             apps/android/macrobenchmark/build/outputs/
             ${{ runner.temp }}/jingdu-emulator.log
@@ -199,6 +130,7 @@ jobs:
       - name: Verify terminal source and long-form quality contracts
         run: |
           set -euo pipefail
+          python3 ./scripts/verify-android-source-conventions.py
           ./scripts/verify-terminal.sh
           bash ./scripts/verify-terminal-quality.sh
 
