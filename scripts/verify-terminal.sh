@@ -17,14 +17,14 @@ fi
 
 required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
-  .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md .github/workflows/ci.yml
-  docs/PRODUCT.md docs/ARCHITECTURE.md docs/PERFORMANCE.md docs/TESTING.md docs/RELEASE.md docs/READER_V3_PRELAUNCH_FINAL.md
-  scripts/verify-play-store.sh scripts/verify-android-i18n.py scripts/verify-release-version.py scripts/verify-reader-v3.sh scripts/verify-reader-profile-contract.py
+  .github/CODEOWNERS .github/REPOSITORY_POLICY.md .github/dependabot.yml .github/pull_request_template.md .github/workflows/ci.yml
+  docs/PRODUCT.md docs/ARCHITECTURE.md docs/PERFORMANCE.md docs/TESTING.md docs/RELEASE.md docs/PRODUCTION_READINESS.md docs/PRODUCTION_READINESS.md
+  scripts/verify-play-store.sh scripts/verify-android-i18n.py scripts/verify-release-version.py scripts/verify-reader.sh scripts/verify-reader-profile-contract.py scripts/publish-source-release.py
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
   apps/android/readerproto/src/main/proto/reader_settings.proto
   apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
   apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderMotionController.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSession.kt
@@ -33,11 +33,16 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderDatabase.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderInsightsPanels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
   apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/UserAssetBackup.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/LibraryMetadataStore.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/SmartCleanFeedbackStore.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
+  apps/android/app/src/androidTest/java/com/junchen/jingdu/PortableUserAssetsTest.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "required terminal asset missing: $path" >&2; exit 1; }; done
@@ -45,7 +50,6 @@ for path in "${required[@]}"; do test -f "$path" || { echo "required terminal as
 for legacy in \
   apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.java \
   apps/android/app/src/main/java/com/junchen/jingdu/JingduUi.kt \
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt \
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt \
   apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java \
@@ -58,7 +62,7 @@ done
 python3 ./scripts/verify-android-i18n.py
 python3 ./scripts/verify-release-version.py
 python3 ./scripts/verify-reader-profile-contract.py
-bash ./scripts/verify-reader-v3.sh
+bash ./scripts/verify-reader.sh
 
 grep -q 'kAbiVersion = 2' core/native/src/core_api.cpp
 grep -q 'jd_noise_candidates' core/native/include/jingdu/core_api.h
@@ -77,10 +81,29 @@ grep -q 'generateLocaleConfig = true' apps/android/app/build.gradle
 grep -q 'project(":readerproto")' apps/android/app/build.gradle
 grep -q 'media3-session:1.11.0' apps/android/app/build.gradle
 
+grep -q 'const val SCHEMA = 4' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
+grep -q 'containsBookText' apps/android/app/src/main/java/com/junchen/jingdu/UserBackup.kt
+grep -q 'consumeRestoredProgress' apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.kt
+grep -q 'jingdu-reading-stats' apps/android/app/src/main/java/com/junchen/jingdu/UserAssetBackup.kt
+grep -q 'jingdu-smartclean-feedback' apps/android/app/src/main/java/com/junchen/jingdu/SmartCleanFeedbackStore.kt
+grep -q 'manifest-sha256' scripts/publish-source-release.py
+grep -q '"/git/tags"' scripts/publish-source-release.py
+grep -q 'platform-enforced protection' .github/REPOSITORY_POLICY.md
+grep -q 'Google Play production-qualified' docs/PRODUCTION_READINESS.md
+
+if grep -q 'Android product line/source release: \*\*2\.2\.x' docs/PRODUCT.md; then
+  echo 'stale 2.2.x current-product SSOT remains' >&2; exit 1
+fi
+if grep -q '^## Android v2\.2 commercial release' docs/RELEASE.md; then
+  echo 'stale v2.2 release-heading SSOT remains' >&2; exit 1
+fi
+
 grep -q '@Concurrent' apps/harmony/entry/src/main/ets/model/BackgroundTasks.ets
 grep -q 'DocumentViewPicker' apps/harmony/entry/src/main/ets/pages/Index.ets
 
 grep -q 'gradle-9.5.0-bin.zip' apps/android/gradle/wrapper/gradle-wrapper.properties
 echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/android/gradle/wrapper/gradle-wrapper.jar' | sha256sum --check --strict
 
-echo 'Terminal prelaunch Reader V3 architecture/product/localization/profile contract OK'
+echo 'Terminal prelaunch Reader architecture/product/localization/profile/portable-assets/provenance contract OK'
+
+python3 scripts/verify-android-source-conventions.py

@@ -9,7 +9,7 @@ Jingdu does not win by becoming another broad-format reader. It owns the difficu
 4. repair chapter structure while keeping Core source offsets authoritative;
 5. reopen/read very long TXT comfortably, including professional local background TTS;
 6. organize user-selected TXT folders without broad storage permission;
-7. accumulate reusable local rules, TOC repairs and hashed Clean feedback without an account.
+7. accumulate reusable local rules, annotations, TOC repairs, reading history and hashed Clean feedback without an account.
 
 Store copy and product behavior must describe the same value. TXT depth remains the moat; format breadth, cloud accounts and online AI are not growth shortcuts.
 
@@ -25,9 +25,9 @@ Free includes:
 - TXT Doctor diagnosis;
 - Smart TOC diagnosis and local per-book TOC repair;
 - search, chapters, bookmarks and progress;
-- Paper/Light/Night + typography;
+- Reader themes/typography/selection/annotations;
 - base system TTS plus background/lock-screen/headset playback controls;
-- auto page and sleep timer;
+- auto page/auto scroll and sleep timer;
 - exact per-book Clean rules;
 - Smart Clean 4 scan, full candidate/risk preview and local KEEP/PROTECT feedback;
 - runtime privacy verification and privacy-audit export.
@@ -45,10 +45,12 @@ Pro unlocks:
 - recommended Chinese web-novel rule pack;
 - global rule JSON import/export;
 - offline TTS voice selection when the installed system engine exposes offline voices;
-- local settings/global-rule backup/restore;
+- portable Reader local-user backup/restore;
 - **batch TXT automation** across up to the product-defined bounded batch size: TXT Doctor/Smart Clean/TOC dry-run, report export, and explicit application of only high-confidence safe Clean candidates.
 
-Batch automation is the strongest Pro expression: Pro saves repeated work across a library. Folder access, diagnosis and ordinary reading remain Free; the paid boundary is bulk automation/application, not access to the user's own files.
+Portable backup includes settings, global rules, annotations, favorites/tags, exact-revision progress, reading sessions/pace and Smart Clean fingerprint decisions. It never includes source/normalized/Clean book text. SAF grants and unavailable imported font binaries are re-selected on the destination installation rather than treated as portable credentials.
+
+Batch automation is the strongest Pro expression: Pro saves repeated work across a library. Folder access, diagnosis and ordinary reading remain Free; the paid boundary is bulk automation/application and reusable local assets, not access to the user's own files.
 
 Do not move first-readable import, TXT Doctor, Smart TOC, search, chapters, bookmarks, folder organization, themes, base/background TTS or privacy verification behind Pro.
 
@@ -92,7 +94,16 @@ build local TXT library / add SAF folder
  -> explicit safe batch apply
 ```
 
-The user sees saved work before purchase. Whole-line wildcard/global rules/offline voice/backup may also surface contextual Pro CTAs, but none may block Free reading.
+Retention-asset conversion:
+
+```text
+build annotations / rules / reading history / Clean feedback
+ -> open portable local-user backup
+ -> see text-free assets that can move without an account
+ -> lifetime Pro CTA if not owned
+```
+
+The user sees saved work before purchase. Whole-line wildcard/global rules/offline voice/backup may surface contextual Pro CTAs, but none may block Free reading.
 
 ## Entitlement
 
@@ -113,13 +124,15 @@ Retention comes from useful local state rather than notification spam:
 - recommended/user-created wildcard patterns;
 - Smart TOC local repairs;
 - Smart Clean KEEP/DELETE/PROTECT decisions stored as fingerprints, never candidate text;
-- bookmarks/progress;
-- SAF folder-root choices;
+- bookmarks/highlights/notes;
+- favorites/tags/progress;
+- reading sessions and learned local pace;
+- SAF folder-root choices on the current install;
 - reading preferences;
 - selected offline TTS voice;
-- local JSON backup/restore.
+- portable local JSON backup/restore.
 
-Backup intentionally excludes all book正文/source/normalized/clean files. Batch and privacy reports explicitly declare `containsBookText=false`.
+Portable backup intentionally excludes all book正文/source/normalized/clean files, uses exact normalized-revision identity for progress restore and declares `containsBookText=false`. SAF folder-root grants are valuable local state but are not portable across installs/devices and therefore require explicit user re-selection.
 
 ## Review timing
 
@@ -171,7 +184,7 @@ For each release:
 4. run controlled listing experiments;
 5. keep winning creative and archive result notes;
 6. use support/reviews to improve Smart Clean hard negatives, TOC rules and encoding corpus rather than broadening formats indiscriminately;
-7. treat privacy audit, performance evidence and false-positive quality as product proof, not hidden engineering detail.
+7. treat privacy audit, physical performance evidence, backup trust and false-positive quality as product proof, not hidden engineering detail.
 
 ## Guardrails
 
@@ -179,7 +192,8 @@ For each release:
 - no unverified “200 MB instant open” marketing before physical-device SLO evidence exists;
 - no fake scarcity/subscription framing for lifetime Pro;
 - no blocking first-run paywall;
-- no private text in logs, billing, review, batch reports or marketing systems;
+- no private text in logs, billing, review, batch reports, backup metadata or marketing systems;
 - no arbitrary whole-book regex engine in the name of Pro feature count;
 - no whole-document semantic-model inference;
-- no cloud feature until its privacy/cost/product value justifies it.
+- no cloud feature until its privacy/cost/product value justifies it;
+- no claim of Google Play production readiness until `PRODUCTION_READINESS.md` external evidence is complete.

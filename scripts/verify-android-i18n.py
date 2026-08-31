@@ -85,11 +85,11 @@ base = ROOT / "apps/android/app/src/main/java/com/junchen/jingdu"
 presentation_files = [
     "JingduApp.kt",
     "LibraryScreen.kt",
-    "ReaderScreenV3.kt",
+    "ReaderScreen.kt",
     "ReaderSheets.kt",
     "ReaderQuickPanels.kt",
     "ReaderSettingsScreen.kt",
-    "ReaderV3Panels.kt",
+    "ReaderInsightsPanels.kt",
 ]
 for name in presentation_files:
     path = base / name

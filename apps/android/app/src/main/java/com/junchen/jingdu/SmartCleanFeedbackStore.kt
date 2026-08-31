@@ -1,6 +1,8 @@
 package com.junchen.jingdu
 
 import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
@@ -70,7 +72,74 @@ internal class SmartCleanFeedbackStore(context: Context) {
         return FeedbackSummary(keep, delete, protect)
     }
 
+    /** Portable backup contains only source identity, one-way fingerprint and decision metadata. */
+    fun exportJson(): JSONObject {
+        val entries = JSONArray()
+        prefs.all.toSortedMap().forEach { (key, value) ->
+            if (!key.startsWith("book.")) return@forEach
+            val parts = key.split('.')
+            if (parts.size != 3) return@forEach
+            val bookId = parts[1]
+            val fingerprint = parts[2]
+            if (!validSha256(bookId) || !validFingerprint(fingerprint)) return@forEach
+            val feedback = runCatching { SmartCleanFeedback.valueOf(value as? String ?: "") }.getOrDefault(SmartCleanFeedback.NONE)
+            if (feedback == SmartCleanFeedback.NONE) return@forEach
+            if (entries.length() >= MAX_FEEDBACK_ENTRIES) return@forEach
+            entries.put(
+                JSONObject()
+                    .put("bookId", bookId)
+                    .put("fingerprint", fingerprint)
+                    .put("decision", feedback.name),
+            )
+        }
+        return JSONObject()
+            .put("schema", 1)
+            .put("type", "jingdu-smartclean-feedback")
+            .put("containsBookText", false)
+            .put("entries", entries)
+    }
+
+    /** Preflight parser used by schema-4 backup restore before any persistent state is mutated. */
+    fun validateImport(root: JSONObject): Int = parseImport(root).size
+
+    fun importJson(root: JSONObject): Int {
+        val parsed = parseImport(root)
+        val editor = prefs.edit()
+        prefs.all.keys.filter { it.startsWith("book.") || it.startsWith("agg.") }.forEach(editor::remove)
+        val aggregates = linkedMapOf<Pair<String, SmartCleanFeedback>, Int>()
+        parsed.forEach { item ->
+            editor.putString("book.${item.bookId}.${item.fingerprint}", item.feedback.name)
+            val key = item.fingerprint to item.feedback
+            aggregates[key] = (aggregates[key] ?: 0) + 1
+        }
+        aggregates.forEach { (key, count) ->
+            val (fingerprint, feedback) = key
+            editor.putInt("agg.$fingerprint.${feedback.name.lowercase()}", count.coerceIn(0, 10_000))
+        }
+        if (!editor.commit()) throw IllegalStateException("cannot restore Smart Clean feedback")
+        return parsed.size
+    }
+
     data class FeedbackSummary(val keep: Int, val delete: Int, val protect: Int)
+    private data class PortableFeedback(val bookId: String, val fingerprint: String, val feedback: SmartCleanFeedback)
+
+    private fun parseImport(root: JSONObject): List<PortableFeedback> {
+        if (root.optInt("schema") != 1 || root.optString("type") != "jingdu-smartclean-feedback" || root.optBoolean("containsBookText", true)) {
+            throw IllegalArgumentException("unsupported Smart Clean feedback backup")
+        }
+        val entries = root.optJSONArray("entries") ?: JSONArray()
+        if (entries.length() > MAX_FEEDBACK_ENTRIES) throw IllegalArgumentException("too many Smart Clean feedback entries")
+        return buildList {
+            for (index in 0 until entries.length()) {
+                val item = entries.optJSONObject(index) ?: continue
+                val bookId = item.optString("bookId")
+                val fingerprint = item.optString("fingerprint")
+                val feedback = runCatching { SmartCleanFeedback.valueOf(item.optString("decision")) }.getOrDefault(SmartCleanFeedback.NONE)
+                if (!validSha256(bookId) || !validFingerprint(fingerprint) || feedback == SmartCleanFeedback.NONE) continue
+                add(PortableFeedback(bookId, fingerprint, feedback))
+            }
+        }.distinctBy { Triple(it.bookId, it.fingerprint, it.feedback) }
+    }
 
     private fun adjustAggregate(
         editor: android.content.SharedPreferences.Editor,
@@ -90,5 +159,12 @@ internal class SmartCleanFeedbackStore(context: Context) {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest((reason + "\u001f" + text).toByteArray(StandardCharsets.UTF_8))
         return digest.take(12).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun validSha256(value: String): Boolean = value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
+    private fun validFingerprint(value: String): Boolean = value.length == 24 && value.all { it in '0'..'9' || it in 'a'..'f' }
+
+    private companion object {
+        const val MAX_FEEDBACK_ENTRIES = 20_000
     }
 }

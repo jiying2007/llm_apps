@@ -1,7 +1,7 @@
 HPLcom/junchen/jingdu/MainActivity;->**(**)**
 HPLcom/junchen/jingdu/JingduAppKt;->**(**)**
 HPLcom/junchen/jingdu/LibraryScreenKt;->**(**)**
-HPLcom/junchen/jingdu/ReaderScreenV3Kt;->**(**)**
+HPLcom/junchen/jingdu/ReaderScreenKt;->**(**)**
 HPLcom/junchen/jingdu/ReaderQuickPanelsKt;->**(**)**
 HPLcom/junchen/jingdu/ReaderSmartChaptersPanelKt;->**(**)**
 HPLcom/junchen/jingdu/ReaderPanelSurfaceKt;->**(**)**

@@ -16,7 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * In-tree reader panel shell kept in the same composition tree as Reader V3. It creates no second
+ * In-tree reader panel shell kept in the same composition tree as Reader. It creates no second
  * window and no Material Surface/elevation/shadow layer. Hot Quick/Chapters panels render one Canvas
  * below this shell, avoiding the texture uploads and deep Material measure tree visible in hosted
  * Perfetto while preserving scrim, outside-tap and Back dismissal behavior.

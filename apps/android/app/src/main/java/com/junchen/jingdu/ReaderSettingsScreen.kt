@@ -29,7 +29,7 @@ internal fun ReaderSettingsScreen(state: AppUiState, actions: JingduActions) {
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.reader_v3_settings)) },
+                title = { Text(stringResource(R.string.reader_settings)) },
                 navigationIcon = { IconButton(actions.onClosePanel) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library)) } },
                 actions = { TextButton(actions.onClosePanel) { Text(stringResource(R.string.reader_settings_done)) } },
             )
@@ -225,7 +225,7 @@ private fun DataSettings(state: AppUiState, actions: JingduActions) = SettingsLi
 @Composable private fun SettingSwitch(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(label, Modifier.weight(1f)); Switch(checked, onChecked) } }
 @Composable private fun SettingSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, valueText: String, onChange: (Float) -> Unit) { Column { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label); Text(valueText, style = MaterialTheme.typography.labelMedium) }; Slider(value, onChange, valueRange = range) } }
 
-@Composable private fun categoryLabel(value: ReaderSettingsCategory): String = stringResource(when (value) { ReaderSettingsCategory.TYPOGRAPHY -> R.string.reader_v3_typography; ReaderSettingsCategory.GESTURES -> R.string.reader_v3_gestures; ReaderSettingsCategory.DISPLAY -> R.string.reader_v3_display; ReaderSettingsCategory.AUTO_READ -> R.string.reader_v3_auto_read; ReaderSettingsCategory.LANGUAGE -> R.string.reader_v3_language; ReaderSettingsCategory.SPEECH -> R.string.reader_v3_speech; ReaderSettingsCategory.DATA -> R.string.reader_v3_data })
+@Composable private fun categoryLabel(value: ReaderSettingsCategory): String = stringResource(when (value) { ReaderSettingsCategory.TYPOGRAPHY -> R.string.reader_typography; ReaderSettingsCategory.GESTURES -> R.string.reader_gestures; ReaderSettingsCategory.DISPLAY -> R.string.reader_display; ReaderSettingsCategory.AUTO_READ -> R.string.reader_auto_read; ReaderSettingsCategory.LANGUAGE -> R.string.reader_language; ReaderSettingsCategory.SPEECH -> R.string.reader_speech; ReaderSettingsCategory.DATA -> R.string.reader_data })
 @Composable private fun presetLabel(value: ReaderPreset): String = stringResource(when (value) { ReaderPreset.STANDARD -> R.string.reader_preset_standard; ReaderPreset.COMFORT -> R.string.reader_preset_comfort; ReaderPreset.LARGE -> R.string.reader_preset_large; ReaderPreset.NIGHT -> R.string.reader_preset_night; ReaderPreset.LOW_VISION -> R.string.reader_preset_low_vision; ReaderPreset.CUSTOM -> R.string.reader_preset_custom })
 @Composable private fun paletteLabel(value: ReaderPalette): String = stringResource(when (value) { ReaderPalette.PAPER -> R.string.paper; ReaderPalette.LIGHT -> R.string.light; ReaderPalette.SEPIA -> R.string.reader_theme_sepia; ReaderPalette.NIGHT -> R.string.night; ReaderPalette.OLED -> R.string.reader_oled })
 @Composable private fun typefaceLabel(value: ReaderTypeface): String = stringResource(when (value) { ReaderTypeface.SYSTEM -> R.string.system_font; ReaderTypeface.SERIF -> R.string.serif; ReaderTypeface.MONOSPACE -> R.string.reader_font_monospace; ReaderTypeface.CUSTOM -> R.string.reader_font_custom })

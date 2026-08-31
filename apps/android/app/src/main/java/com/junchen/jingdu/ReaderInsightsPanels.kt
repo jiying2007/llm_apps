@@ -31,7 +31,7 @@ import java.time.LocalDate
 import kotlin.math.roundToInt
 
 @Composable
-internal fun ReaderAnnotationsV3Panel(state: AppUiState, actions: JingduActions) {
+internal fun ReaderAnnotationsPanel(state: AppUiState, actions: JingduActions) {
     val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf(ReaderAnnotationFilter.ALL) }
@@ -87,7 +87,7 @@ internal fun ReaderAnnotationsV3Panel(state: AppUiState, actions: JingduActions)
 }
 
 @Composable
-internal fun ReaderReadingMapV3Panel(state: AppUiState, actions: JingduActions) {
+internal fun ReaderReadingMapPanel(state: AppUiState, actions: JingduActions) {
     LaunchedEffect(state.currentBook?.id, state.chaptersLoaded) { if (!state.chaptersLoaded) actions.onEnsureChapters() }
     val chapters = state.chapters
     ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
@@ -112,7 +112,7 @@ internal fun ReaderReadingMapV3Panel(state: AppUiState, actions: JingduActions) 
                     val marks = state.annotations.filter { it.sourceStart in chapter.offset until end }
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(chapter.title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(ReaderTextPresentation.chapterTitle(chapter.title, state.settings), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${(progress * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                         Spacer(Modifier.height(6.dp))

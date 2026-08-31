@@ -19,14 +19,14 @@ class BaselineProfileGenerator {
     @get:Rule val baselineProfileRule = BaselineProfileRule()
 
     /** Startup Profile contains only the first-display path; runtime CUJs belong in Baseline only. */
-    @Test fun readerV3Startup() {
+    @Test fun readerStartup() {
         prepareProfileTarget("paged")
         baselineProfileRule.collect(
             packageName = PACKAGE_NAME,
             maxIterations = 10,
             stableIterations = 3,
             includeInStartupProfile = true,
-            outputFilePrefix = "jingdu-reader-v3-startup",
+            outputFilePrefix = "jingdu-reader-startup",
         ) {
             pressHome()
             startActivityAndWait()
@@ -35,14 +35,14 @@ class BaselineProfileGenerator {
     }
 
     /** Page turn, continuous scroll and panel navigation are runtime-critical Baseline Profile CUJs. */
-    @Test fun readerV3CriticalJourneys() {
+    @Test fun readerCriticalJourneys() {
         prepareProfileTarget("paged")
         baselineProfileRule.collect(
             packageName = PACKAGE_NAME,
             maxIterations = 10,
             stableIterations = 3,
             includeInStartupProfile = false,
-            outputFilePrefix = "jingdu-reader-v3-critical",
+            outputFilePrefix = "jingdu-reader-critical",
         ) {
             pressHome()
             startActivityAndWait()
@@ -55,7 +55,7 @@ class BaselineProfileGenerator {
                 check(device.click(
                     (device.displayWidth * PAGE_FORWARD_TAP_X).toInt(),
                     (device.displayHeight * PAGE_FORWARD_TAP_Y).toInt(),
-                )) { "Reader V3 baseline forward page tap was not injected" }
+                )) { "Reader baseline forward page tap was not injected" }
                 device.waitForIdle()
             }
 
@@ -91,7 +91,7 @@ class BaselineProfileGenerator {
                     device.displayWidth / 2,
                     (device.displayHeight * 0.25).toInt(),
                     24,
-                )) { "Reader V3 baseline continuous-scroll swipe was not injected" }
+                )) { "Reader baseline continuous-scroll swipe was not injected" }
             }
             device.waitForIdle()
         }
@@ -109,7 +109,7 @@ class BaselineProfileGenerator {
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg 10",
         )
         check(seed.contains("bytes=")) {
-            "Reader V3 baseline fixture seed failed before profile collection: $seed\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics(device)}"
+            "Reader baseline fixture seed failed before profile collection: $seed\n===== Reader profile target diagnostics =====\n${profileDiagnostics(device)}"
         }
         setProfileMode(device, mode)
     }
@@ -119,7 +119,7 @@ class BaselineProfileGenerator {
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
         check(modeResult.contains("Result: Bundle[{}]")) {
-            "Reader V3 baseline mode setup failed before profile collection: $modeResult\n===== Reader V3 profile target diagnostics =====\n${profileDiagnostics(device)}"
+            "Reader baseline mode setup failed before profile collection: $modeResult\n===== Reader profile target diagnostics =====\n${profileDiagnostics(device)}"
         }
         // BaselineProfileRule owns product-process startup. Leave a fully provisioned but stopped
         // package so compilation/profile collection begins from a deterministic lifecycle boundary.
@@ -156,10 +156,10 @@ class BaselineProfileGenerator {
 
     private fun MacrobenchmarkScope.openFixture() {
         val title = "Benchmark Novel 10 MiB"
-        check(device.wait(Until.hasObject(By.textContains(title)), 8_000)) { "Reader V3 baseline fixture missing" }
-        val target = device.findObject(By.textContains(title)) ?: error("Reader V3 baseline fixture unavailable")
-        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader V3 baseline fixture became stale")
-        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 baseline fixture tap was not injected" }
+        check(device.wait(Until.hasObject(By.textContains(title)), 8_000)) { "Reader baseline fixture missing" }
+        val target = device.findObject(By.textContains(title)) ?: error("Reader baseline fixture unavailable")
+        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader baseline fixture became stale")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader baseline fixture tap was not injected" }
         device.waitForIdle()
     }
 
@@ -180,18 +180,18 @@ class BaselineProfileGenerator {
         repeat(2) {
             for ((x, y) in taps) {
                 check(device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())) {
-                    "Reader V3 baseline top-control tap was not injected"
+                    "Reader baseline top-control tap was not injected"
                 }
                 if (device.wait(Until.hasObject(By.text("Aa")), 900) && visibleBounds(By.text("Aa")) != null) return
             }
         }
-        error("Reader V3 baseline top reading controls did not become visibly on-screen")
+        error("Reader baseline top reading controls did not become visibly on-screen")
     }
 
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
-        check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 baseline $label missing" }
-        val bounds = visibleBounds(selector) ?: error("Reader V3 baseline $label exists only off-screen")
-        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 baseline $label tap was not injected" }
+        check(device.wait(Until.hasObject(selector), 3_000)) { "Reader baseline $label missing" }
+        val bounds = visibleBounds(selector) ?: error("Reader baseline $label exists only off-screen")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader baseline $label tap was not injected" }
     }
 
     private fun MacrobenchmarkScope.requireChaptersClick() {
@@ -202,7 +202,7 @@ class BaselineProfileGenerator {
             if (device.click(bounds.centerX(), bounds.centerY())) return
         }
 
-        val anchor = visibleBounds(By.text("Aa")) ?: error("Reader V3 baseline visible top Aa control missing")
+        val anchor = visibleBounds(By.text("Aa")) ?: error("Reader baseline visible top Aa control missing")
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
             .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
@@ -216,8 +216,8 @@ class BaselineProfileGenerator {
                     abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
             }
             .minByOrNull { bounds -> bounds.centerX() - anchor.centerX() }
-            ?: error("Reader V3 baseline chapters control missing beside Aa")
-        check(device.click(candidate.centerX(), candidate.centerY())) { "Reader V3 baseline chapters tap was not injected" }
+            ?: error("Reader baseline chapters control missing beside Aa")
+        check(device.click(candidate.centerX(), candidate.centerY())) { "Reader baseline chapters tap was not injected" }
     }
 
     private companion object {

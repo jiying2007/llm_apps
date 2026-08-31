@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="reader_v3_settings">Reading settings</string>
-    <string name="reader_v3_typography">Typography</string>
-    <string name="reader_v3_gestures">Gestures</string>
-    <string name="reader_v3_display">Display</string>
-    <string name="reader_v3_auto_read">Auto read</string>
-    <string name="reader_v3_language">Language</string>
-    <string name="reader_v3_speech">Read aloud</string>
-    <string name="reader_v3_data">Local data</string>
+    <string name="reader_settings">Reading settings</string>
+    <string name="reader_typography">Typography</string>
+    <string name="reader_gestures">Gestures</string>
+    <string name="reader_display">Display</string>
+    <string name="reader_auto_read">Auto read</string>
+    <string name="reader_language">Language</string>
+    <string name="reader_speech">Read aloud</string>
+    <string name="reader_data">Local data</string>
     <string name="reader_preset_low_vision">Low Vision</string>
     <string name="reader_extra_dim">Extra dim</string>
     <string name="reader_extra_dim_hint">Dims only the reading surface without changing system brightness.</string>

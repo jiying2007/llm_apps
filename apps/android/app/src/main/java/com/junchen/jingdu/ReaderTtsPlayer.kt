@@ -45,6 +45,8 @@ internal class ReaderTtsPlayer(
     private var rangeEnd = -1L
     private var title = "Jingdu"
     private var bookId = ""
+    private var chineseMode = ChineseDisplayMode.ORIGINAL
+    private var chineseOverrides = ""
     private var startRetries = 0
     private var lastReason: String? = null
 
@@ -66,6 +68,8 @@ internal class ReaderTtsPlayer(
         rate: Float,
         pitch: Float,
         voiceName: String,
+        chineseMode: ChineseDisplayMode,
+        chineseOverrides: String,
     ) {
         assertApplicationThread()
         engine.stop(null)
@@ -81,6 +85,8 @@ internal class ReaderTtsPlayer(
         engine.setRate(rate)
         engine.setPitch(pitch)
         engine.setVoiceName(voiceName)
+        this.chineseMode = chineseMode
+        this.chineseOverrides = chineseOverrides
         active = true
         playing = true
         startRetries = 0
@@ -193,16 +199,16 @@ internal class ReaderTtsPlayer(
 
     private fun startSpeechWithRetry() {
         if (!active || !playing) return
-        engine.start(reader, offset, object : TtsController.Listener {
-            override fun onPosition(value: Long) {
-                offset = value.coerceAtLeast(0)
-                nextOffset = runCatching { reader.speech(offset).nextOffset() }.getOrDefault(offset)
+        engine.start(reader, offset, chineseMode, chineseOverrides, object : TtsController.Listener {
+            override fun onPosition(offset: Long) {
+                this@ReaderTtsPlayer.offset = offset.coerceAtLeast(0)
+                nextOffset = runCatching { reader.speech(offset, chineseMode, chineseOverrides).nextOffset }.getOrDefault(offset)
                 publish()
             }
 
-            override fun onRange(start: Long, end: Long) {
-                rangeStart = start.coerceAtLeast(0)
-                rangeEnd = end.coerceAtLeast(rangeStart + 1)
+            override fun onRange(sourceStart: Long, sourceEnd: Long) {
+                rangeStart = sourceStart.coerceAtLeast(0)
+                rangeEnd = sourceEnd.coerceAtLeast(rangeStart + 1)
                 publish()
             }
 

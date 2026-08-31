@@ -27,27 +27,45 @@ Smart Clean is advisory until explicit apply. Tests verify:
 - whole-line `*` rules match the trimmed whole line, not arbitrary regex;
 - literal rules retain existing semantics;
 - invalid/oversized packed fields are ignored/rejected safely;
-- applying rules still writes an immutable derived file and never mutates normalized/source input.
+- applying rules still writes an immutable derived file and never mutates normalized/source input;
+- portable correction-memory backup contains only `bookId + fingerprint + decision`, declares `containsBookText=false`, and round-trips KEEP/DELETE/PROTECT without candidate text.
 
 ## Android Free / Pro contract
 
 Automated source/UI contracts verify:
 - Free retains import/re-decode, search, chapters, bookmarks, reading settings, base TTS, exact per-book rules and Smart Clean scan/preview;
-- `jingdu_pro_lifetime` is the only v2.2 Pro product id;
+- `jingdu_pro_lifetime` is the only Android 2.3.x Pro product id;
 - Billing Library stays on the approved pinned version in product contract;
 - `PURCHASED` is required for unlock and completed purchases are acknowledged;
 - restore uses `queryPurchasesAsync` and Billing failure does not block Free UI;
 - Smart Clean candidate text is visible before Pro CTA;
-- whole-line wildcard/global rule/backup/offline voice actions require Pro;
+- whole-line wildcard/global rule/portable-backup/offline voice actions require Pro;
 - price text comes from Play product details rather than a hard-coded currency value.
 
 License-tester device validation additionally covers fresh purchase, cancellation, pending purchase, restore after reinstall, offline launch after verified ownership and authoritative no-ownership refresh.
 
-## User asset contract
+## Portable local-user asset contract
 
-- Global rule JSON has a versioned bounded schema and field/count limits.
-- Local backup contains ReaderSettings + global rules only; it never contains source/normalized/clean book text or book files.
-- Backup import validates version/types/ranges and reapplies TTS settings safely.
+Reader backup schema 4 is bounded, local and text-free. Automated/instrumented tests verify:
+
+- Reader settings use the typed Reader settings import validation;
+- global-rule JSON retains its versioned bounded schema and field/count limits;
+- annotations remain bounded and keep source/context anchors;
+- favorites/tags are portable by source identity;
+- progress is staged with the source id and exact `normalizedSha256` and is consumed only by that revision;
+- a mismatched normalized revision cannot consume staged progress;
+- reading session/pace backup contains identifiers/timestamps/counts only;
+- Smart Clean feedback backup contains one-way fingerprints/decisions only;
+- backup root declares `containsBookText=false`;
+- schema 3 Reader settings/rules/annotation backups remain importable for pre-production testers;
+- SAF folder URI grants and unavailable imported font binaries are re-selected rather than represented as portable credentials.
+
+`PortableUserAssetsTest` covers revision-bound staged progress, Smart Clean text-free feedback round-trip and bounded reading-stat restore on AndroidTest.
+
+## User asset safety
+
+- Local backup never contains source/normalized/clean book text or book files.
+- Backup import validates version/types/ranges before applying bounded state.
 - Selected TTS voice is persisted only by system voice name; unavailable voices fall back without breaking base TTS.
 - Only voices reporting `isNetworkConnectionRequired == false` are offered as Pro offline voices.
 - Batch import is SAF multi-select, bounded to the configured per-operation maximum and reports partial failures.
@@ -83,6 +101,8 @@ Both platform shells keep:
 - candidate session publication before old-session close/prune;
 - Clean offsets isolated from normalized progress/bookmarks.
 
+Portable progress restore adds one further invariant: staged progress never crosses a normalized-revision boundary.
+
 ## Android UI / performance
 
 Hosted Android gate compiles Debug/Release, lint, Debug APK, Release AAB, AndroidTest and JNI ABIs.
@@ -94,15 +114,30 @@ Device review covers:
 - viewport paging and slider commit-on-release;
 - configuration/process restoration;
 - ACTION_VIEW/ACTION_SEND and multi-select import;
-- Smart Clean/Pro/settings/backup surfaces;
+- Smart Clean/Pro/settings/portable-backup surfaces;
 - TTS/audio focus/voice selection, auto page and sleep timer.
 
 10/100/300 MiB qualification verifies no file-size-proportional work intentionally runs on the main thread, Search/Chapters reuse active session, repeat open uses valid `.jdx`, corrupt cache rebuilds and Clean/Smart Clean remain bounded-memory streaming operations.
 
+Hosted Macrobenchmark/Baseline Profile is a regression gate, not physical-device product evidence. `PRODUCTION_READINESS.md` requires the real-device matrix and release SLO evidence before production rollout.
+
+## Repository/source provenance
+
+Source-release tests/contracts verify:
+- Android source/staging versions match the permanent release manifest;
+- publication runs only after all six hosted jobs;
+- existing source tags are never moved;
+- new source tags are annotated objects resolving to the exact gated `main` commit;
+- the annotated tag message binds the checked-in source-manifest SHA-256;
+- interrupted publication may complete only when an orphan tag already resolves to the exact gated SHA;
+- source publication never claims signed artifact, physical-device or Play production evidence.
+
+GitHub branch/tag protection itself is repository-administration evidence and therefore remains a required external P0 row in `PRODUCTION_READINESS.md`; CI must not fabricate that setting.
+
 ## HarmonyOS
 
-Hosted CI verifies source/bridge/storage contracts. Real HAP/device validation remains on the official `self-hosted,harmonyos` runner and is not an Android-only v2.2 merge blocker.
+Hosted CI verifies source/bridge/storage contracts. Real HAP/device validation remains on the official `self-hosted,harmonyos` runner and is not an Android-only 2.3.x source-merge blocker.
 
 ## Cross-platform parity
 
-Before declaring both platforms jointly production-ready, compare golden corpus source SHA, normalized SHA, encoding, character count, reads, search/chapter offsets, repair revision and clean-output SHA. Smart Clean candidate parity should also be added once Harmony exposes the v2.2 UI/API. `.jdx` is excluded from semantic identity.
+Before declaring both platforms jointly production-ready, compare golden corpus source SHA, normalized SHA, encoding, character count, reads, search/chapter offsets, repair revision and clean-output SHA. Smart Clean candidate parity should also be included once Harmony exposes the matching UI/API. `.jdx` is excluded from semantic identity.

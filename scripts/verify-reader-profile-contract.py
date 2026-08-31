@@ -9,7 +9,7 @@ journey = (ROOT / "apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/
 runner = (ROOT / "scripts/run-android-macrobenchmark-ci.sh").read_text(encoding="utf-8")
 physical_runner_path = ROOT / "scripts/run-android-physical-release-performance.sh"
 physical_workflow_path = ROOT / ".github/workflows/android-physical-release-performance.yml"
-hosted_baseline_path = ROOT / "scripts/reader-v3-hosted-emulator-baseline.json"
+hosted_baseline_path = ROOT / "scripts/reader-hosted-emulator-baseline.json"
 checker = (ROOT / "scripts/check-android-performance-slo.py").read_text(encoding="utf-8")
 workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 app_gradle = (ROOT / "apps/android/app/build.gradle").read_text(encoding="utf-8")
@@ -19,16 +19,16 @@ benchmark_provider = (ROOT / "apps/android/app/src/benchmark/java/com/junchen/ji
 proguard = (ROOT / "apps/android/app/proguard-rules.pro").read_text(encoding="utf-8")
 product_baseline_path = ROOT / "apps/android/app/src/main/baseline-prof.txt"
 product_startup_path = ROOT / "apps/android/app/src/main/startup-prof.txt"
-provenance_path = ROOT / "docs/READER_V3_PROFILE_PROVENANCE.md"
+provenance_path = ROOT / "docs/READER_PROFILE_PROVENANCE.md"
 
-startup_marker = "@Test fun readerV3Startup()"
-runtime_marker = "@Test fun readerV3CriticalJourneys()"
-assert startup_marker in generator, "Reader V3 startup profile CUJ missing"
-assert runtime_marker in generator, "Reader V3 runtime profile CUJ missing"
+startup_marker = "@Test fun readerStartup()"
+runtime_marker = "@Test fun readerCriticalJourneys()"
+assert startup_marker in generator, "Reader startup profile CUJ missing"
+assert runtime_marker in generator, "Reader runtime profile CUJ missing"
 assert generator.count("includeInStartupProfile = true") == 1, "exactly one startup-profile CUJ is required"
 assert generator.count("includeInStartupProfile = false") == 1, "runtime CUJs must be Baseline-only"
-assert 'outputFilePrefix = "jingdu-reader-v3-startup"' in generator
-assert 'outputFilePrefix = "jingdu-reader-v3-critical"' in generator
+assert 'outputFilePrefix = "jingdu-reader-startup"' in generator
+assert 'outputFilePrefix = "jingdu-reader-critical"' in generator
 
 startup_at = generator.index(startup_marker)
 runtime_at = generator.index(runtime_marker)
@@ -67,7 +67,7 @@ assert "load_hosted_baseline" in checker, "checked-in hosted baseline contract m
 assert hosted_baseline_path.is_file(), "checked-in hosted emulator baseline missing"
 hosted_baseline = json.loads(hosted_baseline_path.read_text(encoding="utf-8"))
 assert hosted_baseline.get("schemaVersion") == 1
-assert hosted_baseline.get("kind") == "reader-v3-hosted-emulator-regression-baseline"
+assert hosted_baseline.get("kind") == "reader-hosted-emulator-regression-baseline"
 assert hosted_baseline.get("maxRegressionRatio") == 0.15
 assert hosted_baseline.get("absoluteCeilingMs") == {"p95": 160.0, "p99": 220.0}
 source = hosted_baseline.get("source", {})
@@ -116,7 +116,7 @@ profile_swap = 'install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFIL
 profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log" "$PROFILE_CLASS"'
 assert slo_call in runner and profile_call in runner and profile_swap in runner
 assert '--mode hosted-regression' in runner, "hosted CI must use regression mode"
-assert '--baseline "$HOSTED_BASELINE"' in runner and 'reader-v3-hosted-emulator-baseline.json' in runner, "hosted CI baseline wiring missing"
+assert '--baseline "$HOSTED_BASELINE"' in runner and 'reader-hosted-emulator-baseline.json' in runner, "hosted CI baseline wiring missing"
 assert ':app:assembleBenchmark :macrobenchmark:assembleBenchmark' in runner
 assert ':app:assembleProfile :macrobenchmark:assembleProfile' in runner
 assert 'BENCHMARK_TARGET_APK=' in runner and 'PROFILE_TARGET_APK=' in runner
@@ -166,7 +166,7 @@ baseline = product_baseline_path.read_text(encoding="utf-8")
 startup = product_startup_path.read_text(encoding="utf-8")
 assert baseline.strip() and startup.strip()
 for marker in (
-    "Lcom/junchen/jingdu/ReaderScreenV3Kt;",
+    "Lcom/junchen/jingdu/ReaderScreenKt;",
     "Lcom/junchen/jingdu/ReaderQuickPanelsKt;",
     "Lcom/junchen/jingdu/ReaderSmartChaptersPanelKt;",
     "Lcom/junchen/jingdu/ReaderFastTextKt;",
@@ -187,7 +187,7 @@ for marker in (
     "Lcom/junchen/jingdu/MainActivity;",
     "Lcom/junchen/jingdu/JingduAppKt;",
     "Lcom/junchen/jingdu/LibraryScreenKt;",
-    "Lcom/junchen/jingdu/ReaderScreenV3Kt;",
+    "Lcom/junchen/jingdu/ReaderScreenKt;",
 ):
     assert marker in startup, f"startup funnel missing: {marker}"
 for forbidden in ("ReaderQuickPanelsKt", "ReaderSmartChaptersPanelKt", "foundation/lazy", "continuous"):
@@ -206,4 +206,4 @@ perf_job = workflow[workflow.index("  android-performance:"):workflow.index("  h
 assert "runs-on: ubuntu-22.04" in perf_job, "hosted performance image must be pinned"
 assert "Preserve Macrobenchmark evidence and failure Perfetto traces" in perf_job
 
-print("Reader V3 Baseline/Startup Profile contract OK")
+print("Reader Baseline/Startup Profile contract OK")

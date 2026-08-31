@@ -7,7 +7,7 @@ TARGET_PACKAGE="com.junchen.jingdu"
 TEST_PACKAGE="com.junchen.jingdu.macrobenchmark"
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
 ADB="${ADB:-$SDK_ROOT/platform-tools/adb}"
-REMOTE_ROOT="/sdcard/Download/jingdu-reader-v3-physical-release"
+REMOTE_ROOT="/sdcard/Download/jingdu-reader-physical-release"
 RESULT_ROOT="$ANDROID_DIR/macrobenchmark/build/outputs/physical-release"
 INSTRUMENTATION=""
 ORIGINAL_WINDOW_SCALE=""
@@ -100,4 +100,4 @@ cd "$ROOT"
 # This is the product frame SLO. Never substitute hosted-regression thresholds here.
 python3 scripts/check-android-performance-slo.py "$JSON" --mode release
 
-echo "Physical Release Reader V3 frame gate PASS: P95<=40ms P99<=80ms with real VOLUME_DOWN page turns"
+echo "Physical Release Reader frame gate PASS: P95<=40ms P99<=80ms with real VOLUME_DOWN page turns"

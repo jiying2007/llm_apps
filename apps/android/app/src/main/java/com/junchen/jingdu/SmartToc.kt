@@ -35,7 +35,7 @@ internal object SmartToc {
     fun analyze(reader: ReaderController): TocQualityReport {
         val merged = linkedMapOf<Long, SmartChapter>()
         reader.chapters().forEach { chapter ->
-            merged[chapter.offset()] = SmartChapter(chapter.offset(), chapter.title().trim(), "core", 100)
+            merged[chapter.offset] = SmartChapter(chapter.offset, chapter.title.trim(), "core", 100)
         }
 
         // Native Core already provides authoritative chapter offsets. Exact full-document searches
@@ -44,8 +44,8 @@ internal object SmartToc {
         if (merged.size < MIN_CORE_CHAPTERS_FOR_COMPLETE_TOC) {
             specialHeadings.forEach { marker ->
                 reader.search(marker).take(80).forEach { hit ->
-                    val verified = verifyLineHeading(reader, hit.offset(), marker) ?: return@forEach
-                    merged.putIfAbsent(hit.offset(), SmartChapter(hit.offset(), verified, "special", 92))
+                    val verified = verifyLineHeading(reader, hit.offset, marker) ?: return@forEach
+                    merged.putIfAbsent(hit.offset, SmartChapter(hit.offset, verified, "special", 92))
                 }
             }
         }

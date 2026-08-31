@@ -5,7 +5,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal class RuleLibrary(context: Context) {
-    private val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    internal val appContext: Context = context.applicationContext
+    private val preferences = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun load(): List<RepairRule> = decode(preferences.getString(KEY_RULES, "[]") ?: "[]")
 

@@ -21,8 +21,9 @@ internal object ReaderPresentationPipeline {
             intermediate = intermediate.replace("\n\n", "\n${ReaderTypographySpec.PARAGRAPH_SPACER}\n")
         }
         val sourceToIntermediate = TextProjection.between(source, intermediate)
-        val display = ChineseDisplayConverter.convert(intermediate, settings.chineseMode, settings.chineseOverrides)
-        val intermediateToDisplay = TextProjection.between(intermediate, display)
+        val presented = ReaderTextPresentation.present(intermediate, settings.chineseMode, settings.chineseOverrides)
+        val display = presented.displayText
+        val intermediateToDisplay = presented.projection
         val map = SourceDisplayMap.compose(sourceToIntermediate, intermediateToDisplay)
         // All present() callers are already on bounded worker/IO paths. Build selection source ranges
         // here so normal reader frames only merge the prepared annotations with visual spans.

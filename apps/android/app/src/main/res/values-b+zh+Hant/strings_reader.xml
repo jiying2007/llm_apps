@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="reader_v3_settings">閱讀設定</string>
-    <string name="reader_v3_typography">排版</string>
-    <string name="reader_v3_gestures">手勢</string>
-    <string name="reader_v3_display">顯示</string>
-    <string name="reader_v3_auto_read">自動閱讀</string>
-    <string name="reader_v3_language">語言</string>
-    <string name="reader_v3_speech">朗讀</string>
-    <string name="reader_v3_data">本機資料</string>
+    <string name="reader_settings">閱讀設定</string>
+    <string name="reader_typography">排版</string>
+    <string name="reader_gestures">手勢</string>
+    <string name="reader_display">顯示</string>
+    <string name="reader_auto_read">自動閱讀</string>
+    <string name="reader_language">語言</string>
+    <string name="reader_speech">朗讀</string>
+    <string name="reader_data">本機資料</string>
     <string name="reader_preset_low_vision">低視力</string>
     <string name="reader_extra_dim">額外調暗</string>
     <string name="reader_extra_dim_hint">只降低閱讀區域亮度，不修改系統亮度。</string>

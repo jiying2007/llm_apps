@@ -2,7 +2,7 @@ HSPLcom/junchen/jingdu/MainActivity;->**(**)**
 HSPLcom/junchen/jingdu/JingduAppKt;->**(**)**
 HSPLcom/junchen/jingdu/LibraryScreenKt;->**(**)**
 HSPLcom/junchen/jingdu/ReaderRouteKt;->**(**)**
-HSPLcom/junchen/jingdu/ReaderScreenV3Kt;->**(**)**
+HSPLcom/junchen/jingdu/ReaderScreenKt;->**(**)**
 HSPLcom/junchen/jingdu/ReaderPreferences;->**(**)**
 HSPLcom/junchen/jingdu/ReaderViewModel;->**(**)**
 HSPLcom/junchen/jingdu/BookRepository;->**(**)**
