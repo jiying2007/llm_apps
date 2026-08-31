@@ -290,55 +290,53 @@ internal fun ReaderScreen(
                 .align(Alignment.Center).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)),
         )
 
-        // Keep hot controls composed for the whole reader session, but move hidden controls in
-        // layout space rather than only transforming their pixels. Visual bounds, pointer hit testing
-        // and accessibility therefore share one authoritative placement while reopening stays cheap.
-        Box(
-            Modifier.align(Alignment.TopCenter)
-                .readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX),
-        ) {
-            ReaderTopBar(book.name, currentChapter, actions) { more = true }
-        }
-        if (more) Box(
-            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)
-                .readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX),
-        ) { ReaderMoreMenu(state.cleanMode, actions) { more = false } }
-        Box(
-            Modifier.align(Alignment.BottomCenter)
-                .readerControlLayer(controlsVisibility, controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX),
-        ) {
-            ReaderBottomBar(
-                chapters = state.chapters,
-                length = state.length,
-                autoPaging = state.autoPaging,
-                ttsPlaying = state.ttsPlaying,
-                chapter = currentChapter,
-                fraction = skimFraction,
-                skimPreview = skimPreview,
-                skimDragging = skimDragging,
-                showSkimReturn = showSkimReturn,
-                canLocationBack = canLocationBack,
-                canLocationForward = canLocationForward,
-                onLocationBack = onLocationBack,
-                onLocationForward = onLocationForward,
-                onBookmarks = { actions.onOpenPanel(ReaderPanel.BOOKMARKS) },
-                onTts = actions.onToggleTts,
-                onAutoPage = actions.onToggleAutoPaging,
-                onFractionChange = { value ->
-                    if (!skimDragging) { skimOrigin = state.position; skimDragging = true; showSkimReturn = false }
-                    skimFraction = value
-                },
-                onFractionCommit = {
-                    skimDragging = false
-                    showSkimReturn = true
-                    actions.onSeekFraction(skimFraction)
-                },
-                onReturnSkim = {
-                    actions.onJump(skimOrigin)
-                    skimPreview = null
-                    showSkimReturn = false
-                },
-            )
+        if (controlsVisible) {
+            // Recreate the Material chrome semantics subtree whenever controls reopen. Android accessibility
+            // must never retain hidden semantics from a previously off-screen resident control node.
+            Box(
+                Modifier.align(Alignment.TopCenter),
+            ) {
+                ReaderTopBar(book.name, currentChapter, actions) { more = true }
+            }
+            if (more) Box(
+                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp),
+            ) { ReaderMoreMenu(state.cleanMode, actions) { more = false } }
+            Box(
+                Modifier.align(Alignment.BottomCenter),
+            ) {
+                ReaderBottomBar(
+                    chapters = state.chapters,
+                    length = state.length,
+                    autoPaging = state.autoPaging,
+                    ttsPlaying = state.ttsPlaying,
+                    chapter = currentChapter,
+                    fraction = skimFraction,
+                    skimPreview = skimPreview,
+                    skimDragging = skimDragging,
+                    showSkimReturn = showSkimReturn,
+                    canLocationBack = canLocationBack,
+                    canLocationForward = canLocationForward,
+                    onLocationBack = onLocationBack,
+                    onLocationForward = onLocationForward,
+                    onBookmarks = { actions.onOpenPanel(ReaderPanel.BOOKMARKS) },
+                    onTts = actions.onToggleTts,
+                    onAutoPage = actions.onToggleAutoPaging,
+                    onFractionChange = { value ->
+                        if (!skimDragging) { skimOrigin = state.position; skimDragging = true; showSkimReturn = false }
+                        skimFraction = value
+                    },
+                    onFractionCommit = {
+                        skimDragging = false
+                        showSkimReturn = true
+                        actions.onSeekFraction(skimFraction)
+                    },
+                    onReturnSkim = {
+                        actions.onJump(skimOrigin)
+                        skimPreview = null
+                        showSkimReturn = false
+                    },
+                )
+            }
         }
         if (settings.showReadingStatus) ReaderReadingStatusHost(
             controlsVisibility = controlsVisibility,
@@ -931,33 +929,6 @@ private fun Modifier.readerGestures(
                 }
             }
         }
-    }
-}
-
-/**
- * Reader chrome stays resident, but hidden chrome is physically placed off-screen instead of only
- * receiving a graphics transform. This mirrors PersistentReaderPanelLayer: layout, hit testing and
- * accessibility all agree on visibility while placeWithLayer keeps reopening allocation-free.
- */
-private fun Modifier.readerControlLayer(
-    visibility: State<Boolean>,
-    visible: Boolean,
-    hiddenOffsetPx: Int,
-): Modifier {
-    val placement = layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
-        layout(placeable.width, placeable.height) {
-            val placedVisible = visibility.value
-            placeable.placeWithLayer(
-                x = 0,
-                y = if (placedVisible) 0 else hiddenOffsetPx,
-            ) { alpha = if (placedVisible) 1f else 0f }
-        }
-    }
-    return if (visible) {
-        this.then(placement)
-    } else {
-        this.then(placement).semantics { hideFromAccessibility() }
     }
 }
 
