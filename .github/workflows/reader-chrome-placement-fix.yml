@@ -1,0 +1,62 @@
+name: Reader chrome placement repair
+
+on:
+  push:
+    branches: [ux/reader-comprehensive]
+    paths: [.github/workflows/reader-chrome-placement-fix.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Repair Reader chrome placement invalidation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          screen = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt')
+          text = screen.read_text()
+          old = '.readerControlLayer(controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)'
+          new = '.readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)'
+          assert text.count(old) == 2, f'negative reader control layer calls: {text.count(old)}'
+          text = text.replace(old, new)
+          old = '.readerControlLayer(controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)'
+          new = '.readerControlLayer(controlsVisibility, controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)'
+          assert text.count(old) == 1, f'positive reader control layer calls: {text.count(old)}'
+          text = text.replace(old, new)
+          old = 'private fun Modifier.readerControlLayer(\n    visible: Boolean,\n    hiddenOffsetPx: Int,\n): Modifier {'
+          new = 'private fun Modifier.readerControlLayer(\n    visibility: State<Boolean>,\n    visible: Boolean,\n    hiddenOffsetPx: Int,\n): Modifier {'
+          assert text.count(old) == 1, 'readerControlLayer signature anchor mismatch'
+          text = text.replace(old, new)
+          old = '        layout(placeable.width, placeable.height) {\n            placeable.placeWithLayer(\n                x = 0,\n                y = if (visible) 0 else hiddenOffsetPx,\n            ) { alpha = if (visible) 1f else 0f }\n        }'
+          new = '        layout(placeable.width, placeable.height) {\n            val placedVisible = visibility.value\n            placeable.placeWithLayer(\n                x = 0,\n                y = if (placedVisible) 0 else hiddenOffsetPx,\n            ) { alpha = if (placedVisible) 1f else 0f }\n        }'
+          assert text.count(old) == 1, 'readerControlLayer placement anchor mismatch'
+          screen.write_text(text.replace(old, new))
+          contract = Path('scripts/verify-reader.sh')
+          text = contract.read_text()
+          anchor = "require_literal \"$screen\" '{ controlsVisibility.value = !controlsVisibility.value }' 'current-state controls toggle callback'\n"
+          addition = "require_literal \"$screen\" '.readerControlLayer(controlsVisibility, controlsVisible,' 'state-backed reader chrome placement wiring'\nrequire_literal \"$screen\" 'val placedVisible = visibility.value' 'state-backed reader chrome placement read'\n"
+          assert text.count(anchor) == 1, 'reader placement contract anchor mismatch'
+          assert 'state-backed reader chrome placement read' not in text, 'reader placement contract already present'
+          contract.write_text(text.replace(anchor, anchor + addition))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+      - name: Commit repair and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-chrome-placement-fix.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt scripts/verify-reader.sh
+          git commit -m 'fix: re-place reader chrome from current state'
+          git push origin HEAD:ux/reader-comprehensive
