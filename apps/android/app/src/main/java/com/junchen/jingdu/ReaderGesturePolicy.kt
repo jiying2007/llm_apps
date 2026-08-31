@@ -8,7 +8,8 @@ import kotlin.math.abs
  * multi-touch pinch, while SelectionContainer may still consume slow selection drags. A parallel
  * transform detector is intentionally forbidden because it can steal real single-finger taps.
  * Reader chrome follows the same rule: visual placement, hit testing and accessibility must share
- * one authoritative visibility state. Performance optimizations must never make paging/taps unreachable.
+ * one authoritative visibility state. Hosted journeys therefore inject real input and accept only
+ * visibly on-screen Reader chrome as proof. Performance optimizations must never make paging/taps unreachable.
  */
 internal object ReaderGesturePolicy {
     private const val CONSUMED_SWIPE_MAX_MS = 450L
