@@ -1,16 +1,18 @@
 name: Android hard cut once
 
 on:
-  push:
+  pull_request:
     branches:
-      - release/source-v2.3.1
+      - main
+    types:
+      - synchronize
 
 permissions:
   contents: write
 
 jobs:
   hardcut:
-    if: contains(github.event.head_commit.message, '[hardcut-once]')
+    if: github.event.pull_request.head.ref == 'release/source-v2.3.1' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
