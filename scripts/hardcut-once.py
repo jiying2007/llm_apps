@@ -5,9 +5,8 @@ body_path = Path(__file__).with_name("hardcut-body.py")
 source = body_path.read_text(encoding="utf-8")
 source = source.replace(
     'FORBIDDEN = ("ReaderScreenV3", "ReaderV3", "reader_v3", "reader-v3", "smart_clean3", "strings_reader_v3", "strings_smart_clean3")',
-    'FORBIDDEN = ("ReaderScreen" + "V3", "Reader" + "V3", "reader_" + "v3", "reader-" + "v3", "smart_clean" + "3", "strings_reader_" + "v3", "strings_smart_clean" + "3")',
+    'FORBIDDEN = ("ReaderScreen" + "V3", "Reader" + "V3", "reader_" + "v3", "reader-" + "v3", "reader" + "V3", "smart_clean" + "3", "strings_reader_" + "v3", "strings_smart_clean" + "3")',
 )
-source = source.replace('.replace("reader_v3", "reader")', '.replace("reader_v3", "reader").replace("V3", "")')
 source = source.replace(
     '.replace("ReaderScreenV3", "ReaderScreen")',
     '.replace("ReaderV3Panels.kt", "ReaderInsightsPanels.kt").replace("ReaderScreenV3", "ReaderScreen")',
@@ -45,6 +44,20 @@ for old, new in (
 text = text.replace("V3", "")
 text = text.replace("  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \\\n", "")
 write(rel, text)
+
+# Exhaustive current-product suffix removal: catches lower-camel names such as readerV3CriticalJourneys.
+for root in (p("apps/android"), p("scripts"), p(".github")):
+    if not root.exists():
+        continue
+    for path in root.rglob("*"):
+        if not path.is_file() or path == p("scripts/verify-android-source-conventions.py"):
+            continue
+        if path.suffix.lower() not in {".kt", ".xml", ".gradle", ".kts", ".sh", ".py", ".json", ".txt", ".md", ".proto", ".yml", ".yaml"}:
+            continue
+        value = path.read_text(encoding="utf-8")
+        updated = value.replace("V3", "")
+        if updated != value:
+            path.write_text(updated, encoding="utf-8")
 
 subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)
 '''.strip()
