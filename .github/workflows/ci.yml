@@ -239,7 +239,8 @@ jobs:
           APKSIGNER="$(find "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
-          APK_CERT_SHA="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner.txt" | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          APK_CERT_SHA="$(sed -n 's/.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner.txt" | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test -n "$APK_CERT_SHA"
           test "$APK_CERT_SHA" = "$KEY_CERT_SHA"
 
           mkdir -p "$RUNNER_TEMP/jingdu-release"
