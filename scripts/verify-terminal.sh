@@ -5,9 +5,21 @@ for path in prototype android-prototype txt_ref_apps research apps/android/core 
   test ! -e "$path" || { echo "legacy path remains: $path" >&2; exit 1; }
 done
 
-if find . -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.hap' -o -name '*.hsp' -o -name '*.jks' -o -name '*.keystore' -o -name '*.p12' -o -name '*.p7b' \) -not -path './.git/*' | grep .; then
-  echo 'committed binary/signing artifact found' >&2; exit 1
-fi
+PUBLIC_DEBUG_KEY='./config/signing/android-debug.keystore'
+PUBLIC_DEBUG_KEY_SHA256='b327cb3fd3bf5eeaeb3958737335180f5b8c664d47429fd1b9eb08d32e178a56'
+mapfile -t signing_artifacts < <(find . -type f \( -name '*.apk' -o -name '*.aab' -o -name '*.hap' -o -name '*.hsp' -o -name '*.jks' -o -name '*.keystore' -o -name '*.p12' -o -name '*.p7b' \) -not -path './.git/*' -print | sort)
+for artifact in "${signing_artifacts[@]}"; do
+  if [[ "$artifact" != "$PUBLIC_DEBUG_KEY" ]]; then
+    echo "committed binary/signing artifact found: $artifact" >&2
+    exit 1
+  fi
+done
+test -f "$PUBLIC_DEBUG_KEY" || { echo 'repository-stable Android debug key missing' >&2; exit 1; }
+test "$(sha256sum "$PUBLIC_DEBUG_KEY" | awk '{print $1}')" = "$PUBLIC_DEBUG_KEY_SHA256" || {
+  echo 'repository-stable Android debug key checksum mismatch' >&2
+  exit 1
+}
+
 if git grep -n -E 'uses:[[:space:]]+actions/[^@]+@v[0-9]+' -- .github/workflows; then
   echo 'floating GitHub Actions major tag found' >&2; exit 1
 fi
@@ -18,7 +30,8 @@ fi
 required=(
   README.md CONTRIBUTING.md SECURITY.md .clang-format .clang-tidy .editorconfig
   .github/CODEOWNERS .github/REPOSITORY_POLICY.md .github/dependabot.yml .github/pull_request_template.md .github/workflows/ci.yml
-  docs/PRODUCT.md docs/ARCHITECTURE.md docs/PERFORMANCE.md docs/TESTING.md docs/RELEASE.md docs/PRODUCTION_READINESS.md docs/PRODUCTION_READINESS.md
+  config/signing/android-debug.keystore config/signing/README.md
+  docs/PRODUCT.md docs/ARCHITECTURE.md docs/PERFORMANCE.md docs/TESTING.md docs/RELEASE.md docs/PRODUCTION_READINESS.md
   scripts/verify-play-store.sh scripts/verify-android-i18n.py scripts/verify-release-version.py scripts/verify-reader.sh scripts/verify-reader-profile-contract.py scripts/publish-source-release.py
   core/native/include/jingdu/core_api.h core/native/src/core_api.cpp core/native/src/core_api_cached.cpp
   apps/android/readerproto/src/main/proto/reader_settings.proto

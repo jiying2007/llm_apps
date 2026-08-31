@@ -133,7 +133,6 @@ jobs:
           python3 ./scripts/verify-android-source-conventions.py
           ./scripts/verify-terminal.sh
           bash ./scripts/verify-terminal-quality.sh
-          test "$(sha256sum config/signing/android-debug.keystore | awk '{print $1}')" = "b327cb3fd3bf5eeaeb3958737335180f5b8c664d47429fd1b9eb08d32e178a56"
 
   publish-source-release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
