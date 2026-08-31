@@ -4,7 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -64,7 +64,7 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
         Thread.sleep(240L)
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsNotDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).performTouchInput { click() }
         composeRule.waitForIdle()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
