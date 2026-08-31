@@ -1,0 +1,180 @@
+name: Reader center tap repair
+
+on:
+  push:
+    branches:
+      - "ux/reader-comprehensive"
+    paths:
+      - ".github/workflows/reader-selection-tap-repair.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Keep SelectionContainer off the normal tap path
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          screen = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt')
+          text = screen.read_text(encoding='utf-8')
+          old = '''    Box(
+        Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        SelectionContainer(state = selectionState) {
+            Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+            val ready = preparedValue ?: return@Box
+            val annotated = ready.annotated
+            if (columns == 2 && annotated.isNotEmpty()) {
+                val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
+                Row(
+                    Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                ) {
+                    Text(
+                        annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style,
+                        overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
+                        onRequestSelection = { fastSelectionMode = true },
+                    )
+                    Text(
+                        annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style,
+                        overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
+                        onRequestSelection = { fastSelectionMode = true },
+                    )
+                }
+            } else if (annotated.isNotEmpty()) {
+                Text(
+                    annotated,
+                    Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    style = style,
+                    overflow = TextOverflow.Clip,
+                    selectionMode = fastSelectionMode,
+                    onRequestSelection = { fastSelectionMode = true },
+                )
+            }
+            }
+        }
+    }
+'''
+          new = '''    val pageContent: @Composable () -> Unit = {
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            val ready = preparedValue ?: return@Box
+            val annotated = ready.annotated
+            if (columns == 2 && annotated.isNotEmpty()) {
+                val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
+                Row(
+                    Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                ) {
+                    Text(
+                        annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style,
+                        overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
+                        onRequestSelection = { fastSelectionMode = true },
+                    )
+                    Text(
+                        annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style,
+                        overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
+                        onRequestSelection = { fastSelectionMode = true },
+                    )
+                }
+            } else if (annotated.isNotEmpty()) {
+                Text(
+                    annotated,
+                    Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                    style = style,
+                    overflow = TextOverflow.Clip,
+                    selectionMode = fastSelectionMode,
+                    onRequestSelection = { fastSelectionMode = true },
+                )
+            }
+        }
+    }
+
+    Box(
+        Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        if (fastSelectionMode) {
+            SelectionContainer(state = selectionState) { pageContent() }
+        } else {
+            pageContent()
+        }
+    }
+'''
+          assert text.count(old) == 1, 'paged Reader content block did not match expected head'
+          screen.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test = Path('apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt')
+          text = test.read_text(encoding='utf-8')
+          old_import = 'import androidx.compose.ui.test.assertIsDisplayed\n'
+          new_import = 'import androidx.compose.ui.test.assertDoesNotExist\nimport androidx.compose.ui.test.assertIsDisplayed\n'
+          assert text.count(old_import) == 1 and 'assertDoesNotExist' not in text
+          text = text.replace(old_import, new_import, 1)
+          old_import = 'import androidx.compose.ui.test.performClick\n'
+          new_import = 'import androidx.compose.ui.test.performClick\nimport androidx.compose.ui.test.performTouchInput\n'
+          assert text.count(old_import) == 1 and 'performTouchInput' not in text
+          text = text.replace(old_import, new_import, 1)
+          anchor = '''    @Test fun quickReadingSettingsStayTouchableAcrossRepeatedStateChanges() {
+'''
+          addition = '''    @Test fun centerTapRestoresReaderChromeAfterAutoHide() {
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(),
+                    pageText = "Chapter 1\\nA stable body used for center-tap restoration verification.",
+                    position = 500, length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
+                    settings = ReaderSettings(gestureCoachDismissed = true, controlsAutoHideMs = 80L),
+                ), noOpActions(),
+            )
+        }
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
+        Thread.sleep(240L)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).performTouchInput { click() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
+    }
+
+'''
+          assert text.count(anchor) == 1 and 'centerTapRestoresReaderChromeAfterAutoHide' not in text
+          test.write_text(text.replace(anchor, addition + anchor, 1), encoding='utf-8')
+
+          contract = Path('scripts/verify-reader.sh')
+          text = contract.read_text(encoding='utf-8')
+          anchor = "require_literal \"$screen\" 'SelectionContainer(state = selectionState)' 'paged selection container'\n"
+          addition = "require_literal \"$screen\" 'if (fastSelectionMode) {' 'selection container activation gate'\n"
+          assert text.count(anchor) == 1 and 'selection container activation gate' not in text
+          contract.write_text(text.replace(anchor, anchor + addition, 1), encoding='utf-8')
+          PY
+      - name: Verify focused interaction repair
+        run: |
+          git diff --check
+          grep -Fq 'if (fastSelectionMode) {' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+          grep -Fq 'SelectionContainer(state = selectionState) { pageContent() }' apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
+          grep -Fq 'centerTapRestoresReaderChromeAfterAutoHide' apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
+          grep -Fq "selection container activation gate" scripts/verify-reader.sh
+          bash scripts/verify-reader.sh
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-selection-tap-repair.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt scripts/verify-reader.sh
+          git commit -m 'fix: keep reader selection off normal tap path'
+          git push origin HEAD:ux/reader-comprehensive
