@@ -17,11 +17,10 @@ source = source.replace(
 )
 source = source.replace(
     'delete("scripts/hardcut-once.py")',
-    'delete("scripts/hardcut-once.py")\ndelete("scripts/hardcut-body.py")',
+    'delete("scripts/hardcut-once.py")\ndelete("scripts/hardcut-body.py")\ndelete("scripts/hardcut-fixes.py")',
 )
 needle = 'subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)'
 patch = r'''
-# Hard-cut release gates themselves: no generation-era reverse bans and no Java-era paths/syntax.
 rel = "scripts/verify-terminal.sh"
 text = read(rel)
 text = text.replace("  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \\\n", "")
@@ -45,7 +44,6 @@ text = text.replace("V3", "")
 text = text.replace("  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \\\n", "")
 write(rel, text)
 
-# Exhaustive current-product suffix removal: catches lower-camel names such as readerV3CriticalJourneys.
 for root in (p("apps/android"), p("scripts"), p(".github")):
     if not root.exists():
         continue
@@ -59,6 +57,7 @@ for root in (p("apps/android"), p("scripts"), p(".github")):
         if updated != value:
             path.write_text(updated, encoding="utf-8")
 
+exec(compile(p("scripts/hardcut-fixes.py").read_text(encoding="utf-8"), "scripts/hardcut-fixes.py", "exec"), {"__file__": str(p("scripts/hardcut-fixes.py")), "__name__": "__main__"})
 subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)
 '''.strip()
 if needle not in source:
