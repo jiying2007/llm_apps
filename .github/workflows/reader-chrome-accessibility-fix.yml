@@ -1,0 +1,99 @@
+name: Reader chrome accessibility repair
+
+on:
+  push:
+    branches: [ux/reader-comprehensive]
+    paths: [.github/workflows/reader-chrome-accessibility-fix.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Recreate Reader chrome accessibility subtree when visible
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          screen = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt')
+          text = screen.read_text()
+          start_marker = '        // Keep hot controls composed for the whole reader session, but move hidden controls in\n'
+          end_marker = '        if (settings.showReadingStatus) ReaderReadingStatusHost(\n'
+          assert text.count(start_marker) == 1, 'reader chrome block start mismatch'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          chunk = text[start:end]
+          old_comment = '        // Keep hot controls composed for the whole reader session, but move hidden controls in\n        // layout space rather than only transforming their pixels. Visual bounds, pointer hit testing\n        // and accessibility therefore share one authoritative placement while reopening stays cheap.\n'
+          new_comment = '        // Recreate the Material chrome semantics subtree whenever controls reopen. Android accessibility\n        // must never retain hidden semantics from a previously off-screen resident control node.\n'
+          assert chunk.count(old_comment) == 1, 'reader chrome comment mismatch'
+          chunk = chunk.replace(old_comment, new_comment)
+          replacements = {
+              '            Modifier.align(Alignment.TopCenter)\n                .readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX),': '            Modifier.align(Alignment.TopCenter),',
+              '            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)\n                .readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX),': '            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp),',
+              '            Modifier.align(Alignment.BottomCenter)\n                .readerControlLayer(controlsVisibility, controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX),': '            Modifier.align(Alignment.BottomCenter),',
+          }
+          for old, new in replacements.items():
+              assert chunk.count(old) == 1, f'reader chrome placement call mismatch: {old}'
+              chunk = chunk.replace(old, new)
+          indented = ''.join(('    ' + line) if line.strip() else line for line in chunk.splitlines(True))
+          text = text[:start] + '        if (controlsVisible) {\n' + indented + '        }\n' + text[end:]
+
+          helper_start_marker = '/**\n * Reader chrome stays resident, but hidden chrome is physically placed off-screen instead of only\n'
+          helper_end_marker = 'private fun Modifier.readerAccessibilityActions(\n'
+          assert text.count(helper_start_marker) == 1, 'readerControlLayer helper start mismatch'
+          helper_start = text.index(helper_start_marker)
+          helper_end = text.index(helper_end_marker, helper_start)
+          text = text[:helper_start] + text[helper_end:]
+          screen.write_text(text)
+
+          contract = Path('scripts/verify-reader.sh')
+          text = contract.read_text()
+          for line in [
+              'require_literal "$screen" \'.readerControlLayer(controlsVisibility, controlsVisible,\' \'state-backed reader chrome placement wiring\'\n',
+              'require_literal "$screen" \'val placedVisible = visibility.value\' \'state-backed reader chrome placement read\'\n',
+          ]:
+              assert text.count(line) == 1, f'legacy state-backed contract mismatch: {line}'
+              text = text.replace(line, '')
+          old_block = '''require_literal "$screen" 'private fun Modifier.readerControlLayer(' 'resident reader control placement owner'
+require_literal "$screen" 'placeable.placeWithLayer(' 'layer-backed reader control placement'
+require_literal "$screen" 'y = if (placedVisible) 0 else hiddenOffsetPx' 'layout-owned reader control visibility'
+require_literal "$screen" 'hideFromAccessibility()' 'hidden reader control accessibility isolation'
+require_literal "$screen" '.readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)' 'top reader control placement'
+require_literal "$screen" '.readerControlLayer(controlsVisibility, controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)' 'bottom reader control placement'
+forbid_literal "$screen" 'translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()' 'graphics-only top control hiding'
+forbid_literal "$screen" 'translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()' 'graphics-only bottom control hiding'
+require_literal "$screen" 'READER_HIDDEN_LAYER_OFFSET_PX' 'resident reader controls'
+'''
+          new_block = '''require_literal "$screen" 'if (controlsVisible) {' 'visible-only reader chrome composition gate'
+require_literal "$screen" 'ReaderTopBar(book.name, currentChapter, actions)' 'visible reader top chrome'
+require_literal "$screen" 'ReaderBottomBar(' 'visible reader bottom chrome'
+forbid_literal "$screen" 'private fun Modifier.readerControlLayer(' 'resident reader chrome accessibility isolation'
+forbid_literal "$screen" '.readerControlLayer(' 'resident reader chrome placement wiring'
+forbid_literal "$screen" 'hideFromAccessibility()' 'reader chrome accessibility hiding'
+forbid_literal "$screen" 'translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()' 'graphics-only top control hiding'
+forbid_literal "$screen" 'translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()' 'graphics-only bottom control hiding'
+require_literal "$screen" 'READER_HIDDEN_LAYER_OFFSET_PX' 'auto-scroll live-control offset'
+'''
+          assert text.count(old_block) == 1, 'resident reader chrome contract block mismatch'
+          contract.write_text(text.replace(old_block, new_block))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+      - name: Commit repair and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-chrome-accessibility-fix.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt scripts/verify-reader.sh
+          git commit -m 'fix: recreate reader chrome accessibility nodes'
+          git push origin HEAD:ux/reader-comprehensive
