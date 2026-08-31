@@ -81,8 +81,8 @@ if grep -q 'android.permission.INTERNET' apps/android/app/src/main/AndroidManife
 if git grep -n -E 'converted(File|Path)|converted-[^ ]+\.txt|opencc.*\.txt' -- apps/android/app/src/main/java; then echo 'full-book converted artifact found' >&2; exit 1; fi
 if grep -qE 'normalizedFile|documentFile|ReaderController|File\(' apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt; then echo 'semantic classifier must remain file-blind' >&2; exit 1; fi
 
-for legacy in apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java scripts/verify-reader-v2.sh; do
-  test ! -e "$legacy" || { echo "legacy Reader V2 asset remains: $legacy" >&2; exit 1; }
+for legacy in apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.kt apps/android/app/src/main/java/com/junchen/jingdu/ReaderAdvancedSettingsSheet.kt apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.java scripts/verify-reader-v2.sh; do
+  test ! -e "$legacy" || { echo "legacy Reader asset remains: $legacy" >&2; exit 1; }
 done
 
 test ! -f .github/workflows/source-release.yml
