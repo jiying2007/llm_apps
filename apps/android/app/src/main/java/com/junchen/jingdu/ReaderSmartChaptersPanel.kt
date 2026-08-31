@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,8 +105,8 @@ internal fun ReaderSmartChaptersPanel(
             return@LaunchedEffect
         }
 
-        // Import/re-decode prewarms this revision cache. A revision-cache hit is authoritative for
-        // this panel and avoids hydrating duplicate global chapter state behind the visible panel.
+        // Import/re-decode prewarms this revision cache.
+        // A revision-cache hit is authoritative for this panel; never hydrate duplicate global chapter state.
         val cachedBase = withContext(Dispatchers.IO) {
             derivedCache.load(book.id, book.normalizedSha256, state.length)
         }
