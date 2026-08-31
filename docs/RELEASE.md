@@ -1,6 +1,6 @@
 # Release
 
-Source control contains releasable source and store metadata, not signed packages or signing material.
+Source control contains releasable source and store metadata. During the current pre-production stage, GitHub Releases may also carry an installable Android APK signed with the standard Android debug key. That APK is a convenience/test distribution artifact, not Google Play production signing evidence.
 
 ## Android v2.x build
 
@@ -13,7 +13,9 @@ cd apps/android
   androidStoreCheck writeAndroidReleaseChecksums
 ```
 
-Release infrastructure archives signed APK/AAB, R8 mapping, SHA-256 manifest and signing-certificate fingerprint. Future releases reuse the retained Android upload key created for v2.0.0; never generate a replacement key for routine releases.
+For the current pre-production stage, GitHub downloadable APKs use the standard Android debug key (`androiddebugkey`, standard debug-key credentials) consistently across releases. The APK must still be built from the immutable source tag, pass `apksigner` verification, and publish SHA-256 plus signing-certificate fingerprint evidence. Do not treat this debug-key convention as Google Play production signing.
+
+Production Play infrastructure remains separate: it archives signed APK/AAB, R8 mapping, SHA-256 manifest and signing-certificate fingerprint using the retained production/upload key when production qualification begins. Future Play production releases reuse the retained Android upload key created for v2.0.0; never generate a replacement key for routine production releases.
 
 The external production evidence gate is `PRODUCTION_READINESS.md`. Hosted source CI must never convert an unchecked Play/device/repository-administration row into claimed production evidence.
 
@@ -50,7 +52,9 @@ A Release without its tag is an inconsistent state and fails hard. Existing publ
 
 After publication/no-op resolution, the publisher removes closed same-repository temporary PR branches under `feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`, plus `release/source-v*`, while preserving every currently open PR head. This cleanup intentionally removes both merged and abandoned closed temporary PR branches. Long-lived branch names outside the explicit temporary prefixes are never pruned automatically.
 
-The publisher has no signing key and cannot activate Play products, upload production listings or perform a Google Play rollout. A GitHub Source Release is **source provenance only**. It is not evidence of a signed APK/AAB, Google Play production, or HarmonyOS device qualification.
+After source publication, `publish-android-debug-apk` may attach the current-stage installable Android APK to the existing GitHub Release. It must resolve the annotated version tag to its immutable commit, detach to that commit before building, generate/use the standard Android debug keystore, run `validateStoreRelease assembleRelease`, verify the APK with `apksigner`, and publish the APK together with SHA-256 and signing-certificate fingerprint files. It must never move the source tag and must label the artifact as debug-signed/non-production.
+
+The source publisher itself has no production signing key and cannot activate Play products, upload production listings or perform a Google Play rollout. A GitHub source tag remains **source provenance only**. A debug-signed GitHub APK is an installable pre-production artifact, not evidence of Google Play production or HarmonyOS device qualification.
 
 ## Android 2.3.x commercial / Reader release
 
@@ -75,7 +79,7 @@ Source CI cannot create/activate Play Console products, publish listings, qualif
 An Android 2.3.x production release requires:
 - exact candidate Hosted gates green;
 - `androidStoreCheck` green with production identity/version/signing;
-- signed APK/AAB verified with retained upload key;
+- production-key-signed APK/AAB verified with retained upload key;
 - mapping/checksum/certificate evidence archived;
 - physical-device matrix and release performance SLO evidence;
 - Play license-test purchase/restore/acknowledge evidence;
@@ -83,6 +87,8 @@ An Android 2.3.x production release requires:
 - internal/closed Play-installed candidate testing;
 - staged rollout rather than immediate 100% production where practical;
 - immutable source tag/GitHub Release provenance plus repository protection evidence.
+
+The current debug-key-signed GitHub APK does not satisfy the production-key signing row above.
 
 ## Portable local-user backup
 

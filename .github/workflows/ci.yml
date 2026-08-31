@@ -152,3 +152,91 @@ jobs:
           GH_API_URL: ${{ github.api_url }}
           MAIN_SHA: ${{ github.sha }}
         run: python3 ./scripts/publish-source-release.py
+
+  publish-android-debug-apk:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish-source-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Build debug-key-signed APK from immutable source tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^version: v//p' releases/source/v2.3.1.md | head -n1)"
+          TAG="v${VERSION}"
+          test "$TAG" = "v2.3.1"
+          TAG_SHA="$(git rev-list -n 1 "$TAG")"
+          test "$TAG_SHA" = "30c72dbea26d338f37a515392f152b8a5f6a9793"
+          git checkout --detach "$TAG_SHA"
+
+          DEBUG_KEYSTORE="$HOME/.android/debug.keystore"
+          mkdir -p "$HOME/.android"
+          if [[ ! -f "$DEBUG_KEYSTORE" ]]; then
+            keytool -genkeypair -v \
+              -keystore "$DEBUG_KEYSTORE" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          cat > apps/android/keystore.properties <<EOF
+          storeFile=$DEBUG_KEYSTORE
+          storePassword=android
+          keyAlias=androiddebugkey
+          keyPassword=android
+          EOF
+
+          cd apps/android
+          ./gradlew --no-daemon --no-configuration-cache --warning-mode all \
+            -PjingduApplicationId=com.junchen.jingdu \
+            -PjingduVersionCode=7 \
+            -PjingduVersionName="$VERSION" \
+            validateStoreRelease assembleRelease
+
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
+          grep -q 'Signer #1 certificate DN: CN=Android Debug' "$RUNNER_TEMP/apksigner.txt"
+
+          mkdir -p "$RUNNER_TEMP/jingdu-release"
+          OUT="$RUNNER_TEMP/jingdu-release/Jingdu-v${VERSION}-debug-signed.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | sed "s#  .*#  $(basename "$OUT")#" > "$RUNNER_TEMP/jingdu-release/SHA256SUMS.txt"
+          grep 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/apksigner.txt" > "$RUNNER_TEMP/jingdu-release/SIGNING-CERT-SHA256.txt"
+
+          gh release upload "$TAG" \
+            "$OUT" \
+            "$RUNNER_TEMP/jingdu-release/SHA256SUMS.txt" \
+            "$RUNNER_TEMP/jingdu-release/SIGNING-CERT-SHA256.txt" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+          BODY="$RUNNER_TEMP/release-body.md"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$BODY"
+          if ! grep -q 'Jingdu-v2.3.1-debug-signed.apk' "$BODY"; then
+            cat >> "$BODY" <<'EOF'
+
+          ## Android APK
+
+          `Jingdu-v2.3.1-debug-signed.apk` is built from the immutable `v2.3.1` source tag and signed with the standard Android debug key (`androiddebugkey`) used for the current pre-production stage. `SHA256SUMS.txt` and `SIGNING-CERT-SHA256.txt` are published alongside it.
+
+          This downloadable APK is **not Google Play production signing or rollout evidence**.
+          EOF
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$BODY"
+          fi
