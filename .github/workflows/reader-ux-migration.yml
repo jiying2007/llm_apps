@@ -1,0 +1,40 @@
+name: Reader UX migration
+
+on:
+  push:
+    branches:
+      - ux/reader-comprehensive
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reader-ux-migration
+  cancel-in-progress: true
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 1
+      - name: Apply asserted UX migration
+        run: |
+          set -euo pipefail
+          python3 scripts/apply-reader-ux-comprehensive.py
+          git diff --check
+          python3 -m py_compile scripts/apply-reader-ux-comprehensive.py
+      - name: Commit migration result
+        run: |
+          set -euo pipefail
+          if test -z "$(git status --porcelain)"; then
+            echo "Reader UX migration already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: complete Reader UI UX interaction hardening"
+          git push origin HEAD:ux/reader-comprehensive
