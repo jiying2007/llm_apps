@@ -4,10 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.fetchSemanticsNodes
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -83,14 +82,11 @@ class JingduUiTest {
                 ), noOpActions().copy(onJump = { jumped = it }),
             )
         }
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithContentDescription("Chapter 1").fetchSemanticsNodes().isNotEmpty()
-        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Chapter 1").assertExists()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reader_access_next)).performClick()
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithContentDescription("Chapter 9").fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithContentDescription("Chapter 9").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Chapter 9").assertExists().performClick()
         composeRule.waitForIdle()
         assertEquals(8_000L, jumped)
     }
