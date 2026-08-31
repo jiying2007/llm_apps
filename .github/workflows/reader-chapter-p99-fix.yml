@@ -1,0 +1,151 @@
+name: Reader chapter P99 fix
+
+on:
+  push:
+    branches: [ux/reader-comprehensive]
+    paths: [.github/workflows/reader-chapter-p99-fix.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Remove eager chapter work and align profile selectors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          panel = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt')
+          text = panel.read_text()
+          old = '''    val chapters = report?.chapters.orEmpty()
+    val displayTitles = remember(chapters, state.settings.chineseMode, state.settings.chineseOverrides) {
+        chapters.map { ReaderTextPresentation.chapterTitle(it.title, state.settings) }
+    }
+    val activePosition = currentPosition()
+    val currentIndex = chapters.indexOfLast { it.offset <= activePosition }.coerceAtLeast(0)
+'''
+          new = '''    val chapters = report?.chapters.orEmpty()
+    val activePosition = currentPosition()
+    val currentIndex = remember(chapters, activePosition) {
+        if (chapters.isEmpty()) {
+            0
+        } else {
+            var low = 0
+            var high = chapters.lastIndex
+            var result = 0
+            while (low <= high) {
+                val mid = (low + high) ushr 1
+                if (chapters[mid].offset <= activePosition) {
+                    result = mid
+                    low = mid + 1
+                } else {
+                    high = mid - 1
+                }
+            }
+            result
+        }
+    }
+'''
+          assert text.count(old) == 1, 'chapter eager-title/current-index anchor mismatch'
+          text = text.replace(old, new)
+          old = '''                    itemsIndexed(chapters, key = { _, item -> item.offset }) { index, chapter ->
+                        val selected = index == currentIndex
+                        val percent = if (state.length <= 0L) 0 else {
+'''
+          new = '''                    itemsIndexed(chapters, key = { _, item -> item.offset }) { index, chapter ->
+                        val displayTitle = ReaderTextPresentation.chapterTitle(chapter.title, state.settings)
+                        val selected = index == currentIndex
+                        val percent = if (state.length <= 0L) 0 else {
+'''
+          assert text.count(old) == 1, 'chapter row anchor mismatch'
+          text = text.replace(old, new)
+          assert text.count('displayTitles[index]') == 2, 'chapter eager title references mismatch'
+          text = text.replace('displayTitles[index]', 'displayTitle')
+          panel.write_text(text)
+
+          profile = Path('apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt')
+          text = profile.read_text()
+          assert text.count('            requireClick(By.text("Aa"), "quick reading settings control")') == 1
+          text = text.replace('            requireClick(By.text("Aa"), "quick reading settings control")', '            requireReadingSettingsClick()')
+          old = '''    private fun MacrobenchmarkScope.ensureTopControlsVisible() {
+        if (visibleBounds(By.text("Aa")) != null) return
+        val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
+        repeat(2) {
+            for ((x, y) in taps) {
+                check(device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())) {
+                    "Reader baseline top-control tap was not injected"
+                }
+                if (device.wait(Until.hasObject(By.text("Aa")), 900) && visibleBounds(By.text("Aa")) != null) return
+            }
+        }
+        error("Reader baseline top reading controls did not become visibly on-screen")
+    }
+
+'''
+          new = '''    private fun MacrobenchmarkScope.readingSettingsBounds(): android.graphics.Rect? =
+        visibleBounds(By.desc("Reading settings")) ?: visibleBounds(By.text("Aa"))
+
+    private fun MacrobenchmarkScope.ensureTopControlsVisible() {
+        if (readingSettingsBounds() != null) return
+        val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
+        repeat(2) {
+            for ((x, y) in taps) {
+                check(device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())) {
+                    "Reader baseline top-control tap was not injected"
+                }
+                if (device.wait(Until.hasObject(By.desc("Reading settings")), 900) && readingSettingsBounds() != null) return
+            }
+        }
+        error("Reader baseline top reading controls did not become visibly on-screen")
+    }
+
+    private fun MacrobenchmarkScope.requireReadingSettingsClick() {
+        val bounds = readingSettingsBounds() ?: error("Reader baseline quick reading settings control missing")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader baseline quick reading settings tap was not injected" }
+    }
+
+'''
+          assert text.count(old) == 1, 'baseline top controls anchor mismatch'
+          text = text.replace(old, new)
+          assert text.count('val anchor = visibleBounds(By.text("Aa")) ?: error("Reader baseline visible top Aa control missing")') == 1
+          text = text.replace(
+              'val anchor = visibleBounds(By.text("Aa")) ?: error("Reader baseline visible top Aa control missing")',
+              'val anchor = readingSettingsBounds() ?: error("Reader baseline visible top settings control missing")',
+          )
+          profile.write_text(text)
+
+          contract = Path('scripts/verify-reader.sh')
+          text = contract.read_text()
+          anchor = '''require_literal "$smart_panel" 'SmartToc.evaluate(state.chapters.map' 'bounded cache-eviction fallback'
+'''
+          addition = '''forbid_literal "$smart_panel" 'chapters.map { ReaderTextPresentation.chapterTitle' 'eager all-chapter title presentation'
+require_literal "$smart_panel" 'val displayTitle = ReaderTextPresentation.chapterTitle(chapter.title, state.settings)' 'viewport-only chapter title presentation'
+require_literal "$smart_panel" 'val mid = (low + high) ushr 1' 'logarithmic current chapter lookup'
+require_literal "$baseline" 'visibleBounds(By.desc("Reading settings")) ?: visibleBounds(By.text("Aa"))' 'profile semantic settings selector'
+'''
+          assert text.count(anchor) == 1, 'Reader smart panel contract anchor mismatch'
+          assert 'eager all-chapter title presentation' not in text
+          contract.write_text(text.replace(anchor, anchor + addition))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+          python3 scripts/verify-reader-profile-contract.py
+          python3 scripts/test-android-performance-slo.py
+      - name: Commit fix and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-chapter-p99-fix.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt scripts/verify-reader.sh
+          git commit -m 'perf: keep chapter panel work viewport-bounded'
+          git push origin HEAD:ux/reader-comprehensive
