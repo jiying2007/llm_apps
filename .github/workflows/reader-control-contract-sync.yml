@@ -1,0 +1,54 @@
+name: Reader control contract sync
+
+on:
+  push:
+    branches:
+      - "ux/reader-comprehensive"
+    paths:
+      - ".github/workflows/reader-control-contract-sync.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Sync Reader chrome source contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/verify-reader.sh')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              "require_literal \"$screen\" '.readerControlLayer(controlsVisibility, -READER_HIDDEN_LAYER_OFFSET_PX)' 'top reader control placement'":
+                  "require_literal \"$screen\" '.readerControlLayer(controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)' 'top reader control placement'",
+              "require_literal \"$screen\" '.readerControlLayer(controlsVisibility, READER_HIDDEN_LAYER_OFFSET_PX)' 'bottom reader control placement'":
+                  "require_literal \"$screen\" '.readerControlLayer(controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)' 'bottom reader control placement'",
+              "require_literal \"$screen\" 'snapshotFlow { controlsVisible }' 'layer-only controls visibility'":
+                  "require_literal \"$screen\" 'snapshotFlow { controlsVisible }' 'auto-hide controls visibility source'",
+          }
+          for old, new in replacements.items():
+              assert text.count(old) == 1, f'expected exactly one contract line: {old}'
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify focused contract sync
+        run: |
+          git diff --check
+          grep -Fq '.readerControlLayer(controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)' scripts/verify-reader.sh
+          grep -Fq '.readerControlLayer(controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)' scripts/verify-reader.sh
+          ! grep -Fq '.readerControlLayer(controlsVisibility,' scripts/verify-reader.sh
+      - name: Commit contract sync
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-control-contract-sync.yml
+          git add scripts/verify-reader.sh
+          git commit -m 'test: sync reader chrome visibility contract'
+          git push origin HEAD:ux/reader-comprehensive
