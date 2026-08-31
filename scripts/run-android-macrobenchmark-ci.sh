@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_DIR="$ROOT/apps/android"
-AVD_NAME="jingdu-v3-ci"
+AVD_NAME="jingdu-reader-ci"
 TARGET_PACKAGE="com.junchen.jingdu"
 TEST_PACKAGE="com.junchen.jingdu.macrobenchmark"
 API_LEVEL="${JINGDU_BENCHMARK_API:-35}"
