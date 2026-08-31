@@ -7,6 +7,7 @@ source = source.replace(
     'FORBIDDEN = ("ReaderScreenV3", "ReaderV3", "reader_v3", "reader-v3", "smart_clean3", "strings_reader_v3", "strings_smart_clean3")',
     'FORBIDDEN = ("ReaderScreen" + "V3", "Reader" + "V3", "reader_" + "v3", "reader-" + "v3", "smart_clean" + "3", "strings_reader_" + "v3", "strings_smart_clean" + "3")',
 )
+source = source.replace('.replace("reader_v3", "reader")', '.replace("reader_v3", "reader").replace("V3", "")')
 source = source.replace(
     '.replace("ReaderScreenV3", "ReaderScreen")',
     '.replace("ReaderV3Panels.kt", "ReaderInsightsPanels.kt").replace("ReaderScreenV3", "ReaderScreen")',
@@ -21,7 +22,7 @@ source = source.replace(
 )
 needle = 'subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)'
 patch = r'''
-# Hard-cut release gates themselves: no V3-era reverse bans and no Java-era paths/syntax.
+# Hard-cut release gates themselves: no generation-era reverse bans and no Java-era paths/syntax.
 rel = "scripts/verify-terminal.sh"
 text = read(rel)
 text = text.replace("  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \\\n", "")
@@ -42,6 +43,7 @@ for old, new in (
 ):
     text = text.replace(old, new)
 text = text.replace("V3", "")
+text = text.replace("  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \\\n", "")
 write(rel, text)
 
 subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)
