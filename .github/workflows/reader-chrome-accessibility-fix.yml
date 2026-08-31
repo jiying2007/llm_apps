@@ -56,32 +56,37 @@ jobs:
 
           contract = Path('scripts/verify-reader.sh')
           text = contract.read_text()
-          for line in [
+          legacy_lines = [
               'require_literal "$screen" \'.readerControlLayer(controlsVisibility, controlsVisible,\' \'state-backed reader chrome placement wiring\'\n',
               'require_literal "$screen" \'val placedVisible = visibility.value\' \'state-backed reader chrome placement read\'\n',
-          ]:
+          ]
+          for line in legacy_lines:
               assert text.count(line) == 1, f'legacy state-backed contract mismatch: {line}'
               text = text.replace(line, '')
-          old_block = '''require_literal "$screen" 'private fun Modifier.readerControlLayer(' 'resident reader control placement owner'
-require_literal "$screen" 'placeable.placeWithLayer(' 'layer-backed reader control placement'
-require_literal "$screen" 'y = if (placedVisible) 0 else hiddenOffsetPx' 'layout-owned reader control visibility'
-require_literal "$screen" 'hideFromAccessibility()' 'hidden reader control accessibility isolation'
-require_literal "$screen" '.readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)' 'top reader control placement'
-require_literal "$screen" '.readerControlLayer(controlsVisibility, controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)' 'bottom reader control placement'
-forbid_literal "$screen" 'translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()' 'graphics-only top control hiding'
-forbid_literal "$screen" 'translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()' 'graphics-only bottom control hiding'
-require_literal "$screen" 'READER_HIDDEN_LAYER_OFFSET_PX' 'resident reader controls'
-'''
-          new_block = '''require_literal "$screen" 'if (controlsVisible) {' 'visible-only reader chrome composition gate'
-require_literal "$screen" 'ReaderTopBar(book.name, currentChapter, actions)' 'visible reader top chrome'
-require_literal "$screen" 'ReaderBottomBar(' 'visible reader bottom chrome'
-forbid_literal "$screen" 'private fun Modifier.readerControlLayer(' 'resident reader chrome accessibility isolation'
-forbid_literal "$screen" '.readerControlLayer(' 'resident reader chrome placement wiring'
-forbid_literal "$screen" 'hideFromAccessibility()' 'reader chrome accessibility hiding'
-forbid_literal "$screen" 'translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()' 'graphics-only top control hiding'
-forbid_literal "$screen" 'translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()' 'graphics-only bottom control hiding'
-require_literal "$screen" 'READER_HIDDEN_LAYER_OFFSET_PX' 'auto-scroll live-control offset'
-'''
+          old_lines = [
+              'require_literal "$screen" \'private fun Modifier.readerControlLayer(\' \'resident reader control placement owner\'',
+              'require_literal "$screen" \'placeable.placeWithLayer(\' \'layer-backed reader control placement\'',
+              'require_literal "$screen" \'y = if (placedVisible) 0 else hiddenOffsetPx\' \'layout-owned reader control visibility\'',
+              'require_literal "$screen" \'hideFromAccessibility()\' \'hidden reader control accessibility isolation\'',
+              'require_literal "$screen" \'.readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX)\' \'top reader control placement\'',
+              'require_literal "$screen" \'.readerControlLayer(controlsVisibility, controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX)\' \'bottom reader control placement\'',
+              'forbid_literal "$screen" \'translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()\' \'graphics-only top control hiding\'',
+              'forbid_literal "$screen" \'translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()\' \'graphics-only bottom control hiding\'',
+              'require_literal "$screen" \'READER_HIDDEN_LAYER_OFFSET_PX\' \'resident reader controls\'',
+          ]
+          new_lines = [
+              'require_literal "$screen" \'if (controlsVisible) {\' \'visible-only reader chrome composition gate\'',
+              'require_literal "$screen" \'ReaderTopBar(book.name, currentChapter, actions)\' \'visible reader top chrome\'',
+              'require_literal "$screen" \'ReaderBottomBar(\' \'visible reader bottom chrome\'',
+              'forbid_literal "$screen" \'private fun Modifier.readerControlLayer(\' \'resident reader chrome accessibility isolation\'',
+              'forbid_literal "$screen" \'.readerControlLayer(\' \'resident reader chrome placement wiring\'',
+              'forbid_literal "$screen" \'hideFromAccessibility()\' \'reader chrome accessibility hiding\'',
+              'forbid_literal "$screen" \'translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()\' \'graphics-only top control hiding\'',
+              'forbid_literal "$screen" \'translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()\' \'graphics-only bottom control hiding\'',
+              'require_literal "$screen" \'READER_HIDDEN_LAYER_OFFSET_PX\' \'auto-scroll live-control offset\'',
+          ]
+          old_block = '\n'.join(old_lines) + '\n'
+          new_block = '\n'.join(new_lines) + '\n'
           assert text.count(old_block) == 1, 'resident reader chrome contract block mismatch'
           contract.write_text(text.replace(old_block, new_block))
           PY
