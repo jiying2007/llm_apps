@@ -295,17 +295,17 @@ internal fun ReaderScreen(
         // and accessibility therefore share one authoritative placement while reopening stays cheap.
         Box(
             Modifier.align(Alignment.TopCenter)
-                .readerControlLayer(controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX),
+                .readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX),
         ) {
             ReaderTopBar(book.name, currentChapter, actions) { more = true }
         }
         if (more) Box(
             Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)
-                .readerControlLayer(controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX),
+                .readerControlLayer(controlsVisibility, controlsVisible, -READER_HIDDEN_LAYER_OFFSET_PX),
         ) { ReaderMoreMenu(state.cleanMode, actions) { more = false } }
         Box(
             Modifier.align(Alignment.BottomCenter)
-                .readerControlLayer(controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX),
+                .readerControlLayer(controlsVisibility, controlsVisible, READER_HIDDEN_LAYER_OFFSET_PX),
         ) {
             ReaderBottomBar(
                 chapters = state.chapters,
@@ -940,16 +940,18 @@ private fun Modifier.readerGestures(
  * accessibility all agree on visibility while placeWithLayer keeps reopening allocation-free.
  */
 private fun Modifier.readerControlLayer(
+    visibility: State<Boolean>,
     visible: Boolean,
     hiddenOffsetPx: Int,
 ): Modifier {
     val placement = layout { measurable, constraints ->
         val placeable = measurable.measure(constraints)
         layout(placeable.width, placeable.height) {
+            val placedVisible = visibility.value
             placeable.placeWithLayer(
                 x = 0,
-                y = if (visible) 0 else hiddenOffsetPx,
-            ) { alpha = if (visible) 1f else 0f }
+                y = if (placedVisible) 0 else hiddenOffsetPx,
+            ) { alpha = if (placedVisible) 1f else 0f }
         }
     }
     return if (visible) {
