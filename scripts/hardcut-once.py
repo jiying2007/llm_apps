@@ -17,7 +17,7 @@ source = source.replace(
 )
 source = source.replace(
     'delete("scripts/hardcut-once.py")',
-    'delete("scripts/hardcut-once.py")\ndelete("scripts/hardcut-body.py")\ndelete("scripts/hardcut-fixes.py")',
+    'delete("scripts/hardcut-once.py")\ndelete("scripts/hardcut-body.py")',
 )
 needle = 'subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)'
 patch = r'''
@@ -57,7 +57,9 @@ for root in (p("apps/android"), p("scripts"), p(".github")):
         if updated != value:
             path.write_text(updated, encoding="utf-8")
 
-exec(compile(p("scripts/hardcut-fixes.py").read_text(encoding="utf-8"), "scripts/hardcut-fixes.py", "exec"), {"__file__": str(p("scripts/hardcut-fixes.py")), "__name__": "__main__"})
+fix_path = p("scripts/hardcut-fixes.py")
+exec(compile(fix_path.read_text(encoding="utf-8"), str(fix_path), "exec"), {"__file__": str(fix_path), "__name__": "__main__"})
+delete("scripts/hardcut-fixes.py")
 subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)
 '''.strip()
 if needle not in source:
