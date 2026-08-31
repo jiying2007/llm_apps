@@ -1,0 +1,53 @@
+name: Reader stale toggle fix
+
+on:
+  push:
+    branches: [ux/reader-comprehensive]
+    paths: [.github/workflows/reader-stale-toggle-fix.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Fix current-state Reader chrome toggle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          screen = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt')
+          text = screen.read_text()
+          old = '{ controlsVisible = !controlsVisible }'
+          new = '{ controlsVisibility.value = !controlsVisibility.value }'
+          count = text.count(old)
+          if count != 3:
+              raise SystemExit(f'expected 3 stale control toggles, found {count}')
+          screen.write_text(text.replace(old, new))
+
+          contract = Path('scripts/verify-reader.sh')
+          text = contract.read_text()
+          anchor = "require_literal \"$screen\" 'Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures)' 'outer paged gesture observer'\n"
+          addition = "require_literal \"$screen\" '{ controlsVisibility.value = !controlsVisibility.value }' 'current-state controls toggle callback'\nforbid_literal \"$screen\" '{ controlsVisible = !controlsVisible }' 'stale captured controls toggle callback'\n"
+          if text.count(anchor) != 1 or 'current-state controls toggle callback' in text:
+              raise SystemExit('reader toggle contract anchor mismatch')
+          contract.write_text(text.replace(anchor, anchor + addition))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+      - name: Commit fix and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-stale-toggle-fix.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt scripts/verify-reader.sh
+          git commit -m 'fix: read current reader chrome visibility on tap'
+          git push origin HEAD:ux/reader-comprehensive
