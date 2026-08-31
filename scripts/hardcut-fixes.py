@@ -26,6 +26,10 @@ edit("apps/android/app/src/main/java/com/junchen/jingdu/CompetitiveSheets.kt", [
     ("item.raw.reason()", "item.raw.reason"),
     ("item.raw.score()", "item.raw.score"),
     ("item.raw.count()", "item.raw.count"),
+    ("it.raw.text()", "it.raw.text"),
+    ("it.raw.reason()", "it.raw.reason"),
+    ("it.raw.score()", "it.raw.score"),
+    ("it.raw.count()", "it.raw.count"),
 ])
 edit("apps/android/app/src/main/java/com/junchen/jingdu/TxtDoctor.kt", [("candidate.score()", "candidate.score")])
 edit("apps/android/app/src/main/java/com/junchen/jingdu/ReaderPreferences.kt", [
