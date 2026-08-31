@@ -20,19 +20,29 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.flow.StateFlow
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.StateFlow
 
 data class JingduActions(
     val onImport: () -> Unit, val onBatchImport: () -> Unit, val onOpenBook: (String) -> Unit, val onDeleteLibraryBook: (String) -> Unit,
@@ -161,10 +171,10 @@ fun JingduApp(
                 AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
             }
             if (state.screen == AppScreen.READER) {
-                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS) {
+                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS, quickPanelState) {
                     ReaderQuickSettingsSheet(quickPanelState, trackedActions)
                 }
-                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS) {
+                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS, chaptersPanelState) {
                     ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition)
                 }
             }
@@ -195,7 +205,6 @@ fun JingduApp(
     }
 }
 
-/** One deterministic Back callback owns reader navigation priority; only this tiny restart group reads hot-panel state. */
 @Composable
 private fun ReaderHotPanelBackHandler(
     hotPanelState: State<ReaderPanel?>,
@@ -217,18 +226,30 @@ private fun ReaderHotPanelBackHandler(
 }
 
 /**
- * Quick/Chapters stay measured for the whole Reader session so opening a panel does not rebuild the
- * reader. Only placement/alpha are phase-local. The panel itself owns any safe draw caching, which
- * keeps local interaction state (chapter window, repairs, controls) visually authoritative.
+ * Hot panels stay measured for the Reader session. Only the flat scrim is pre-recorded; interactive
+ * panel content always draws live, so local chapter/settings state can never replay stale pixels.
  */
 @Composable
 private fun PersistentReaderPanelLayer(
     panelState: State<ReaderPanel?>,
     target: ReaderPanel,
+    recordKey: Any?,
     content: @Composable () -> Unit,
 ) {
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val layer = rememberGraphicsLayer()
+    val scrim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f)
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    var recordedKey by remember { mutableStateOf<Any?>(null) }
+    LaunchedEffect(recordKey, size, scrim, density.density, density.fontScale, layoutDirection) {
+        if (size.width <= 0 || size.height <= 0) return@LaunchedEffect
+        layer.record(density, layoutDirection, size) { drawRect(scrim) }
+        recordedKey = recordKey
+    }
     Box(
         Modifier.fillMaxSize()
+            .onSizeChanged { size = it }
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints)
                 layout(placeable.width, placeable.height) {
@@ -239,7 +260,11 @@ private fun PersistentReaderPanelLayer(
                     ) { alpha = if (visible) 1f else 0f }
                 }
             }
-            .semantics { if (panelState.value != target) hideFromAccessibility() },
+            .semantics { if (panelState.value != target) hideFromAccessibility() }
+            .drawWithContent {
+                if (panelState.value == target && recordedKey == recordKey) drawLayer(layer)
+                drawContent()
+            },
     ) { content() }
 }
 

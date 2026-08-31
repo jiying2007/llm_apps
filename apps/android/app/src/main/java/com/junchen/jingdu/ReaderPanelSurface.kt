@@ -16,10 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * In-tree reader panel shell kept in the same composition tree as Reader. It creates no second
- * window and no Material Surface/elevation/shadow layer. Hot Quick/Chapters panels render one Canvas
- * below this shell, avoiding the texture uploads and deep Material measure tree visible in hosted
- * Perfetto while preserving scrim, outside-tap and Back dismissal behavior.
+ * In-tree reader panel shell kept in the same composition tree as Reader. The persistent parent
+ * owns the cached flat scrim; this shell keeps outside-tap dismissal and the live panel surface so
+ * interactive content is never captured into a stale display list.
  */
 @Composable
 internal fun ReaderPanelSurface(
@@ -30,7 +29,6 @@ internal fun ReaderPanelSurface(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f))
                 .clickable(onClick = onDismiss),
         )
         Column(

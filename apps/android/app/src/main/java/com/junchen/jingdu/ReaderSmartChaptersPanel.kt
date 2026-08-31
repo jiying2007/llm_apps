@@ -89,10 +89,15 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
     LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {
         if (book == null) { base = null; report = null; loading = false; windowStart = 0; return@LaunchedEffect }
         if (initial != null) return@LaunchedEffect
+
+        // Import/re-decode prewarms this revision cache. Paint it first so opening Chapters does not
+        // wait for a global AppUiState chapter hydration and recompose the reader behind the panel.
         val cachedBase = withContext(Dispatchers.IO) { derivedCache.load(book.id, book.normalizedSha256, state.length) }
         if (cachedBase != null) {
             val key = TocPanelKey(book.id, book.normalizedSha256, state.length, cachedBase.chapters.hashCode())
             TocPanelCache.get(key)?.let { cached ->
+                // A revision-cache hit is authoritative for this panel. Do not hydrate global chapter
+                // state behind the visible panel; that only recomposes the reader and duplicates data.
                 base = cached.base; report = cached.report; loading = false
                 return@LaunchedEffect
             }
@@ -246,7 +251,7 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
 
             for (index in windowStart until end) {
                 val local = index - windowStart
-                val y = CHAPTER_ROWS_TOP + CHAPTER_ROW_HEIGHT * local
+                val y = CHAPTER_ROWS_TOP + (48 * local).dp
                 Box(
                     Modifier.fillMaxWidth().height(CHAPTER_ROW_HEIGHT).offset(y = y).padding(end = 60.dp)
                         .clickable { actions.onJump(chapters[index].offset) }
