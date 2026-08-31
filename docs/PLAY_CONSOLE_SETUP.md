@@ -139,7 +139,7 @@ Before uploading Android 2.3.x:
 - confirm all four default listings and intended Custom Listings are uploaded from repository SSOT;
 - confirm Data safety / privacy declarations remain consistent with no text upload, no advertising SDK and no analytics SDK;
 - capture actual GitHub `main`/`v*` protection evidence;
-- use internal/closed testing and staged rollout rather than immediately exposing 100% of production users after the Reader V3 + commerce hardening changes.
+- use internal/closed testing and staged rollout rather than immediately exposing 100% of production users after the Reader + commerce hardening changes.
 
 ## 10. Post-release checks
 

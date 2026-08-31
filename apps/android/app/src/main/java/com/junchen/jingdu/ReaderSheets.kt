@@ -28,14 +28,7 @@ import kotlin.math.roundToInt
     ModalBottomSheet(onDismissRequest = actions.onClosePanel) { Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
         SheetTitle(stringResource(R.string.full_text_search), stringResource(R.string.search_subtitle))
         OutlinedTextField(value = state.searchQuery, onValueChange = actions.onSearchQueryChanged, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text(stringResource(R.string.search_hint)) }, trailingIcon = { IconButton(onClick = { actions.onSearch(state.searchQuery) }) { Icon(Icons.Default.Search, stringResource(R.string.search)) } })
-        Spacer(Modifier.height(12.dp)); if (state.searchResults.isEmpty()) Text(stringResource(R.string.search_empty), color = MaterialTheme.colorScheme.onSurfaceVariant) else LazyColumn(Modifier.heightIn(max = 480.dp)) { items(state.searchResults, key = { it.offset }) { hit -> TextButton(onClick = { actions.onJump(hit.offset) }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) { Text(ChineseDisplayConverter.convert(hit.context, state.settings.chineseMode, state.settings.chineseOverrides), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start) } } }
-    } }
-}
-
-@Composable internal fun ChaptersSheet(state: AppUiState, actions: JingduActions) {
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel) { Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
-        SheetTitle(stringResource(R.string.chapters), if (state.chapters.isEmpty()) stringResource(R.string.chapters_empty) else stringResource(R.string.chapters_count, state.chapters.size))
-        LazyColumn(Modifier.heightIn(max = 560.dp)) { items(state.chapters, key = { it.offset }) { chapter -> TextButton(onClick = { actions.onJump(chapter.offset) }, modifier = Modifier.fillMaxWidth()) { Text(ChineseDisplayConverter.convert(chapter.title, state.settings.chineseMode, state.settings.chineseOverrides), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start) } } }
+        Spacer(Modifier.height(12.dp)); if (state.searchResults.isEmpty()) Text(stringResource(R.string.search_empty), color = MaterialTheme.colorScheme.onSurfaceVariant) else LazyColumn(Modifier.heightIn(max = 480.dp)) { items(state.searchResults, key = { it.offset }) { hit -> TextButton(onClick = { actions.onJump(hit.offset) }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) { Text(ReaderTextPresentation.display(hit.context, state.settings), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start) } } }
     } }
 }
 
@@ -55,8 +48,8 @@ import kotlin.math.roundToInt
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(selected = !state.cleanMode, onClick = { if (state.cleanMode) actions.onToggleCleanPreview() }, label = { Text(stringResource(R.string.original_text)) }); FilterChip(selected = state.cleanMode, onClick = { if (!state.cleanMode) actions.onToggleCleanPreview() }, label = { Text(stringResource(R.string.clean_preview)) }); AssistChip(onClick = actions.onExportClean, label = { Text(stringResource(R.string.export_txt)) }) } }
         item { ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(stringResource(R.string.smart_clean), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.smart_clean_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; if (state.proUnlocked) AssistChip(onClick = {}, label = { Text("Pro") }, leadingIcon = { Icon(Icons.Outlined.WorkspacePremium, null) }) }
-            Text(stringResource(R.string.smart_clean3_pack, BuiltinCleanRules.PACK_VERSION), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(stringResource(R.string.smart_clean3_refiner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.smart_clean_pack, BuiltinCleanRules.PACK_VERSION), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.smart_clean_refiner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free)) }
             if (state.smartCleanAnalyzed && state.noiseCandidates.isEmpty()) Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (state.noiseCandidates.isNotEmpty()) {

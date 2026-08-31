@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Hot-path overload for the reader bottom scrubber. The signature intentionally matches the
- * ReaderScreenV3 call that does not provide valueRange/steps, so advanced settings continue to use
+ * ReaderScreen call that does not provide valueRange/steps, so advanced settings continue to use
  * Material3 Slider while page/continuous position updates use the fixed-cost Canvas implementation.
  */
 @Composable
@@ -47,7 +47,7 @@ internal fun Slider(
 }
 
 /**
- * ReaderTopBarV3 is updated on every reader-state publication. Keep the existing navigation/action
+ * ReaderTopBar is updated on every reader-state publication. Keep the existing navigation/action
  * children and their accessibility semantics, but avoid Material's multi-pass TopAppBar measure
  * tree in the frame-critical reader composition.
  */
@@ -68,7 +68,7 @@ internal fun CenterAlignedTopAppBar(
     }
 }
 
-/** Exact overload used by ReaderReadingStatusV3: one-line status text stays on the Canvas hot path. */
+/** Exact overload used by ReaderReadingStatus: one-line status text stays on the Canvas hot path. */
 @Composable
 internal fun Text(
     text: String,

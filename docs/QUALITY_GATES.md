@@ -6,14 +6,14 @@ A change is mergeable only when every applicable **source** gate passes. Hosted 
 
 1. **Native core** — Release CMake, `-Wall -Wextra -Wpedantic -Werror`, CTest and clang-tidy. Coverage includes encoding/SHA/revision, malformed UTF-8, large-file/concurrency, `.jdx` recovery, Simplified/Traditional Smart Clean candidates and whole-line wildcard golden behavior.
 2. **Android product** — Kotlin/Compose Debug/Release compile, Debug/Release lint, Debug APK, Release AAB, AndroidTest assembly and supported JNI ABIs.
-3. **Android performance** — hosted Macrobenchmark executes open/page/scroll/chapter/settings journeys, enforces checked-in frame P95/P99 regression thresholds and completes the Reader V3 Baseline Profile journey with retained evidence.
+3. **Android performance** — hosted Macrobenchmark executes open/page/scroll/chapter/settings journeys, enforces checked-in frame P95/P99 regression thresholds and completes the Reader Baseline Profile journey with retained evidence.
 4. **Android localization** — `en-US / zh-Hans / zh-Hant` resource keys and format placeholders match; English is the unqualified fallback; generated LocaleConfig remains enabled; manifest/app/accessibility/runtime messages are resource-backed; major presentation/controller files cannot reintroduce hard-coded CJK UI copy; AndroidTest resolves expected UI text from the active locale.
 5. **Android commercial UX** — Free reader stays complete; Smart Clean candidate content is visible before paywall; Pro actions are contextual; Billing uses `jingdu_pro_lifetime`; portable-backup/offline voice/global-rule UI exists; no first-launch paywall/review prompt.
 6. **Play store contract** — metadata length/policy checks for `zh-CN / zh-TW / zh-HK / en-US`, localized Custom Listing/screenshot production specs, Billing/Review dependency versions and fixed lifetime product id.
 7. **Large-file path** — immutable revisions, validated `.jdx`, active-session Search/Chapters, bounded/streaming Smart Clean and safe fallback/pruning.
 8. **Harmony source contract** — Stage/Node-API/TaskPool/storage/source contracts remain valid; real HAP/device qualification is a separate Harmony release gate.
-9. **Repository contract** — required product/growth/store/localization/release-readiness docs exist; no legacy roots, compatibility core, floating Actions tags, committed packages/signing material or direct Android `INTERNET` permission; Reader V3 source-release/product SSOT does not regress to stale 2.2/V2 wording.
-10. **Portable user assets** — Reader V3 schema-4 backup remains text-free, exact-revision progress restore is fail-closed, Smart Clean memory is fingerprint-only, reading stats are numeric/identity metadata only and AndroidTest compiles the portable-asset contract tests.
+9. **Repository contract** — required product/growth/store/localization/release-readiness docs exist; no legacy roots, compatibility core, floating Actions tags, committed packages/signing material or direct Android `INTERNET` permission; Reader source-release/product SSOT does not regress to stale 2.2/V2 wording.
+10. **Portable user assets** — Reader schema-4 backup remains text-free, exact-revision progress restore is fail-closed, Smart Clean memory is fingerprint-only, reading stats are numeric/identity metadata only and AndroidTest compiles the portable-asset contract tests.
 11. **Source provenance** — Android source/staging version matches a permanent manifest; future source publisher creates annotated provenance tags that bind the exact gated `main` SHA to the manifest SHA-256 and never moves existing release tags.
 
 ## Android merge acceptance
@@ -52,7 +52,7 @@ Source merge/source release is not the same as Google Play production readiness.
 
 ### Physical Android qualification
 - required API/OEM matrix executes on real devices;
-- Reader V3 10/100/300 MiB journeys execute without OOM/ANR/corruption;
+- Reader 10/100/300 MiB journeys execute without OOM/ANR/corruption;
 - release-device startup/open/search/chapter/Smart Clean/frame SLO evidence meets `PERFORMANCE_SLO.md`;
 - locale/200% font/TalkBack/process-death/low-storage/TTS-route cases from `DEVICE_MATRIX.md` are recorded;
 - hosted emulator metrics are not substituted for these physical rows.

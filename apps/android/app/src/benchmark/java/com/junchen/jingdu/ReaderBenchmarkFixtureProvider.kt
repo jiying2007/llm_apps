@@ -34,7 +34,7 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                 val mode = when (arg?.lowercase()) {
                     "paged" -> ReaderMode.PAGED
                     "continuous" -> ReaderMode.CONTINUOUS
-                    else -> error("Unsupported Reader V3 benchmark mode: $arg")
+                    else -> error("Unsupported Reader benchmark mode: $arg")
                 }
                 // Reset runtime-only launch evidence before every measured reader start. A source
                 // position of zero is valid, so -1 remains the unambiguous not-rendered sentinel.
@@ -98,8 +98,8 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
     }
 
     private fun writeFixture(file: File, target: Long) {
-        val heading = "第%05d章 Reader V3 基准阅读旅程\n"
-        val body = "这是用于净读 Reader V3 性能与长文本稳定性验证的本地夹具。The quick brown fox jumps over the lazy dog.\n"
+        val heading = "第%05d章 Reader 基准阅读旅程\n"
+        val body = "这是用于净读 Reader 性能与长文本稳定性验证的本地夹具。The quick brown fox jumps over the lazy dog.\n"
         FileOutputStream(file).buffered().use { output ->
             var bytes = 0L
             var chapter = 1

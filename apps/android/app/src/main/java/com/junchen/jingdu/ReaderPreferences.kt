@@ -147,15 +147,15 @@ internal fun ReaderSettings.applyNamedTheme(theme: ReaderNamedTheme): ReaderSett
 
 private object ReaderSettingsSerializer : Serializer<ReaderSettingsProto> {
     override val defaultValue: ReaderSettingsProto = ReaderSettingsProto.getDefaultInstance()
-    override suspend fun readFrom(input: InputStream): ReaderSettingsProto = try { ReaderSettingsProto.parseFrom(input) } catch (error: InvalidProtocolBufferException) { throw CorruptionException("Cannot read Reader V3 settings", error) }
+    override suspend fun readFrom(input: InputStream): ReaderSettingsProto = try { ReaderSettingsProto.parseFrom(input) } catch (error: InvalidProtocolBufferException) { throw CorruptionException("Cannot read Reader settings", error) }
     override suspend fun writeTo(t: ReaderSettingsProto, output: OutputStream) = t.writeTo(output)
 }
 
-private val Context.readerV3DataStore: DataStore<ReaderSettingsProto> by dataStore(fileName = "reader-v3-settings.pb", serializer = ReaderSettingsSerializer)
+private val Context.readerDataStore: DataStore<ReaderSettingsProto> by dataStore(fileName = "reader-settings.pb", serializer = ReaderSettingsSerializer)
 
 @OptIn(FlowPreview::class)
 class ReaderPreferences(context: Context) {
-    private val dataStore = context.applicationContext.readerV3DataStore
+    private val dataStore = context.applicationContext.readerDataStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pending = MutableSharedFlow<ReaderSettings>(replay = 0, extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -163,7 +163,7 @@ class ReaderPreferences(context: Context) {
 
     fun observe(): Flow<ReaderSettings> = dataStore.data.map(::fromProto)
     fun load(): ReaderSettings = runBlocking(Dispatchers.IO) { fromProto(dataStore.data.first()) }
-    fun save(value: ReaderSettings) { val safe = sanitize(value); ChineseDisplayConverter.configure(safe); pending.tryEmit(safe) }
+    fun save(value: ReaderSettings) { pending.tryEmit(sanitize(value)) }
     fun flush(value: ReaderSettings) = runBlocking(Dispatchers.IO) { persist(sanitize(value)) }
     fun exportMap(): Map<String, Any> = toMap(load())
 

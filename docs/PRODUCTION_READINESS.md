@@ -4,7 +4,7 @@ This document is the final external-evidence gate between a fully-gated **source
 
 ## Current boundary
 
-- Source line: Reader V3 / Android 2.3.x.
+- Source line: Reader / Android 2.3.x.
 - GitHub source release: provenance only.
 - Signed APK/AAB, physical-device qualification, Play product/listing state and rollout state are external release evidence.
 - HarmonyOS has a separate HAP/device qualification chain and is not covered by an Android production declaration.
@@ -96,7 +96,7 @@ Using license testers and the production application id `com.junchen.jingdu`:
 - [ ] upload the exact qualified AAB to the intended Play track;
 - [ ] complete internal/closed testing on Play-installed builds;
 - [ ] verify purchase/restore on a Play-installed candidate;
-- [ ] start a staged production rollout instead of immediate 100% exposure after the Reader V3 + commerce hardening changes;
+- [ ] start a staged production rollout instead of immediate 100% exposure after the Reader + commerce hardening changes;
 - [ ] record initial staged percentage and start timestamp;
 - [ ] inspect Android vitals / crash / ANR / store feedback before each rollout expansion;
 - [ ] record the commit/tag/AAB checksum associated with each rollout expansion;
@@ -104,7 +104,7 @@ Using license testers and the production application id `com.junchen.jingdu`:
 
 ## Portable local-user backup acceptance
 
-The Reader V3 portable backup is text-free by contract. Before production rollout verify on a device:
+The Reader portable backup is text-free by contract. Before production rollout verify on a device:
 
 - [ ] export/import Reader settings and named/custom reading preferences;
 - [ ] export/import global Clean rules;

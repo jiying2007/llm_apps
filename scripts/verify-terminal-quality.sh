@@ -3,7 +3,7 @@ set -euo pipefail
 
 required=(
   docs/PRODUCT.md docs/PERFORMANCE_SLO.md docs/SMART_CLEAN_ARCHITECTURE.md docs/COMPETITIVE_MOAT.md
-  docs/GROWTH_MONETIZATION.md docs/RELEASE.md docs/READER_V3_PRELAUNCH_FINAL.md
+  docs/GROWTH_MONETIZATION.md docs/RELEASE.md docs/PRODUCTION_READINESS.md
   THIRD_PARTY_NOTICES.md third_party/NOTICE.md
   core/native/tests/core_performance_gate_test.cpp
   apps/android/app/src/main/java/com/junchen/jingdu/TxtDoctor.kt
@@ -24,18 +24,18 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderFontStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderStatsStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderRoute.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreenV3.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSettingsScreen.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderV3Panels.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderInsightsPanels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt
   apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
-  apps/android/app/src/test/java/com/junchen/jingdu/ReaderV3FoundationsTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/ReaderFoundationsTest.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
   scripts/check-android-performance-slo.py scripts/run-android-macrobenchmark-ci.sh
-  scripts/train-smartclean-model.py scripts/verify-smartclean-model.py scripts/verify-reader-v3.sh
+  scripts/train-smartclean-model.py scripts/verify-smartclean-model.py scripts/verify-reader.sh
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "terminal-quality asset missing: $path" >&2; exit 1; }; done
 
@@ -59,7 +59,7 @@ grep -q 'TinyLocalSemanticCandidateClassifier' apps/android/app/src/main/java/co
 python3 scripts/train-smartclean-model.py --verify-source apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt
 python3 scripts/verify-smartclean-model.py
 
-bash ./scripts/verify-reader-v3.sh
+bash ./scripts/verify-reader.sh
 grep -q ':app:testDebugUnitTest' apps/android/build.gradle
 grep -q 'repeat(100_000)' apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
 grep -q 'FrameTimingMetric' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
@@ -68,7 +68,7 @@ grep -q 'continuousScroll' apps/android/macrobenchmark/src/main/java/com/junchen
 grep -q 'open100MiBTxt' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
 grep -q 'Benchmark Novel' apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
 grep -q 'device.executeShellCommand' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
-grep -q 'jingdu-reader-v3' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
+grep -q 'jingdu-reader' apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
 ! grep -R -q 'Reader V2\|reader-v2' apps/android/app/src/benchmark apps/android/macrobenchmark
 
 grep -q 'MediaSessionService' apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
@@ -90,4 +90,4 @@ python3 -m py_compile scripts/publish-source-release.py
 grep -Fq 'needs: [native-core, android, android-performance, harmony-contract, play-store-contract, terminal-contract]' .github/workflows/ci.yml
 grep -q 'if existing is not None and release_status != 404:' scripts/publish-source-release.py
 
-echo 'Terminal long-form / moat / Reader V3 quality contract OK'
+echo 'Terminal long-form / moat / Reader quality contract OK'

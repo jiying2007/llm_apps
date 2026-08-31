@@ -19,8 +19,8 @@ Store names remain localized for discovery: `净读 - TXT 小说阅读器`, `淨
 - Smart Clean: **generation 4**.
 - Built-in deterministic clean signature pack: **v3**.
 - Chinese display conversion: OpenCC-compatible **OpenccJava 1.4.2**.
-- Android product line/source release: **2.3.x / Reader V3**.
-- Portable local-user backup schema: **v4** (`schema=4`, Reader V3; schema 3 remains importable for pre-production testers).
+- Android product line/source release: **2.3.x / Reader**.
+- Portable local-user backup schema: **v4** (`schema=4`, Reader; schema 3 remains importable for pre-production testers).
 - First-class Android UI locales: **zh-Hans / zh-Hant / en-US**.
 
 Detailed intelligence architecture lives in `SMART_CLEAN_ARCHITECTURE.md` and `COMPETITIVE_MOAT.md`.
@@ -165,7 +165,7 @@ Batch apply excludes KEEP/PROTECT, semantic BODY, inline fragment and garbled-li
 
 ## Portable local-user assets
 
-Reader V3 schema-4 backup intentionally excludes book/source/normalized/Clean payloads but preserves the user-owned state that can safely travel:
+Reader schema-4 backup intentionally excludes book/source/normalized/Clean payloads but preserves the user-owned state that can safely travel:
 
 - Reader settings and custom presentation preferences;
 - global Clean rules;

@@ -142,12 +142,20 @@ fun JingduApp(
         val quickPanelState = remember(state.settings, state.motion) {
             AppUiState(settings = state.settings, motion = state.motion)
         }
-        val chaptersPanelState = remember(state.currentBook, state.length, state.chapters, state.chaptersLoaded) {
+        val chaptersPanelState = remember(
+            state.currentBook,
+            state.length,
+            state.chapters,
+            state.chaptersLoaded,
+            state.settings.chineseMode,
+            state.settings.chineseOverrides,
+        ) {
             AppUiState(
                 currentBook = state.currentBook,
                 length = state.length,
                 chapters = state.chapters,
                 chaptersLoaded = state.chaptersLoaded,
+                settings = state.settings,
             )
         }
         val fallbackPanelState = rememberUpdatedState(state.panel)
@@ -172,8 +180,8 @@ fun JingduApp(
                 ReaderPanel.QUICK_SETTINGS, ReaderPanel.CHAPTERS -> Unit
                 ReaderPanel.SEARCH -> SearchSheet(state, trackedActions)
                 ReaderPanel.BOOKMARKS -> BookmarksSheet(state, trackedActions)
-                ReaderPanel.ANNOTATIONS -> ReaderAnnotationsV3Panel(state, trackedActions)
-                ReaderPanel.READING_MAP -> ReaderReadingMapV3Panel(state, trackedActions)
+                ReaderPanel.ANNOTATIONS -> ReaderAnnotationsPanel(state, trackedActions)
+                ReaderPanel.READING_MAP -> ReaderReadingMapPanel(state, trackedActions)
                 ReaderPanel.READING_HISTORY -> ReaderReadingHistoryPanel(state, trackedActions)
                 ReaderPanel.CLEAN -> CleanSheet(state, trackedActions)
                 ReaderPanel.SETTINGS -> ReaderSettingsScreen(state, trackedActions)

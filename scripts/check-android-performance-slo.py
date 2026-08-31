@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Reader V3 Macrobenchmark frame-tail evidence.
+"""Validate Reader Macrobenchmark frame-tail evidence.
 
 Release mode is the product SLO and remains P95 <= 40 ms / P99 <= 80 ms.
 Hosted-regression mode is deliberately separate: GitHub's software-emulated Android guest is used
@@ -130,7 +130,7 @@ def load_hosted_baseline(path: str | None) -> dict[str, dict[str, float]]:
         raise ValueError(
             f"hosted baseline schemaVersion must be {HOSTED_BASELINE_SCHEMA_VERSION}"
         )
-    if payload.get("kind") != "reader-v3-hosted-emulator-regression-baseline":
+    if payload.get("kind") != "reader-hosted-emulator-regression-baseline":
         raise ValueError("hosted baseline kind is invalid")
     raw_benchmarks = payload.get("benchmarks")
     if not isinstance(raw_benchmarks, dict):

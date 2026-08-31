@@ -18,9 +18,9 @@ AVD_HOME="${ANDROID_AVD_HOME:-$TEMP_DIR/jingdu-avd-home}"
 BOOT_TIMEOUT_SECONDS="${JINGDU_EMULATOR_BOOT_TIMEOUT_SECONDS:-240}"
 EMULATOR_LOG="$TEMP_DIR/jingdu-emulator.log"
 EMULATOR_PID=""
-REMOTE_RESULT_ROOT="/sdcard/Download/jingdu-reader-v3-ci"
+REMOTE_RESULT_ROOT="/sdcard/Download/jingdu-reader-ci"
 RESULT_ROOT="$ANDROID_DIR/macrobenchmark/build/outputs/direct-instrumentation"
-HOSTED_BASELINE="$ROOT/scripts/reader-v3-hosted-emulator-baseline.json"
+HOSTED_BASELINE="$ROOT/scripts/reader-hosted-emulator-baseline.json"
 INSTRUMENTATION=""
 export ANDROID_AVD_HOME="$AVD_HOME"
 
@@ -131,7 +131,7 @@ run_instrumentation() {
   set -e
 
   if (( status != 0 )) || grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED|shortMsg=Process crashed|Process crashed|System has crashed' "$log_file" || ! grep -q 'INSTRUMENTATION_CODE: -1' "$log_file"; then
-    echo "Reader V3 ${rule} instrumentation failed" >&2
+    echo "Reader ${rule} instrumentation failed" >&2
     cat "$log_file" >&2
     return 1
   fi
@@ -282,7 +282,7 @@ if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-inst
   "$ADB" shell settings put global animator_duration_scale 0 || true
   if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation-retry.log" "$MACRO_CLASS"; then
     preserve_failed_macro_evidence "$MACRO_REMOTE"
-    fail_emulator "Reader V3 Macrobenchmark instrumentation failed after one guest recovery"
+    fail_emulator "Reader Macrobenchmark instrumentation failed after one guest recovery"
   fi
 fi
 REMOTE_JSON="$("$ADB" shell "ls -1 $MACRO_REMOTE/*-benchmarkData.json 2>/dev/null | head -n 1" | tr -d '\r')"
@@ -332,8 +332,8 @@ cat "${BASELINE_FILES[@]}" | sed '/^[[:space:]]*$/d' | sort -u > "$RESULT_ROOT/p
 cat "${STARTUP_FILES[@]}" | sed '/^[[:space:]]*$/d' | sort -u > "$RESULT_ROOT/profile/startup-prof.txt"
 test -s "$RESULT_ROOT/profile/baseline-prof.txt"
 test -s "$RESULT_ROOT/profile/startup-prof.txt"
-echo "Canonical Reader V3 baseline rules: $(wc -l < "$RESULT_ROOT/profile/baseline-prof.txt")"
-echo "Canonical Reader V3 startup rules: $(wc -l < "$RESULT_ROOT/profile/startup-prof.txt")"
+echo "Canonical Reader baseline rules: $(wc -l < "$RESULT_ROOT/profile/baseline-prof.txt")"
+echo "Canonical Reader startup rules: $(wc -l < "$RESULT_ROOT/profile/startup-prof.txt")"
 
 if (( SLO_STATUS != 0 )); then
   exit "$SLO_STATUS"

@@ -106,7 +106,7 @@ internal class BookRepository(context: Context) {
                 sourceSha256 = sourceSha,
                 normalizedSha256 = normalizedSha,
                 progress = existing?.progress ?: restoredProgress ?: 0L,
-                charCount = if (sameRevision) existing?.charCount ?: 0L else 0L,
+                charCount = if (sameRevision) existing.charCount else 0L,
                 touchedAt = System.currentTimeMillis(),
             )
             upsert(book)

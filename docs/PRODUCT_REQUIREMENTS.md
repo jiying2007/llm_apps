@@ -1,4 +1,4 @@
-# Product Requirements — Android 2.3.x / Reader V3
+# Product Requirements — Android 2.3.x / Reader
 
 ## Objective
 
@@ -20,7 +20,7 @@ Make Jingdu discoverable, comfortable for long daily reading and worth paying fo
 - Reopening a valid immutable revision reuses the Core `.jdx` cache when valid and safely rebuilds it when stale/corrupt.
 - First-readable preview remains bounded and cannot become the authoritative revision.
 
-### Reader V3
+### Reader
 - Paged and continuous modes use bounded source windows and one authoritative source-offset domain.
 - Search, Smart TOC, bookmarks, highlights/notes, progress seeking and base TTS remain Free.
 - Reader typography includes font/size/weight/line height/paragraph spacing/first-line indent/alignment/margins and wide-screen column policy.
@@ -62,10 +62,10 @@ Make Jingdu discoverable, comfortable for long daily reading and worth paying fo
 - Pro global Clean rules apply to all books.
 - Recommended rule pack is explicit/editable, never silently destructive.
 - Global rules can be imported/exported as bounded JSON.
-- Pro portable Reader V3 backup contains text-free user-owned state: Reader settings, global rules, annotations, favorites/tags, revision-safe progress, reading sessions/pace and Smart Clean fingerprint decisions.
+- Pro portable Reader backup contains text-free user-owned state: Reader settings, global rules, annotations, favorites/tags, revision-safe progress, reading sessions/pace and Smart Clean fingerprint decisions.
 - Backup root declares `containsBookText=false`; no source/normalized/Clean book payload is included.
 - Portable progress is staged against source identity + exact `normalizedSha256` and is consumed only by that revision.
-- Schema 3 Reader V3 settings/rules/annotation backups remain importable for pre-production testers; schema 4 is the current export format.
+- Schema 3 Reader settings/rules/annotation backups remain importable for pre-production testers; schema 4 is the current export format.
 - Import validates schema, field sizes, rule/annotation/library/session/feedback counts and privacy markers.
 - SAF URI grants are not represented as portable credentials and must be explicitly re-selected on a destination install.
 - Imported font binaries are re-selected when unavailable; backup may retain the preference reference but must fall back safely.
@@ -104,7 +104,7 @@ Exact candidate head must pass all six hosted jobs:
 - `harmony-contract`;
 - `terminal-contract`.
 
-The Android job includes Debug/Release compile, lint, release bundle, AndroidTest assembly and Reader V3 portable-asset test compilation. Hosted performance remains regression evidence rather than physical-device release qualification.
+The Android job includes Debug/Release compile, lint, release bundle, AndroidTest assembly and Reader portable-asset test compilation. Hosted performance remains regression evidence rather than physical-device release qualification.
 
 ## Production acceptance
 

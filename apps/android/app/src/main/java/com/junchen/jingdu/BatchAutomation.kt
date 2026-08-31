@@ -53,7 +53,7 @@ internal class BatchAutomation(
                         val key = "rules.${book.id}"
                         val previousPacked = activityPreferences.getString(key, "") ?: ""
                         val existing = RuleCodec.parse(previousPacked)
-                        val additions = safe.map { RepairRule(it.text(), "", RepairRuleMode.LITERAL) }
+                        val additions = safe.map { RepairRule(it.text, "", RepairRuleMode.LITERAL) }
                         val updated = (existing + additions)
                             .distinctBy { Triple(it.mode, it.find, it.replacement) }
                             .take(500)
@@ -95,15 +95,15 @@ internal class BatchAutomation(
     }
 
     private fun safeCandidate(bookId: String, candidate: ReaderController.NoiseCandidate): Boolean {
-        val stored = feedback.decision(bookId, candidate.reason(), candidate.text())
+        val stored = feedback.decision(bookId, candidate.reason, candidate.text)
         if (stored == SmartCleanFeedback.PROTECT || stored == SmartCleanFeedback.KEEP) return false
         if (stored == SmartCleanFeedback.DELETE) return true
-        if (candidate.reason() == "inline_fragment" || candidate.reason() == "garbled_line") return false
-        val semantic = classifier.classifyCandidate(candidate.text())
+        if (candidate.reason == "inline_fragment" || candidate.reason == "garbled_line") return false
+        val semantic = classifier.classifyCandidate(candidate.text)
         if (semantic.label == SemanticCandidateLabel.BODY && semantic.confidence >= 0.65f) return false
-        val adjusted = candidate.score() + feedback.modelDelta(candidate.reason(), candidate.text()) +
+        val adjusted = candidate.score + feedback.modelDelta(candidate.reason, candidate.text) +
             if (semantic.label == SemanticCandidateLabel.AD && semantic.confidence >= 0.65f) 8 else 0
-        return adjusted >= 88 && candidate.count() >= 1
+        return adjusted >= 88 && candidate.count >= 1
     }
 
     companion object {

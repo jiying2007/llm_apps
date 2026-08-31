@@ -99,6 +99,10 @@ class TtsPlaybackService : MediaSessionService() {
                 rate = intent.getFloatExtra(EXTRA_RATE, 1f),
                 pitch = intent.getFloatExtra(EXTRA_PITCH, 1f),
                 voiceName = intent.getStringExtra(EXTRA_VOICE).orEmpty(),
+                chineseMode = runCatching {
+                    ChineseDisplayMode.valueOf(intent.getStringExtra(EXTRA_CHINESE_MODE).orEmpty())
+                }.getOrDefault(ChineseDisplayMode.ORIGINAL),
+                chineseOverrides = intent.getStringExtra(EXTRA_CHINESE_OVERRIDES).orEmpty(),
             )
         }.onFailure { player.stopTts(it.message ?: "tts open failure") }
     }
@@ -180,6 +184,8 @@ class TtsPlaybackService : MediaSessionService() {
         const val EXTRA_RATE = "rate"
         const val EXTRA_PITCH = "pitch"
         const val EXTRA_VOICE = "voice"
+        const val EXTRA_CHINESE_MODE = "chineseMode"
+        const val EXTRA_CHINESE_OVERRIDES = "chineseOverrides"
         const val EXTRA_MINUTES = "minutes"
         const val EXTRA_ACTIVE = "active"
         const val EXTRA_PLAYING = "playing"

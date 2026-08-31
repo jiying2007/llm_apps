@@ -268,9 +268,9 @@ internal class TtsController(context: Context) : AutoCloseable {
             cursor += Character.charCount(cp)
             if (cp in 0x4E00..0x9FFF) cjk++
             if (cp in 'A'.code..'Z'.code || cp in 'a'.code..'z'.code) latin++
-            if (HANS_MARKERS.indexOf(cp) >= 0) hans++
-            if (HANT_MARKERS.indexOf(cp) >= 0) hant++
-            if (HK_MARKERS.indexOf(cp) >= 0) hk++
+            if (HANS_MARKERS.indexOf(cp.toChar()) >= 0) hans++
+            if (HANT_MARKERS.indexOf(cp.toChar()) >= 0) hant++
+            if (HK_MARKERS.indexOf(cp.toChar()) >= 0) hk++
         }
         return when {
             hk >= 2 && hk >= hant / 3 -> Locale.forLanguageTag("zh-HK")

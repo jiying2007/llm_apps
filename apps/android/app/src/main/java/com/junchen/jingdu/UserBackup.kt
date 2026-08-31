@@ -37,7 +37,7 @@ internal class UserBackup(
         val root = JSONObject(text)
         val schema = root.optInt("schema")
         if (schema !in setOf(LEGACY_SCHEMA, SCHEMA) || root.optString("type") != "jingdu-local-user-backup" || root.optString("reader") != "v3") {
-            throw IllegalArgumentException("not a Reader V3 backup")
+            throw IllegalArgumentException("not a Reader backup")
         }
         if (schema == SCHEMA && root.optBoolean("containsBookText", true)) {
             throw IllegalArgumentException("backup privacy contract missing")

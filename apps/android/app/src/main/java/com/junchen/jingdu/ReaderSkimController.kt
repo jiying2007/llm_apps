@@ -32,7 +32,7 @@ internal class ReaderSkimController(context: Context, private val bookId: String
         ReaderSkimPreview(
             fraction = fraction.coerceIn(0f, 1f),
             offset = offset,
-            chapter = chapter?.title,
+            chapter = chapter?.title?.let { ReaderTextPresentation.chapterTitle(it, settings) },
             preview = preview,
             chapterProgressPercent = chapterProgress,
             bookProgressPercent = bookProgress,

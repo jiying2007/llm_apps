@@ -9,7 +9,7 @@ Every release is qualified with deterministic or representative files at four ti
 | Size | Purpose |
 | --- | --- |
 | 1–5 MiB | ordinary novel / cold-start path |
-| 10 MiB | Android Reader V3 interaction journeys |
+| 10 MiB | Android Reader interaction journeys |
 | 100 MiB | very-long-book Android soak journey |
 | 960 MiB | near-1GiB native bounded-memory/RSS qualification |
 
@@ -32,7 +32,7 @@ Measure the release-derived minified Benchmark target on the physical device cla
 | TTS next-chunk scheduling | P95 < 150 ms |
 | 200 MiB open/search/Clean qualification | no OOM / ANR |
 
-The Reader V3 frame-tail product SLO is independently enforced for every frame-producing journey:
+The Reader frame-tail product SLO is independently enforced for every frame-producing journey:
 
 | Physical Release frame metric | Product SLO |
 | --- | ---: |
@@ -55,7 +55,7 @@ Hosted wall-clock ceilings are intentionally loose. Real experience is measured 
 
 ## Hosted Android regression gate
 
-Pull requests run the Reader V3 Macrobenchmark suite on Android 35, a Pixel 6 AVD and pinned Ubuntu 22.04 after the normal Android build/test/lint/R8 gate passes. The emulator uses the repository contract `JINGDU_EMULATOR_GPU_MODE:-auto`. It is a stable regression environment, not Release-device performance evidence.
+Pull requests run the Reader Macrobenchmark suite on Android 35, a Pixel 6 AVD and pinned Ubuntu 22.04 after the normal Android build/test/lint/R8 gate passes. The emulator uses the repository contract `JINGDU_EMULATOR_GPU_MODE:-auto`. It is a stable regression environment, not Release-device performance evidence.
 
 The required journeys are:
 
@@ -64,13 +64,13 @@ The required journeys are:
 3. perform six real right-side Reader tap-zone page turns on the 10 MiB fixture;
 4. switch to continuous mode and perform six real swipes;
 5. execute two Chapters → Back → Aa → Back cycles;
-6. independently execute the Reader V3 Baseline/Startup Profile collection contract.
+6. independently execute the Reader Baseline/Startup Profile collection contract.
 
 Hosted page-turn intentionally uses the Reader tap zone because API-35 hosted emulator input policy can consume injected hardware volume keys before the foreground Activity. Hardware volume-key behavior remains a product feature and is explicitly covered by the physical Release gate.
 
 ### Frozen Hosted baseline
 
-`scripts/reader-v3-hosted-emulator-baseline.json` is frozen from exact-head `fa22d088df7456330244ac4dc2c00a82da888656`, workflow run `33294378785`, performance job `99212107479`, artifact `9727262417` (artifact SHA-256 `c48fbfe3e4daba9c48cba836e67478eb44043abcefb9b1f7cb479684cd1039c6`). This was the first run where all three interaction journeys completed with the authoritative sample floors.
+`scripts/reader-hosted-emulator-baseline.json` is frozen from exact-head `fa22d088df7456330244ac4dc2c00a82da888656`, workflow run `33294378785`, performance job `99212107479`, artifact `9727262417` (artifact SHA-256 `c48fbfe3e4daba9c48cba836e67478eb44043abcefb9b1f7cb479684cd1039c6`). This was the first run where all three interaction journeys completed with the authoritative sample floors.
 
 | Journey | Samples | Frozen P95 | Frozen P99 |
 | --- | ---: | ---: | ---: |
@@ -95,7 +95,7 @@ The Macrobenchmark JSON and Perfetto traces are retained as CI artifacts. Missin
 
 ## Baseline Profile contract
 
-`BaselineProfileGenerator.readerV3CriticalJourneys` covers the Reader V3 runtime hot paths without contaminating Startup Profile:
+`BaselineProfileGenerator.readerV3CriticalJourneys` covers the Reader runtime hot paths without contaminating Startup Profile:
 
 - real Reader tap-zone page turns;
 - Quick Settings and Chapters while the Reader remains in paged mode;

@@ -66,7 +66,7 @@ internal object ChineseTextConverter {
         }.take(MAX_OVERRIDES).sortedByDescending { it.source.codePointCount(0, it.source.length) }
 
         val seen = hashSetOf<String>()
-        return values.filter { seen.add(it.source.lowercase(Locale.ROOT)) }
+        return values.filter { seen.add(it.source.lowercase(Locale.ROOT)) }.toList()
     }
 
     private data class OverridePair(val source: String, val target: String)

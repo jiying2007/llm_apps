@@ -25,7 +25,7 @@ Free includes:
 - TXT Doctor diagnosis;
 - Smart TOC diagnosis and local per-book TOC repair;
 - search, chapters, bookmarks and progress;
-- Reader V3 themes/typography/selection/annotations;
+- Reader themes/typography/selection/annotations;
 - base system TTS plus background/lock-screen/headset playback controls;
 - auto page/auto scroll and sleep timer;
 - exact per-book Clean rules;
@@ -45,7 +45,7 @@ Pro unlocks:
 - recommended Chinese web-novel rule pack;
 - global rule JSON import/export;
 - offline TTS voice selection when the installed system engine exposes offline voices;
-- portable Reader V3 local-user backup/restore;
+- portable Reader local-user backup/restore;
 - **batch TXT automation** across up to the product-defined bounded batch size: TXT Doctor/Smart Clean/TOC dry-run, report export, and explicit application of only high-confidence safe Clean candidates.
 
 Portable backup includes settings, global rules, annotations, favorites/tags, exact-revision progress, reading sessions/pace and Smart Clean fingerprint decisions. It never includes source/normalized/Clean book text. SAF grants and unavailable imported font binaries are re-selected on the destination installation rather than treated as portable credentials.

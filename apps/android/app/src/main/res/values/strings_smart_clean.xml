@@ -13,8 +13,8 @@
     <string name="chinese_overrides_hint">头发 =&gt; 頭髮\n软件 =&gt; 軟體</string>
     <string name="chinese_overrides_count">%1$d valid local mappings</string>
     <string name="save_dictionary">Save dictionary</string>
-    <string name="smart_clean3_pack">Built-in clean signature pack v%1$d</string>
-    <string name="smart_clean3_refiner">Smart Clean also checks inline promotional fragments and clearly malformed lines. These higher-risk suggestions are never preselected.</string>
+    <string name="smart_clean_pack">Built-in clean signature pack v%1$d</string>
+    <string name="smart_clean_refiner">Smart Clean also checks inline promotional fragments and clearly malformed lines. These higher-risk suggestions are never preselected.</string>
     <string name="noise_reason_inline_fragment">inline promotional fragment</string>
     <string name="noise_reason_garbled_line">malformed / replacement-character line</string>
 </resources>

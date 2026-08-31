@@ -78,15 +78,15 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private data class V3SelectionPayload(val range: ReaderSelectionRange, val clearNative: () -> Unit)
+private data class SelectionPayload(val range: ReaderSelectionRange, val clearNative: () -> Unit)
 
-private data class ReaderPreparedPageV3(
+private data class ReaderPreparedPage(
     val snapshot: PageLayoutSnapshot,
     val annotated: AnnotatedString,
 )
 
 @Composable
-internal fun ReaderScreenV3(
+internal fun ReaderScreen(
     state: AppUiState,
     actions: JingduActions,
     snackbar: SnackbarHostState,
@@ -111,7 +111,7 @@ internal fun ReaderScreenV3(
     val controlsVisibility = rememberSaveable(book.id) { mutableStateOf(true) }
     var controlsVisible by controlsVisibility
     var more by remember { mutableStateOf(false) }
-    var selection by remember(book.id) { mutableStateOf<V3SelectionPayload?>(null) }
+    var selection by remember(book.id) { mutableStateOf<SelectionPayload?>(null) }
     var twoStageAnchor by remember(book.id) { mutableStateOf<ReaderSelectionRange?>(null) }
     var twoStageDirection by remember(book.id) { mutableIntStateOf(0) }
     var noteDraft by remember { mutableStateOf("") }
@@ -125,7 +125,7 @@ internal fun ReaderScreenV3(
 
     val fraction = if (state.length <= 0) 0f else (state.position.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
     val currentChapterIndex = remember(state.chapters, state.position) { state.chapters.indexOfLast { it.offset <= state.position } }
-    val currentChapter = state.chapters.getOrNull(currentChapterIndex)?.title
+    val currentChapter = state.chapters.getOrNull(currentChapterIndex)?.title?.let { ReaderTextPresentation.chapterTitle(it, settings) }
     val latestStatusState = rememberUpdatedState(state)
     val latestStatusChapterIndex = rememberUpdatedState(currentChapterIndex)
     val statusStateProvider = remember { { latestStatusState.value } }
@@ -222,7 +222,7 @@ internal fun ReaderScreenV3(
             actions.onSettingsChanged(settings.copy(fontSizeSp = value, preset = ReaderPreset.CUSTOM, activeThemeId = ""))
         }
     }
-    fun acceptSelection(payload: V3SelectionPayload?) {
+    fun acceptSelection(payload: SelectionPayload?) {
         if (payload == null) { selection = null; return }
         val anchor = twoStageAnchor
         if (anchor != null && twoStageDirection != 0) {
@@ -231,7 +231,7 @@ internal fun ReaderScreenV3(
                 if (twoStageDirection < 0) payload.range.sourceStart else payload.range.sourceEnd,
                 twoStageDirection < 0,
             ).copy(excerpt = listOf(anchor.excerpt, payload.range.excerpt).filter { it.isNotBlank() }.joinToString(" … ").take(800))
-            selection = V3SelectionPayload(merged, payload.clearNative)
+            selection = SelectionPayload(merged, payload.clearNative)
             twoStageAnchor = null
             twoStageDirection = 0
         } else selection = payload
@@ -239,11 +239,11 @@ internal fun ReaderScreenV3(
     }
 
     val snackbarControlsShiftPx = with(LocalDensity.current) { 88.dp.toPx() }
-    val background = readerBackgroundV3(settings.palette)
-    val textColor = readerTextColorV3(settings.palette)
+    val background = readerBackground(settings.palette)
+    val textColor = readerTextColor(settings.palette)
     Box(Modifier.fillMaxSize().background(background)) {
         if (settings.readingMode == ReaderMode.CONTINUOUS && !state.cleanMode) {
-            ContinuousReaderPageV3(
+            ContinuousReaderPage(
                 state, actions, fontFamily, textColor, touchExploration,
                 ::previous, ::next, { controlsVisible = !controlsVisible }, ::updateBrightness, ::resizeFont,
                 { tick(); actions.onAddBookmark() }, ::acceptSelection,
@@ -258,10 +258,10 @@ internal fun ReaderScreenV3(
                         visibleState = pageVisible,
                         enter = slideInHorizontally { direction * it } + fadeIn(),
                         exit = fadeOut(),
-                        label = "reader-v3-page-in",
+                        label = "reader-page-in",
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        PagedReaderPageV3(
+                        PagedReaderPage(
                             state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
                             actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
                             ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
@@ -269,7 +269,7 @@ internal fun ReaderScreenV3(
                     }
                 }
             } else {
-                PagedReaderPageV3(
+                PagedReaderPage(
                     state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
                     actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
                     ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
@@ -292,21 +292,21 @@ internal fun ReaderScreenV3(
                 alpha = if (controlsVisible) 1f else 0f
             },
         ) {
-            ReaderTopBarV3(book.name, currentChapter, actions) { more = true }
+            ReaderTopBar(book.name, currentChapter, actions) { more = true }
         }
         if (more) Box(
             Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp).graphicsLayer {
                 translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
                 alpha = if (controlsVisible) 1f else 0f
             },
-        ) { ReaderMoreMenuV3(state.cleanMode, actions) { more = false } }
+        ) { ReaderMoreMenu(state.cleanMode, actions) { more = false } }
         Box(
             Modifier.align(Alignment.BottomCenter).graphicsLayer {
                 translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
                 alpha = if (controlsVisible) 1f else 0f
             },
         ) {
-            ReaderBottomBarV3(
+            ReaderBottomBar(
                 chapters = state.chapters,
                 length = state.length,
                 autoPaging = state.autoPaging,
@@ -348,7 +348,7 @@ internal fun ReaderScreenV3(
             stats = stats,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
-        if (state.autoScrolling) AutoScrollLiveControlV3(
+        if (state.autoScrolling) AutoScrollLiveControl(
             settings, actions,
             Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 42.dp).graphicsLayer {
                 translationY = if (controlsVisible) READER_HIDDEN_LAYER_OFFSET_PX.toFloat() else 0f
@@ -357,7 +357,7 @@ internal fun ReaderScreenV3(
         )
 
         selection?.let { selected ->
-            ReaderSelectionBarV3(
+            ReaderSelectionBar(
                 selection = selected.range,
                 settings = settings,
                 onHighlight = { style ->
@@ -393,7 +393,7 @@ internal fun ReaderScreenV3(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        hudText?.let { text -> ReaderHudV3(text, Modifier.align(Alignment.Center)) }
+        hudText?.let { text -> ReaderHud(text, Modifier.align(Alignment.Center)) }
         SnackbarHost(
             snackbar,
             Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp).graphicsLayer {
@@ -418,7 +418,7 @@ internal fun ReaderScreenV3(
 }
 
 @Composable
-private fun PagedReaderPageV3(
+private fun PagedReaderPage(
     sourceStart: Long,
     sourceText: String,
     settings: ReaderSettings,
@@ -435,7 +435,7 @@ private fun PagedReaderPageV3(
     onBrightnessDelta: (Float) -> Unit,
     onResizeFont: (Float) -> Unit,
     onBookmark: () -> Unit,
-    onSelection: (V3SelectionPayload?) -> Unit,
+    onSelection: (SelectionPayload?) -> Unit,
 ) {
     val context = LocalContext.current
     val spec = remember(settings) { ReaderTypographySpec.from(settings) }
@@ -455,7 +455,7 @@ private fun PagedReaderPageV3(
 
     // One worker result owns projection, pagination and selection metadata. The previous two-stage
     // presented -> snapshot publication forced multiple Reader recompositions for every page turn.
-    val prepared by produceState<ReaderPreparedPageV3?>(
+    val prepared by produceState<ReaderPreparedPage?>(
         null,
         sourceStart,
         sourceText,
@@ -483,8 +483,8 @@ private fun PagedReaderPageV3(
             )
             val visibleEnd = snapshot.displayedEndUtf16.coerceIn(0, presented.displayText.length)
             val visibleText = if (visibleEnd <= 0) "" else presented.displayText.substring(0, visibleEnd)
-            val visual = readerAnnotatedTextV3(sourceStart, visibleText, presented.map, annotations, tts, settings)
-            ReaderPreparedPageV3(
+            val visual = readerAnnotatedText(sourceStart, visibleText, presented.map, annotations, tts, settings)
+            ReaderPreparedPage(
                 snapshot = snapshot,
                 annotated = ReaderSelectionController.annotatedForSelection(sourceStart, visual, presented.map),
             )
@@ -500,16 +500,16 @@ private fun PagedReaderPageV3(
     val selectionState = rememberSelectionState()
     LaunchedEffect(selectionState.selectedTexts) {
         val range = ReaderSelectionController.fromSelectedTexts(selectionState.selectedTexts)
-        onSelection(range?.let { V3SelectionPayload(it) { selectionState.clear() } })
+        onSelection(range?.let { SelectionPayload(it) { selectionState.clear() } })
     }
-    val semantics = Modifier.readerAccessibilityActionsV3(
+    val semantics = Modifier.readerAccessibilityActions(
         onPrevious, onNext, onToggleControls, onBookmark,
         stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous),
         stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls),
         stringResource(R.string.reader_access_bookmark),
     )
     val gestures = if (touchExploration) Modifier else Modifier
-        .readerGesturesV3(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark)
+        .readerGestures(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark)
         .pointerInput(settings.pinchFontEnabled) {
             if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) }
         }
@@ -548,7 +548,7 @@ private fun PagedReaderPageV3(
 }
 
 @Composable
-private fun ContinuousReaderPageV3(
+private fun ContinuousReaderPage(
     state: AppUiState,
     actions: JingduActions,
     fontFamily: androidx.compose.ui.text.font.FontFamily,
@@ -560,7 +560,7 @@ private fun ContinuousReaderPageV3(
     onBrightnessDelta: (Float) -> Unit,
     onResizeFont: (Float) -> Unit,
     onBookmark: () -> Unit,
-    onSelection: (V3SelectionPayload?) -> Unit,
+    onSelection: (SelectionPayload?) -> Unit,
 ) {
     val context = LocalContext.current
     val book = state.currentBook ?: return
@@ -603,7 +603,7 @@ private fun ContinuousReaderPageV3(
         val w = window ?: return@LaunchedEffect
         val layout = layoutResult ?: return@LaunchedEffect
         if (w.displayText.isEmpty()) return@LaunchedEffect
-        val utf = utf16IndexV3(w.displayText, w.map.displayForSource((localPosition.get() - w.start).coerceAtLeast(0)))
+        val utf = utf16Index(w.displayText, w.map.displayForSource((localPosition.get() - w.start).coerceAtLeast(0)))
         val line = layout.getLineForOffset(utf.coerceIn(0, (w.displayText.length - 1).coerceAtLeast(0)))
         scrollModel.setOffset(layout.getLineTop(line))
     }
@@ -680,16 +680,16 @@ private fun ContinuousReaderPageV3(
     val annotated = remember(start, display, state.annotations, state.tts, settings.emphasizeHeadings, spec.fingerprint) {
         ReaderSelectionController.annotatedForSelection(
             start,
-            readerAnnotatedTextV3(start, display, map, state.annotations, state.tts, settings),
+            readerAnnotatedText(start, display, map, state.annotations, state.tts, settings),
             map,
         )
     }
     val selectionState = rememberSelectionState()
     LaunchedEffect(selectionState.selectedTexts) {
         val range = ReaderSelectionController.fromSelectedTexts(selectionState.selectedTexts)
-        onSelection(range?.let { V3SelectionPayload(it) { selectionState.clear() } })
+        onSelection(range?.let { SelectionPayload(it) { selectionState.clear() } })
     }
-    val semantics = Modifier.readerAccessibilityActionsV3(onPrevious, onNext, onToggleControls, onBookmark,
+    val semantics = Modifier.readerAccessibilityActions(onPrevious, onNext, onToggleControls, onBookmark,
         stringResource(R.string.reader_surface), stringResource(R.string.reader_access_previous), stringResource(R.string.reader_access_next), stringResource(R.string.reader_access_controls), stringResource(R.string.reader_access_bookmark))
 
     SelectionContainer(state = selectionState) {
@@ -718,7 +718,7 @@ private fun ContinuousReaderPageV3(
     }
 }
 
-private fun readerAnnotatedTextV3(
+private fun readerAnnotatedText(
     sourceStart: Long,
     displayText: String,
     map: SourceDisplayMap,
@@ -728,13 +728,13 @@ private fun readerAnnotatedTextV3(
 ): AnnotatedString = buildAnnotatedString {
     append(displayText)
     if (displayText.isEmpty()) return@buildAnnotatedString
-    fun displayIndex(sourceAbsolute: Long): Int = utf16IndexV3(displayText, map.displayForSource((sourceAbsolute - sourceStart).coerceAtLeast(0))).coerceIn(0, displayText.length)
+    fun displayIndex(sourceAbsolute: Long): Int = utf16Index(displayText, map.displayForSource((sourceAbsolute - sourceStart).coerceAtLeast(0))).coerceIn(0, displayText.length)
     val sourceEnd = sourceStart + map.sourceCodePoints
     annotations.forEach { annotation ->
         if (annotation.sourceEnd <= sourceStart || annotation.sourceStart >= sourceEnd) return@forEach
         val a = displayIndex(annotation.sourceStart)
         val b = displayIndex(annotation.sourceEnd).coerceAtLeast(a)
-        if (b > a) addStyle(SpanStyle(background = highlightColorV3(annotation.style)), a, b)
+        if (b > a) addStyle(SpanStyle(background = highlightColor(annotation.style)), a, b)
     }
     if (tts.active && tts.rangeEnd > tts.rangeStart) {
         val a = displayIndex(tts.rangeStart)
@@ -755,7 +755,7 @@ private fun readerAnnotatedTextV3(
     }
 }
 
-private fun Modifier.readerGesturesV3(
+private fun Modifier.readerGestures(
     settings: ReaderSettings,
     widthPx: Int,
     heightPx: Int,
@@ -834,7 +834,7 @@ private fun Modifier.readerGesturesV3(
     }
 }
 
-private fun Modifier.readerAccessibilityActionsV3(
+private fun Modifier.readerAccessibilityActions(
     previous: () -> Unit, next: () -> Unit, controls: () -> Unit, bookmark: () -> Unit,
     surfaceLabel: String, previousLabel: String, nextLabel: String, controlsLabel: String, bookmarkLabel: String,
 ): Modifier = semantics {
@@ -848,7 +848,7 @@ private fun Modifier.readerAccessibilityActionsV3(
 }
 
 @Composable
-private fun ReaderTopBarV3(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit) {
+private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit) {
     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))) {
         CenterAlignedTopAppBar(
             modifier = Modifier.statusBarsPadding(),
@@ -867,7 +867,7 @@ private fun ReaderTopBarV3(bookName: String, chapter: String?, actions: JingduAc
 }
 
 @Composable
-private fun ReaderMoreMenuV3(cleanMode: Boolean, actions: JingduActions, onDismiss: () -> Unit) {
+private fun ReaderMoreMenu(cleanMode: Boolean, actions: JingduActions, onDismiss: () -> Unit) {
     DropdownMenu(true, onDismissRequest = onDismiss) {
         fun close(action: () -> Unit) { onDismiss(); action() }
         DropdownMenuItem({ Text(stringResource(R.string.full_text_search)) }, { close { actions.onOpenPanel(ReaderPanel.SEARCH) } }, leadingIcon = { Icon(Icons.Default.Search, null) })
@@ -883,7 +883,7 @@ private fun ReaderMoreMenuV3(cleanMode: Boolean, actions: JingduActions, onDismi
 }
 
 @Composable
-private fun ReaderBottomBarV3(
+private fun ReaderBottomBar(
     chapters: List<ChapterModel>,
     length: Long,
     autoPaging: Boolean,
@@ -907,9 +907,9 @@ private fun ReaderBottomBarV3(
     val progressDescription = stringResource(R.string.reading_progress)
     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
-            if (skimDragging || (showSkimReturn && skimPreview != null)) ReaderSkimPreviewCardV3(skimPreview, showSkimReturn, onReturnSkim)
+            if (skimDragging || (showSkimReturn && skimPreview != null)) ReaderSkimPreviewCard(skimPreview, showSkimReturn, onReturnSkim)
             else Text(chapter ?: "", Modifier.align(Alignment.CenterHorizontally), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
-            ReaderChapterTicksV3(chapters, length, fraction)
+            ReaderChapterTicks(chapters, length, fraction)
             Slider(fraction, onFractionChange, onValueChangeFinished = onFractionCommit, modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressDescription })
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
@@ -923,7 +923,7 @@ private fun ReaderBottomBarV3(
 }
 
 @Composable
-private fun ReaderChapterTicksV3(chapters: List<ChapterModel>, length: Long, fraction: Float) {
+private fun ReaderChapterTicks(chapters: List<ChapterModel>, length: Long, fraction: Float) {
     val primary = MaterialTheme.colorScheme.primary
     val outline = MaterialTheme.colorScheme.outlineVariant
     val tickOffsets = remember(chapters, length) {
@@ -945,7 +945,7 @@ private fun ReaderChapterTicksV3(chapters: List<ChapterModel>, length: Long, fra
 }
 
 @Composable
-private fun ReaderSkimPreviewCardV3(preview: ReaderSkimPreview?, showReturn: Boolean, onReturn: () -> Unit) {
+private fun ReaderSkimPreviewCard(preview: ReaderSkimPreview?, showReturn: Boolean, onReturn: () -> Unit) {
     if (preview == null) return
     ElevatedCard(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -972,12 +972,12 @@ private fun ReaderReadingStatusHost(
     modifier: Modifier = Modifier,
 ) {
     if (!controlsVisibility.value) {
-        ReaderReadingStatusV3(stateProvider(), chapterIndexProvider(), color, background, stats, modifier)
+        ReaderReadingStatus(stateProvider(), chapterIndexProvider(), color, background, stats, modifier)
     }
 }
 
 @Composable
-private fun ReaderReadingStatusV3(state: AppUiState, chapterIndex: Int, color: Color, background: Color, stats: ReaderStatsStore, modifier: Modifier = Modifier) {
+private fun ReaderReadingStatus(state: AppUiState, chapterIndex: Int, color: Color, background: Color, stats: ReaderStatsStore, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val resources = LocalResources.current
     var now by remember { mutableStateOf(Date()) }
@@ -1003,7 +1003,7 @@ private fun ReaderReadingStatusV3(state: AppUiState, chapterIndex: Int, color: C
 }
 
 @Composable
-private fun AutoScrollLiveControlV3(settings: ReaderSettings, actions: JingduActions, modifier: Modifier = Modifier) {
+private fun AutoScrollLiveControl(settings: ReaderSettings, actions: JingduActions, modifier: Modifier = Modifier) {
     Surface(modifier, shape = MaterialTheme.shapes.extraLarge, tonalElevation = 5.dp) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton({ actions.onSettingsChanged(settings.copy(autoScrollSpeedDpPerSecond = (settings.autoScrollSpeedDpPerSecond - 8).coerceAtLeast(12f))) }) { Icon(Icons.Default.Remove, stringResource(R.string.reader_auto_scroll_slow)) }
@@ -1015,7 +1015,7 @@ private fun AutoScrollLiveControlV3(settings: ReaderSettings, actions: JingduAct
 }
 
 @Composable
-private fun ReaderSelectionBarV3(
+private fun ReaderSelectionBar(
     selection: ReaderSelectionRange,
     settings: ReaderSettings,
     onHighlight: (ReaderHighlightStyle) -> Unit,
@@ -1032,7 +1032,7 @@ private fun ReaderSelectionBarV3(
         Column(Modifier.widthIn(max = 460.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(selection.excerpt, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                ReaderHighlightStyle.entries.forEach { style -> TextButton({ onHighlight(style) }) { Text(highlightLabelV3(style)) } }
+                ReaderHighlightStyle.entries.forEach { style -> TextButton({ onHighlight(style) }) { Text(highlightLabel(style)) } }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 TextButton(onNote) { Text(stringResource(R.string.reader_note)) }
@@ -1050,7 +1050,7 @@ private fun ReaderSelectionBarV3(
 }
 
 @Composable
-private fun highlightLabelV3(style: ReaderHighlightStyle): String = stringResource(when (style) {
+private fun highlightLabel(style: ReaderHighlightStyle): String = stringResource(when (style) {
     ReaderHighlightStyle.YELLOW -> R.string.reader_highlight_yellow
     ReaderHighlightStyle.GREEN -> R.string.reader_highlight_green
     ReaderHighlightStyle.BLUE -> R.string.reader_highlight_blue
@@ -1058,7 +1058,7 @@ private fun highlightLabelV3(style: ReaderHighlightStyle): String = stringResour
 })
 
 @Composable
-private fun ReaderHudV3(text: String, modifier: Modifier = Modifier) {
+private fun ReaderHud(text: String, modifier: Modifier = Modifier) {
     Surface(modifier, color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.90f), contentColor = MaterialTheme.colorScheme.inverseOnSurface, shape = MaterialTheme.shapes.large, tonalElevation = 8.dp) {
         Text(text, Modifier.padding(horizontal = 18.dp, vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
     }
@@ -1069,13 +1069,13 @@ private const val AUTO_SCROLL_COMMIT_CHARS = 512L
 private const val AUTO_SCROLL_POSITION_SAMPLE_NS = 250_000_000L
 private const val READER_HIDDEN_LAYER_OFFSET_PX = 16_384
 
-private fun highlightColorV3(style: ReaderHighlightStyle): Color = when (style) {
+private fun highlightColor(style: ReaderHighlightStyle): Color = when (style) {
     ReaderHighlightStyle.YELLOW -> Color(0x55FFD54F)
     ReaderHighlightStyle.GREEN -> Color(0x554CAF50)
     ReaderHighlightStyle.BLUE -> Color(0x5542A5F5)
     ReaderHighlightStyle.PINK -> Color(0x55EC407A)
 }
 
-private fun utf16IndexV3(text: String, codePoints: Long): Int = if (text.isEmpty()) 0 else text.offsetByCodePoints(0, codePoints.coerceIn(0, text.codePointCount(0, text.length).toLong()).toInt())
-private fun readerBackgroundV3(palette: ReaderPalette): Color = when (palette) { ReaderPalette.PAPER -> Color(0xFFF7F0DE); ReaderPalette.LIGHT -> Color(0xFFFFFBFF); ReaderPalette.SEPIA -> Color(0xFFF3E5C8); ReaderPalette.NIGHT -> Color(0xFF151713); ReaderPalette.OLED -> Color.Black }
-private fun readerTextColorV3(palette: ReaderPalette): Color = when (palette) { ReaderPalette.NIGHT -> Color(0xFFE8E5DA); ReaderPalette.OLED -> Color(0xFFE8E8E8); else -> Color(0xFF24241F) }
+private fun utf16Index(text: String, codePoints: Long): Int = if (text.isEmpty()) 0 else text.offsetByCodePoints(0, codePoints.coerceIn(0, text.codePointCount(0, text.length).toLong()).toInt())
+private fun readerBackground(palette: ReaderPalette): Color = when (palette) { ReaderPalette.PAPER -> Color(0xFFF7F0DE); ReaderPalette.LIGHT -> Color(0xFFFFFBFF); ReaderPalette.SEPIA -> Color(0xFFF3E5C8); ReaderPalette.NIGHT -> Color(0xFF151713); ReaderPalette.OLED -> Color.Black }
+private fun readerTextColor(palette: ReaderPalette): Color = when (palette) { ReaderPalette.NIGHT -> Color(0xFFE8E5DA); ReaderPalette.OLED -> Color(0xFFE8E8E8); else -> Color(0xFF24241F) }

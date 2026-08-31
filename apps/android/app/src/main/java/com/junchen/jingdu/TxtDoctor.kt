@@ -80,8 +80,8 @@ internal object TxtDoctor {
         val encodingScore = (textScore - garbledWindows * 3).coerceIn(0, 100)
         val cleanPenalty = noise.take(100).sumOf { candidate ->
             when {
-                candidate.score() >= 88 -> 4
-                candidate.score() >= 72 -> 2
+                candidate.score >= 88 -> 4
+                candidate.score >= 72 -> 2
                 else -> 1
             }
         }.coerceAtMost(55)

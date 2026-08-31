@@ -12,7 +12,7 @@
 - **智能净读**：共享 C++ Core 本地扫描高频重复、网址/域名和常见推广水印；Free 可完整查看候选，Pro 可一键应用。
 - **安全规则**：Free 精确规则；Pro whole-line `*` 通配、全局规则库、推荐简繁中文网文规则、规则导入/导出。
 - **大文件可信**：与文件规模相关的工作不跑 UI thread；不可变 revision + `.jdx` 稀疏索引缓存；10/100/300 MiB 为正式资格尺寸。
-- **长期阅读**：书架/进度、搜索、Smart TOC、revision-safe 书签/高亮/笔记、Reader V3 排版与选择、TTS、自动翻页/滚动、睡眠定时、阅读统计、批量 TXT 导入。
+- **长期阅读**：书架/进度、搜索、Smart TOC、revision-safe 书签/高亮/笔记、Reader 排版与选择、TTS、自动翻页/滚动、睡眠定时、阅读统计、批量 TXT 导入。
 - **本地资产**：Pro 可选择系统离线 TTS voice，并导出/恢复 Reader 设置、全局规则、标注、收藏/标签、exact-revision 进度、阅读 session/pace 与 Smart Clean 指纹反馈；备份声明 `containsBookText=false`，不含 source/normalized/Clean 正文。
 - **隐私**：无账号、无广告/analytics SDK、Android manifest 不直接申请 `INTERNET`，TXT 不上传，源文件永不修改。
 
@@ -41,12 +41,12 @@ HarmonyOS ArkUI / ArkTS platform shell ----- NAPI --+
 ```
 
 - `core/native/` — 唯一跨平台文本/算法实现，包括编码、索引、搜索、目录、Repair、Smart Clean。
-- `apps/android/` — Reader V3 Compose 产品壳、平台生命周期/TTS/Google Play Billing & Review、JNI。
+- `apps/android/` — Reader Compose 产品壳、平台生命周期/TTS/Google Play Billing & Review、JNI。
 - `apps/harmony/` — HarmonyOS Stage/ArkUI + Node-API shell（当前 source-complete/pre-release）。
 - `fastlane/metadata/android/` — 四地区默认 Play 商店元数据。
 - `store/play/` — keyword-targeted Custom Listing 规格和多语言截图制作 brief。
 - `docs/` — 产品、商业化、UX、Localization、架构、ABI、性能、测试、发布事实源与 production readiness 证据合同。
-- `scripts/` — Native/Android i18n/terminal/Play metadata/Reader V3/source provenance CI 门禁。
+- `scripts/` — Native/Android i18n/terminal/Play metadata/Reader/source provenance CI 门禁。
 
 ## Product invariants
 

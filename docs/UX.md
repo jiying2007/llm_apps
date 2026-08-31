@@ -1,4 +1,4 @@
-# UX — Android 2.3.x / Reader V3
+# UX — Android 2.3.x / Reader
 
 ## Design direction
 
@@ -16,7 +16,7 @@ All user-facing copy is resource-backed. Android supports Simplified Chinese, Tr
 - Cards prioritize title/progress; favorite/tags/encoding/size/last-read are secondary.
 - Empty state explains mojibake rescue, TXT Doctor/Clean and privacy before file selection.
 
-## Reader V3
+## Reader
 
 - Text owns the screen; controls are overlays and can auto-hide for immersive reading.
 - Paged and continuous modes share the same authoritative source-offset model.
@@ -82,7 +82,7 @@ When no voice has been explicitly selected, Android infers a suitable `zh-CN`, `
 
 The Pro backup surface represents **user-owned local Reader assets**, not books/cloud sync.
 
-Current Reader V3 schema-4 backup includes:
+Current Reader schema-4 backup includes:
 - Reader settings;
 - global Clean rules;
 - bookmarks/highlights/notes;

@@ -10,7 +10,7 @@ import java.time.ZoneId
 import java.util.Locale
 import kotlin.random.Random
 
-class ReaderV3FoundationsTest {
+class ReaderFoundationsTest {
     @Test fun equalLengthProjectionIsExactOneToOne() {
         val map = SourceDisplayMap.between("汉语龙门", "漢語龍門")
         for (offset in 0L..4L) {

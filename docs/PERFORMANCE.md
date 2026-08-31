@@ -71,7 +71,7 @@ The frame-producing journeys are fixed and must satisfy their sample floors:
 | `continuousScroll10MiB` | six real UiDevice swipes | 500 |
 | `chaptersAndSettings10MiB` | two Chapters → Back → Aa → Back cycles | 50 |
 
-The Hosted gate uses `scripts/reader-v3-hosted-emulator-baseline.json`, frozen from the first exact-head run where all three journeys completed with authoritative sample floors: PR #25 head `fa22d088df7456330244ac4dc2c00a82da888656`, workflow run `33294378785`, job `99212107479`, artifact `9727262417`.
+The Hosted gate uses `scripts/reader-hosted-emulator-baseline.json`, frozen from the first exact-head run where all three journeys completed with authoritative sample floors: PR #25 head `fa22d088df7456330244ac4dc2c00a82da888656`, workflow run `33294378785`, job `99212107479`, artifact `9727262417`.
 
 For each journey and percentile, the effective Hosted limit is:
 
@@ -99,7 +99,7 @@ No Hosted baseline or Hosted absolute ceiling is accepted by this gate. A releas
 
 ## Baseline and Startup Profile contract
 
-Reader V3 profiles are product assets generated from real critical-user journeys, not handwritten broad keep rules.
+Reader profiles are product assets generated from real critical-user journeys, not handwritten broad keep rules.
 
 - The Startup Profile contains only app launch and opening the first readable Reader page.
 - Page turn, Quick Settings and Chapters are profiled in the paged Reader session; continuous scrolling is then profiled independently.
@@ -112,4 +112,4 @@ Reader V3 profiles are product assets generated from real critical-user journeys
 
 Native CI generates bounded fixtures and validates cross-buffer search, random reads, concurrent readers, malformed UTF-8 rejection and repeated handle lifecycle. Core tests also validate sparse-index cache creation, corrupt-cache fallback and repair, JDX2 chapter-cache authority, and the near-1GiB RSS gate (`JINGDU_PERF_FIXTURE_MIB=960`, RSS below 640 MiB).
 
-Android CI compiles unit tests, AndroidTest, lint, R8/release artifacts, Macrobenchmark tests, hosted regression contracts and Reader V3 profile contracts. Device 10/100/300 MiB first-open/reopen timing, jank and memory results remain Release/device evidence and are recorded in `DEVICE_MATRIX.md`.
+Android CI compiles unit tests, AndroidTest, lint, R8/release artifacts, Macrobenchmark tests, hosted regression contracts and Reader profile contracts. Device 10/100/300 MiB first-open/reopen timing, jank and memory results remain Release/device evidence and are recorded in `DEVICE_MATRIX.md`.

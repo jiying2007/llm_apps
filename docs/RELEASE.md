@@ -52,9 +52,9 @@ After publication/no-op resolution, the publisher removes closed same-repository
 
 The publisher has no signing key and cannot activate Play products, upload production listings or perform a Google Play rollout. A GitHub Source Release is **source provenance only**. It is not evidence of a signed APK/AAB, Google Play production, or HarmonyOS device qualification.
 
-## Android 2.3.x commercial / Reader V3 release
+## Android 2.3.x commercial / Reader release
 
-Android 2.3.x carries the Reader V3 product line and lifetime Pro model while keeping Free as a complete reader.
+Android 2.3.x carries the Reader product line and lifetime Pro model while keeping Free as a complete reader.
 
 ### Play Console prerequisites
 
@@ -86,7 +86,7 @@ An Android 2.3.x production release requires:
 
 ## Portable local-user backup
 
-Reader V3 schema 4 backs up portable, text-free user assets:
+Reader schema 4 backs up portable, text-free user assets:
 
 - Reader settings;
 - global Clean rules;
@@ -119,6 +119,6 @@ HarmonyOS remains source-complete/pre-release until official HAP/device gates ex
 
 ## Historical hard cut
 
-Android v2.0.0 established the current terminal source line as a new root and removed ordinary refs to the experimental lineage. Reader V3 / Android 2.3.x is a normal forward release on that hard-cut line; do not rewrite history again merely for a product update.
+Android v2.0.0 established the current terminal source line as a new root and removed ordinary refs to the experimental lineage. Reader / Android 2.3.x is a normal forward release on that hard-cut line; do not rewrite history again merely for a product update.
 
 Version 2.x does not promise compatibility with pre-2.x experimental private metadata/ABI.

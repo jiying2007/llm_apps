@@ -593,7 +593,7 @@ class MainActivity : ComponentActivity() {
             success = { hits ->
                 uiState = uiState.copy(
                     panel = ReaderPanel.SEARCH,
-                    searchResults = hits.map { SearchResultModel(it.offset(), it.context()) },
+                    searchResults = hits.map { SearchResultModel(it.offset, it.context) },
                     message = if (hits.isEmpty()) getString(R.string.search_no_result, value) else null,
                 )
             },
@@ -737,19 +737,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun smartCleanModel(bookId: String, candidate: ReaderController.NoiseCandidate): NoiseCandidateModel {
-        val semantic = TinyLocalSemanticCandidateClassifier.classifyCandidate(candidate.text())
-        val feedback = smartCleanFeedback.decision(bookId, candidate.reason(), candidate.text())
+        val semantic = TinyLocalSemanticCandidateClassifier.classifyCandidate(candidate.text)
+        val feedback = smartCleanFeedback.decision(bookId, candidate.reason, candidate.text)
         val semanticDelta = when (semantic.label) {
             SemanticCandidateLabel.AD -> if (semantic.confidence >= 0.65f) 8 else 0
             SemanticCandidateLabel.BODY -> if (semantic.confidence >= 0.65f) -16 else 0
             SemanticCandidateLabel.UNCERTAIN -> 0
         }
-        val adjustedScore = (candidate.score() + smartCleanFeedback.modelDelta(candidate.reason(), candidate.text()) + semanticDelta).coerceIn(0, 100)
+        val adjustedScore = (candidate.score + smartCleanFeedback.modelDelta(candidate.reason, candidate.text) + semanticDelta).coerceIn(0, 100)
         val model = NoiseCandidateModel(
             score = adjustedScore,
-            count = candidate.count(),
-            reason = candidate.reason(),
-            text = candidate.text(),
+            count = candidate.count,
+            reason = candidate.reason,
+            text = candidate.text,
             semanticLabel = semantic.label,
             semanticConfidence = semantic.confidence,
             semanticScore = semantic.score,
@@ -982,7 +982,7 @@ class MainActivity : ComponentActivity() {
         return (fraction * (newLength - 1).toDouble()).roundToLong().coerceIn(0, newLength - 1)
     }
 
-    private fun refreshTtsVoices() { uiState = uiState.copy(ttsVoices = ttsCatalog.offlineVoices().map { TtsVoiceModel(it.name(), it.label()) }) }
+    private fun refreshTtsVoices() { uiState = uiState.copy(ttsVoices = ttsCatalog.offlineVoices().map { TtsVoiceModel(it.name, it.label) }) }
 
     private fun updateSettings(settings: ReaderSettings) {
         if (settings.ttsVoiceName != uiState.settings.ttsVoiceName && !proUnlocked) { billing.purchase(); return }
@@ -1056,6 +1056,8 @@ class MainActivity : ComponentActivity() {
             .putExtra(TtsPlaybackService.EXTRA_RATE, uiState.settings.ttsRate)
             .putExtra(TtsPlaybackService.EXTRA_PITCH, uiState.settings.ttsPitch)
             .putExtra(TtsPlaybackService.EXTRA_VOICE, uiState.settings.ttsVoiceName)
+            .putExtra(TtsPlaybackService.EXTRA_CHINESE_MODE, uiState.settings.chineseMode.name)
+            .putExtra(TtsPlaybackService.EXTRA_CHINESE_OVERRIDES, uiState.settings.chineseOverrides)
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
     }
 

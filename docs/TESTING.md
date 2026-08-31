@@ -46,9 +46,9 @@ License-tester device validation additionally covers fresh purchase, cancellatio
 
 ## Portable local-user asset contract
 
-Reader V3 backup schema 4 is bounded, local and text-free. Automated/instrumented tests verify:
+Reader backup schema 4 is bounded, local and text-free. Automated/instrumented tests verify:
 
-- Reader settings use the typed Reader V3 settings import validation;
+- Reader settings use the typed Reader settings import validation;
 - global-rule JSON retains its versioned bounded schema and field/count limits;
 - annotations remain bounded and keep source/context anchors;
 - favorites/tags are portable by source identity;
@@ -57,7 +57,7 @@ Reader V3 backup schema 4 is bounded, local and text-free. Automated/instrumente
 - reading session/pace backup contains identifiers/timestamps/counts only;
 - Smart Clean feedback backup contains one-way fingerprints/decisions only;
 - backup root declares `containsBookText=false`;
-- schema 3 Reader V3 settings/rules/annotation backups remain importable for pre-production testers;
+- schema 3 Reader settings/rules/annotation backups remain importable for pre-production testers;
 - SAF folder URI grants and unavailable imported font binaries are re-selected rather than represented as portable credentials.
 
 `PortableUserAssetsTest` covers revision-bound staged progress, Smart Clean text-free feedback round-trip and bounded reading-stat restore on AndroidTest.

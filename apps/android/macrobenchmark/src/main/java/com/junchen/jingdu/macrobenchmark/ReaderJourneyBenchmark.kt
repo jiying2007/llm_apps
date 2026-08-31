@@ -27,7 +27,7 @@ class ReaderJourneyBenchmark {
     /** PR-sized long-text launch/open journey. */
     @Test fun open10MiBTxt() = openJourney(fixtureMiB = 10, iterations = 5)
 
-    /** V3 soak-sized long-text launch/open journey. Kept deliberately short but real. */
+    /**  soak-sized long-text launch/open journey. Kept deliberately short but real. */
     @Test fun open100MiBTxt() = openJourney(fixtureMiB = 100, iterations = 2)
 
     @Test fun pageTurn10MiB() = interactionJourney(
@@ -37,7 +37,7 @@ class ReaderJourneyBenchmark {
     ) {
         val before = readerPosition()
         var previous = before
-        check(previous >= 0) { "Reader V3 page-turn journey has no authoritative starting position: $previous" }
+        check(previous >= 0) { "Reader page-turn journey has no authoritative starting position: $previous" }
         val physicalVolume = usePhysicalVolumePageTurn()
         // Hosted API 35 software-emulator input policy consumes injected VOLUME_DOWN before the
         // foreground Activity even though MainActivity is RESUMED. Hosted therefore uses the real
@@ -52,14 +52,14 @@ class ReaderJourneyBenchmark {
                 )
             }
             check(injected) {
-                if (physicalVolume) "Reader V3 physical volume page turn was not injected through UiDevice"
-                else "Reader V3 forward page tap was not injected through UiDevice"
+                if (physicalVolume) "Reader physical volume page turn was not injected through UiDevice"
+                else "Reader forward page tap was not injected through UiDevice"
             }
             previous = waitForReaderAdvance(previous, physicalVolume)
         }
         val after = readerPosition()
         check(after > before) {
-            "Reader V3 page-turn journey did not advance overall: before=$before after=$after"
+            "Reader page-turn journey did not advance overall: before=$before after=$after"
         }
     }
 
@@ -76,7 +76,7 @@ class ReaderJourneyBenchmark {
                 device.displayWidth / 2,
                 (device.displayHeight * 0.25).toInt(),
                 24,
-            )) { "Reader V3 continuous-scroll swipe was not injected" }
+            )) { "Reader continuous-scroll swipe was not injected" }
         }
         device.waitForIdle()
     }
@@ -150,14 +150,14 @@ class ReaderJourneyBenchmark {
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method seed --arg $mib",
         )
-        check(result.contains("bytes=")) { "Reader V3 benchmark fixture seed failed: $result" }
+        check(result.contains("bytes=")) { "Reader benchmark fixture seed failed: $result" }
     }
 
     private fun MacrobenchmarkScope.setReaderMode(mode: String) {
         val result = device.executeShellCommand(
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method mode --arg $mode",
         )
-        check(result.contains("Result: Bundle[{}]")) { "Reader V3 benchmark mode setup failed: $result" }
+        check(result.contains("Result: Bundle[{}]")) { "Reader benchmark mode setup failed: $result" }
     }
 
     private fun MacrobenchmarkScope.readerPosition(): Long {
@@ -165,7 +165,7 @@ class ReaderJourneyBenchmark {
             "content call --uri content://com.junchen.jingdu.benchmarkfixture --method position",
         )
         return Regex("""position=(-?\d+)""").find(result)?.groupValues?.get(1)?.toLongOrNull()
-            ?: error("Reader V3 benchmark position query failed: $result")
+            ?: error("Reader benchmark position query failed: $result")
     }
 
     private fun MacrobenchmarkScope.readerInputState(): String = device.executeShellCommand(
@@ -186,7 +186,7 @@ class ReaderJourneyBenchmark {
             }
             Thread.sleep(INPUT_POLL_MS)
         }
-        error("Reader V3 did not publish an authoritative rendered position before interaction: $position")
+        error("Reader did not publish an authoritative rendered position before interaction: $position")
     }
 
     private fun MacrobenchmarkScope.waitForReaderAdvance(before: Long, physicalVolume: Boolean): Long {
@@ -203,7 +203,7 @@ class ReaderJourneyBenchmark {
         ).trim()
         val input = if (physicalVolume) " inputState=${readerInputState()}" else ""
         error(
-            "Reader V3 ${if (physicalVolume) "physical volume key" else "page tap"} did not advance the authoritative reader position: " +
+            "Reader ${if (physicalVolume) "physical volume key" else "page tap"} did not advance the authoritative reader position: " +
                 "before=$before after=$after$input focus=${focus.ifEmpty { "<unknown>" }}",
         )
     }
@@ -221,7 +221,7 @@ class ReaderJourneyBenchmark {
             }
             Thread.sleep(CONTINUOUS_READY_POLL_MS)
         }
-        error("Reader V3 continuous viewport did not publish layout/raster readiness: $result")
+        error("Reader continuous viewport did not publish layout/raster readiness: $result")
     }
 
     private fun MacrobenchmarkScope.startTargetAndWait() {
@@ -230,8 +230,8 @@ class ReaderJourneyBenchmark {
         } catch (error: IllegalStateException) {
             throw IllegalStateException(
                 buildString {
-                    append(error.message ?: "Reader V3 target launch failed")
-                    append("\n===== Reader V3 target diagnostics =====\n")
+                    append(error.message ?: "Reader target launch failed")
+                    append("\n===== Reader target diagnostics =====\n")
                     append(failureDiagnostics())
                 },
                 error,
@@ -242,7 +242,7 @@ class ReaderJourneyBenchmark {
     private fun MacrobenchmarkScope.openFixture(mib: Int) {
         val title = "Benchmark Novel $mib MiB"
         if (!device.wait(Until.hasObject(By.textContains(title)), 8_000)) {
-            error("fixture card missing: $title\n===== Reader V3 target diagnostics =====\n${failureDiagnostics()}")
+            error("fixture card missing: $title\n===== Reader target diagnostics =====\n${failureDiagnostics()}")
         }
         val card = device.findObject(By.textContains(title)) ?: error("fixture card unavailable: $title")
         val bounds = runCatching { card.visibleBounds }.getOrNull() ?: error("fixture card stale: $title")
@@ -277,7 +277,7 @@ class ReaderJourneyBenchmark {
     private fun MacrobenchmarkScope.waitForReaderSurfaceAfterBack(label: String) {
         device.waitForIdle()
         runCatching { ensureTopControlsVisible() }.getOrElse { cause ->
-            error("Reader V3 $label BACK input did not return to the interactive reader surface: ${cause.message}")
+            error("Reader $label BACK input did not return to the interactive reader surface: ${cause.message}")
         }
     }
 
@@ -288,18 +288,18 @@ class ReaderJourneyBenchmark {
             for ((x, y) in taps) {
                 val px = (device.displayWidth * x).toInt()
                 val py = (device.displayHeight * y).toInt()
-                check(device.click(px, py)) { "Reader V3 top-control tap was not injected through UiDevice" }
+                check(device.click(px, py)) { "Reader top-control tap was not injected through UiDevice" }
                 if (device.wait(Until.hasObject(By.text("Aa")), 1_100) && visibleObject(By.text("Aa")) != null) return
             }
         }
-        error("Reader V3 top reading controls did not become visibly on-screen after real UiDevice tap input")
+        error("Reader top reading controls did not become visibly on-screen after real UiDevice tap input")
     }
 
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
-        check(device.wait(Until.hasObject(selector), 3_000)) { "Reader V3 $label missing" }
-        val target = visibleObject(selector) ?: error("Reader V3 $label exists only off-screen")
-        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader V3 $label became stale before input")
-        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader V3 $label tap was not injected" }
+        check(device.wait(Until.hasObject(selector), 3_000)) { "Reader $label missing" }
+        val target = visibleObject(selector) ?: error("Reader $label exists only off-screen")
+        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader $label became stale before input")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader $label tap was not injected" }
     }
 
     private fun MacrobenchmarkScope.requireChaptersClick() {
@@ -312,8 +312,8 @@ class ReaderJourneyBenchmark {
             if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
         }
 
-        val aa = visibleObject(By.text("Aa")) ?: error("Reader V3 visible top reading controls missing")
-        val anchor = runCatching { aa.visibleBounds }.getOrNull() ?: error("Reader V3 Aa control became stale")
+        val aa = visibleObject(By.text("Aa")) ?: error("Reader visible top reading controls missing")
+        val anchor = runCatching { aa.visibleBounds }.getOrNull() ?: error("Reader Aa control became stale")
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
             .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
@@ -327,8 +327,8 @@ class ReaderJourneyBenchmark {
                     abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
             }
             .minByOrNull { bounds -> bounds.centerX() - anchor.centerX() }
-            ?: error("Reader V3 visible chapters control missing beside Aa")
-        check(device.click(candidate.centerX(), candidate.centerY())) { "Reader V3 chapters tap was not injected" }
+            ?: error("Reader visible chapters control missing beside Aa")
+        check(device.click(candidate.centerX(), candidate.centerY())) { "Reader chapters tap was not injected" }
     }
 
     private fun frameMetrics(): List<Metric> = listOf(FrameTimingMetric())

@@ -215,9 +215,9 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
             ReaderController().use { reader ->
                 reader.open(repo.normalizedFile(source), source.progress)
                 reader.noiseCandidates().map { candidate ->
-                    val semantic = TinyLocalSemanticCandidateClassifier.classifyCandidate(candidate.text())
-                    val feedback = feedbackStore.decision(book.id, candidate.reason(), candidate.text())
-                    LabCandidate(candidate, semantic, feedback, candidate.score() + feedbackStore.modelDelta(candidate.reason(), candidate.text()) + if (semantic.label == SemanticCandidateLabel.AD) 8 else if (semantic.label == SemanticCandidateLabel.BODY) -16 else 0)
+                    val semantic = TinyLocalSemanticCandidateClassifier.classifyCandidate(candidate.text)
+                    val feedback = feedbackStore.decision(book.id, candidate.reason, candidate.text)
+                    LabCandidate(candidate, semantic, feedback, candidate.score + feedbackStore.modelDelta(candidate.reason, candidate.text) + if (semantic.label == SemanticCandidateLabel.AD) 8 else if (semantic.label == SemanticCandidateLabel.BODY) -16 else 0)
                 }
             }
         }
@@ -243,23 +243,23 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
             }
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             if (!loading && candidates.isEmpty()) item { Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(candidates.take(40), key = { it.raw.reason() + "\u001f" + it.raw.text() }) { item ->
+            items(candidates.take(40), key = { it.raw.reason + "\u001f" + it.raw.text }) { item ->
                 ElevatedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(stringResource(R.string.smart_clean4_signal, item.raw.reason(), item.raw.count(), item.raw.score(), item.semantic.label.name, item.adjustedScore), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(item.raw.text(), maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(R.string.smart_clean4_signal, item.raw.reason, item.raw.count, item.raw.score, item.semantic.label.name, item.adjustedScore), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(item.raw.text, maxLines = 4, overflow = TextOverflow.Ellipsis)
                         if (item.feedback != SmartCleanFeedback.NONE) Text(stringResource(R.string.smart_clean4_memory, item.feedback.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TextButton(onClick = {
-                                if (book != null) feedbackStore.record(book.id, item.raw.reason(), item.raw.text(), SmartCleanFeedback.KEEP)
+                                if (book != null) feedbackStore.record(book.id, item.raw.reason, item.raw.text, SmartCleanFeedback.KEEP)
                             }) { Text(stringResource(R.string.keep_text)) }
                             TextButton(onClick = {
-                                if (book != null) feedbackStore.record(book.id, item.raw.reason(), item.raw.text(), SmartCleanFeedback.PROTECT)
+                                if (book != null) feedbackStore.record(book.id, item.raw.reason, item.raw.text, SmartCleanFeedback.PROTECT)
                             }) { Text(stringResource(R.string.protect_text)) }
                             Button(onClick = {
                                 if (book != null) {
-                                    feedbackStore.record(book.id, item.raw.reason(), item.raw.text(), SmartCleanFeedback.DELETE)
-                                    actions.onAddRule(RepairRuleMode.LITERAL, item.raw.text(), "")
+                                    feedbackStore.record(book.id, item.raw.reason, item.raw.text, SmartCleanFeedback.DELETE)
+                                    actions.onAddRule(RepairRuleMode.LITERAL, item.raw.text, "")
                                 }
                             }) { Text(stringResource(R.string.delete_and_remember)) }
                         }

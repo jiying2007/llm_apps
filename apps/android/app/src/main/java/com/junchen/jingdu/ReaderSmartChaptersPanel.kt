@@ -141,6 +141,9 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
     val edge = with(density) { 18.dp.toPx() }
     val current = report
     val chapters = current?.chapters.orEmpty()
+    val displayTitles = remember(chapters, state.settings.chineseMode, state.settings.chineseOverrides) {
+        chapters.map { chapter -> ReaderTextPresentation.chapterTitle(chapter.title, state.settings) }
+    }
     val end = minOf(chapters.size, windowStart + CHAPTER_WINDOW_ROWS)
     val quality = current?.let { stringResource(R.string.smart_toc_quality, it.score, it.chapters.size, it.anomalyCount) }.orEmpty()
 
@@ -168,8 +171,8 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
         add(CustomAccessibilityAction(addLabel) { addDialog = true; true })
         for (index in windowStart until end) {
             val chapter = chapters[index]
-            add(CustomAccessibilityAction(chapter.title) { actions.onJump(chapter.offset); true })
-            add(CustomAccessibilityAction("$hideLabel: ${chapter.title}") { hide(index); true })
+            add(CustomAccessibilityAction(displayTitles[index]) { actions.onJump(chapter.offset); true })
+            add(CustomAccessibilityAction("$hideLabel: ${displayTitles[index]}") { hide(index); true })
         }
         if (windowStart > 0) add(CustomAccessibilityAction(previousLabel) { windowStart = (windowStart - CHAPTER_WINDOW_ROWS).coerceAtLeast(0); true })
         if (end < chapters.size) add(CustomAccessibilityAction(nextLabel) { windowStart = (windowStart + CHAPTER_WINDOW_ROWS).coerceAtMost(maxOf(0, chapters.size - CHAPTER_WINDOW_ROWS)); true })
@@ -208,7 +211,7 @@ internal fun ReaderSmartChaptersPanel(state: AppUiState, actions: JingduActions,
                     val chapter = chapters[index]
                     val local = index - windowStart
                     val centerY = rowTop + rowHeight * (local + 0.5f)
-                    drawReaderText(chapter.title, paints.normal, edge + 8.dp.toPx(), centerY, size.width - edge * 2f - 64.dp.toPx())
+                    drawReaderText(displayTitles[index], paints.normal, edge + 8.dp.toPx(), centerY, size.width - edge * 2f - 64.dp.toPx())
                     if (chapter.source != "core") drawCircle(colors.primary, 3.dp.toPx(), Offset(size.width - edge - 46.dp.toPx(), centerY))
                     val x = size.width - edge - 18.dp.toPx()
                     val r = 6.dp.toPx()

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "kind": "reader-v3-hosted-emulator-regression-baseline",
+  "kind": "reader-hosted-emulator-regression-baseline",
   "source": {
     "headSha": "fa22d088df7456330244ac4dc2c00a82da888656",
     "pullRequest": 25,

@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 MODULE_PATH = pathlib.Path(__file__).with_name("check-android-performance-slo.py")
-HOSTED_BASELINE_PATH = pathlib.Path(__file__).with_name("reader-v3-hosted-emulator-baseline.json")
+HOSTED_BASELINE_PATH = pathlib.Path(__file__).with_name("reader-hosted-emulator-baseline.json")
 PHYSICAL_RUNNER_PATH = pathlib.Path(__file__).with_name("run-android-physical-release-performance.sh")
 spec = importlib.util.spec_from_file_location("jingdu_android_performance_slo", MODULE_PATH)
 assert spec and spec.loader
@@ -66,7 +66,7 @@ class AndroidPerformanceSloTest(unittest.TestCase):
             path = pathlib.Path(directory) / "baseline.json"
             payload = {
                 "schemaVersion": 1,
-                "kind": "reader-v3-hosted-emulator-regression-baseline",
+                "kind": "reader-hosted-emulator-regression-baseline",
                 "benchmarks": {
                     "pageTurn10MiB": {"p95Ms": 80.0, "p99Ms": 110.0},
                     "continuousScroll10MiB": {"p95Ms": 95.0, "p99Ms": 130.0},
@@ -135,7 +135,7 @@ class AndroidPerformanceSloTest(unittest.TestCase):
             check=False,
         )
         self.assertEqual(0, result.returncode, result.stdout)
-        self.assertIn("Reader V3 Baseline/Startup Profile contract OK", result.stdout)
+        self.assertIn("Reader Baseline/Startup Profile contract OK", result.stdout)
 
 
 if __name__ == "__main__":
