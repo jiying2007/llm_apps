@@ -19,4 +19,34 @@ source = source.replace(
     'delete("scripts/hardcut-once.py")',
     'delete("scripts/hardcut-once.py")\ndelete("scripts/hardcut-body.py")',
 )
+needle = 'subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)'
+patch = r'''
+# Hard-cut release gates themselves: no V3-era reverse bans and no Java-era paths/syntax.
+rel = "scripts/verify-terminal.sh"
+text = read(rel)
+text = text.replace("  apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt \\\n", "")
+text = text.replace("BookRepository.java", "BookRepository.kt")
+text = text.replace("bash ./scripts/verify-reader-v3.sh", "bash ./scripts/verify-reader.sh")
+write(rel, text)
+
+rel = "scripts/verify-reader.sh"
+text = read(rel)
+for old, new in (
+    ("docs/READER_PRELAUNCH_FINAL.md", "docs/PRODUCTION_READINESS.md"),
+    ("BookRepository.java", "BookRepository.kt"),
+    ("ReaderController.java", "ReaderController.kt"),
+    ("ReaderPanels.kt", "ReaderInsightsPanels.kt"),
+    ("prewarmChapterIndex(book);", "prewarmChapterIndex(book)"),
+    ("prewarmChapterIndex(updated);", "prewarmChapterIndex(updated)"),
+    ("source.chapters();", "source.chapters()"),
+):
+    text = text.replace(old, new)
+text = text.replace("V3", "")
+write(rel, text)
+
+subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=ROOT, check=True)
+'''.strip()
+if needle not in source:
+    raise SystemExit("missing hard-cut verification insertion point")
+source = source.replace(needle, patch)
 exec(compile(source, str(body_path), "exec"), {"__file__": __file__, "__name__": "__main__"})
