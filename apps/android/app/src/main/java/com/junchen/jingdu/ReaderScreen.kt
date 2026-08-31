@@ -115,6 +115,7 @@ internal fun ReaderScreen(
     val skim = remember(book.id) { ReaderSkimController(context, book.id) }
     val controlsVisibility = rememberSaveable(book.id) { mutableStateOf(true) }
     var controlsVisible by controlsVisibility
+    SideEffect { ReaderInteractionRuntime.controlsVisible = controlsVisible }
     var more by remember { mutableStateOf(false) }
     var selection by remember(book.id) { mutableStateOf<SelectionPayload?>(null) }
     var twoStageAnchor by remember(book.id) { mutableStateOf<ReaderSelectionRange?>(null) }
@@ -815,6 +816,7 @@ private fun Modifier.readerGestures(
 
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
+            ReaderInteractionRuntime.pagedGestureDowns += 1L
             onAnyTouch()
             var last = down
             var consumedByChild = down.isConsumed
@@ -854,6 +856,9 @@ private fun Modifier.readerGestures(
 
             val delta = last.position - down.position
             val duration = last.uptimeMillis - down.uptimeMillis
+            ReaderInteractionRuntime.lastPagedGestureDurationMs = duration
+            ReaderInteractionRuntime.lastPagedGestureDistancePx = delta.getDistance()
+            ReaderInteractionRuntime.lastPagedGestureConsumedByChild = consumedByChild
             val edgeGuard = 8.dp.toPx()
             if (!consumedByChild && settings.brightnessGestureEnabled && widthPx > 0 &&
                 down.position.x >= systemLeftInsetPx + edgeGuard &&
@@ -878,6 +883,7 @@ private fun Modifier.readerGestures(
             }
 
             if (duration <= 360 && delta.getDistance() <= tapSlop && widthPx > 0) {
+                ReaderInteractionRuntime.pagedTapCandidates += 1L
                 if (down.position.x <= systemLeftInsetPx + edgeGuard ||
                     down.position.x >= widthPx - systemRightInsetPx - edgeGuard
                 ) return@awaitEachGesture
@@ -896,6 +902,7 @@ private fun Modifier.readerGestures(
                         if (settings.reversePagingGestures) onPrevious() else onNext()
                     }
                     else -> {
+                        ReaderInteractionRuntime.pagedCenterDispatches += 1L
                         val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS
                         val doubleAction = if (settings.advancedGestureCustomizationEnabled) settings.doubleTapAction
                         else if (settings.doubleTapBookmarkEnabled) ReaderGestureAction.BOOKMARK else ReaderGestureAction.NONE

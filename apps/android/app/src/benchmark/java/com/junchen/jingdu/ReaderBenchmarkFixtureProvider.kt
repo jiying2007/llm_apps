@@ -42,6 +42,7 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                 ReaderInteractionRuntime.backgroundTtsPlaying = false
                 ReaderInteractionRuntime.continuousReady = false
                 ReaderInteractionRuntime.resetVolumeDiagnostics()
+                ReaderInteractionRuntime.resetPagedGestureDiagnostics()
                 val preferences = ReaderPreferences(context)
                 preferences.flush(
                     preferences.load().copy(
@@ -85,6 +86,13 @@ class ReaderBenchmarkFixtureProvider : ContentProvider() {
                     putLong("volumeEligibilityChecks", ReaderInteractionRuntime.volumeEligibilityChecks)
                     putBoolean("lastVolumeForegroundTtsPlaying", ReaderInteractionRuntime.lastVolumeForegroundTtsPlaying)
                     putBoolean("lastVolumeEligible", ReaderInteractionRuntime.lastVolumeEligible)
+                    putBoolean("controlsVisible", ReaderInteractionRuntime.controlsVisible)
+                    putLong("pagedGestureDowns", ReaderInteractionRuntime.pagedGestureDowns)
+                    putLong("pagedTapCandidates", ReaderInteractionRuntime.pagedTapCandidates)
+                    putLong("pagedCenterDispatches", ReaderInteractionRuntime.pagedCenterDispatches)
+                    putLong("lastPagedGestureDurationMs", ReaderInteractionRuntime.lastPagedGestureDurationMs)
+                    putFloat("lastPagedGestureDistancePx", ReaderInteractionRuntime.lastPagedGestureDistancePx)
+                    putBoolean("lastPagedGestureConsumedByChild", ReaderInteractionRuntime.lastPagedGestureConsumedByChild)
                 }
             }
             "clear" -> {
