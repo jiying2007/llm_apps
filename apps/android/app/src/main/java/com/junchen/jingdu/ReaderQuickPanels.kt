@@ -2,17 +2,17 @@
 package com.junchen.jingdu
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -52,7 +52,7 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
     val row4 = with(density) { 238.dp.toPx() }
     val row5 = with(density) { 286.dp.toPx() }
     val edge = with(density) { 18.dp.toPx() }
-    val buttonH = with(density) { 38.dp.toPx() }
+    val buttonH = with(density) { 44.dp.toPx() }
 
     fun setPalette(palette: ReaderPalette) = actions.onSettingsChanged(s.copy(palette = palette, preset = ReaderPreset.CUSTOM, activeThemeId = ""))
     fun setPaged() = actions.onSettingsChanged(s.copy(readingMode = ReaderMode.PAGED, autoScrollEnabled = false))
@@ -81,16 +81,12 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                             setPalette(QUICK_PALETTES[((point.x - edge) / slot).toInt().coerceIn(0, QUICK_PALETTES.lastIndex)])
                         }
                         point.y in row2 - buttonH / 2f..row2 + buttonH / 2f -> when {
-                            point.x < width * 0.16f -> font(-1f)
-                            point.x < width * 0.32f -> font(1f)
-                            else -> {
-                                val fraction = ((point.x - width * 0.38f) / (width * 0.56f)).coerceIn(0f, 1f)
-                                actions.onSettingsChanged(s.copy(lineHeightMultiplier = 1.15f + 1.05f * fraction, preset = ReaderPreset.CUSTOM, activeThemeId = ""))
-                            }
+                            point.x < width * 0.20f -> font(-1f)
+                            point.x < width * 0.40f -> font(1f)
                         }
                         point.y in row3 - buttonH / 2f..row3 + buttonH / 2f -> when {
-                            point.x < width * 0.28f -> setPaged()
-                            point.x < width * 0.56f -> setContinuous()
+                            point.x < width * 0.32f -> setPaged()
+                            point.x < width * 0.64f -> setContinuous()
                             point.x > width * 0.78f -> actions.onAddBookmark()
                         }
                         s.readingMode == ReaderMode.CONTINUOUS && point.y in row4 - buttonH / 2f..row4 + buttonH / 2f -> when {
@@ -107,30 +103,65 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                 QUICK_PALETTES.forEachIndexed { index, palette ->
                     val x = edge + slot * (index + 0.5f)
                     drawCircle(quickPaletteSwatch(palette), 13.dp.toPx(), Offset(x, row1))
-                    if (s.palette == palette) drawCircle(colors.primary, 17.dp.toPx(), Offset(x, row1), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+                    if (s.palette == palette) drawCircle(colors.primary, 18.dp.toPx(), Offset(x, row1), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
                 }
-                drawReaderButton(Rect(edge, row2 - 19.dp.toPx(), edge + 48.dp.toPx(), row2 + 19.dp.toPx()), "−", paints.action, colors.primary, outline = colors.outlineVariant)
-                drawReaderText("${s.fontSizeSp.roundToInt()}sp", paints.normal, edge + 54.dp.toPx(), row2, 62.dp.toPx(), centered = true)
-                drawReaderButton(Rect(edge + 120.dp.toPx(), row2 - 19.dp.toPx(), edge + 168.dp.toPx(), row2 + 19.dp.toPx()), "+", paints.action, colors.primary, outline = colors.outlineVariant)
-                val trackLeft = (edge + 184.dp.toPx()).coerceAtMost(size.width - 80.dp.toPx())
-                val trackRight = size.width - edge
-                val lineFraction = ((s.lineHeightMultiplier - 1.15f) / 1.05f).coerceIn(0f, 1f)
-                drawRoundRect(colors.surfaceVariant, Offset(trackLeft, row2 - 2.dp.toPx()), androidx.compose.ui.geometry.Size(trackRight - trackLeft, 4.dp.toPx()), CornerRadius(2.dp.toPx()))
-                drawCircle(colors.primary, 7.dp.toPx(), Offset(trackLeft + (trackRight - trackLeft) * lineFraction, row2))
-                val modeWidth = (size.width - edge * 2f) * 0.27f
-                val pagedRect = Rect(edge, row3 - 19.dp.toPx(), edge + modeWidth, row3 + 19.dp.toPx())
-                val continuousRect = Rect(edge + modeWidth + 8.dp.toPx(), row3 - 19.dp.toPx(), edge + modeWidth * 2f + 8.dp.toPx(), row3 + 19.dp.toPx())
+                drawReaderButton(Rect(edge, row2 - 22.dp.toPx(), edge + 52.dp.toPx(), row2 + 22.dp.toPx()), "−", paints.action, colors.primary, outline = colors.outlineVariant)
+                drawReaderText("${s.fontSizeSp.roundToInt()}sp", paints.normal, edge + 58.dp.toPx(), row2, 62.dp.toPx(), centered = true)
+                drawReaderButton(Rect(edge + 126.dp.toPx(), row2 - 22.dp.toPx(), edge + 178.dp.toPx(), row2 + 22.dp.toPx()), "+", paints.action, colors.primary, outline = colors.outlineVariant)
+                val modeWidth = (size.width - edge * 2f) * 0.29f
+                val pagedRect = Rect(edge, row3 - 22.dp.toPx(), edge + modeWidth, row3 + 22.dp.toPx())
+                val continuousRect = Rect(edge + modeWidth + 8.dp.toPx(), row3 - 22.dp.toPx(), edge + modeWidth * 2f + 8.dp.toPx(), row3 + 22.dp.toPx())
                 drawReaderButton(pagedRect, paged, paints.action, if (s.readingMode == ReaderMode.PAGED) colors.onPrimary else colors.primary, if (s.readingMode == ReaderMode.PAGED) colors.primary else Color.Transparent, if (s.readingMode == ReaderMode.PAGED) null else colors.outlineVariant)
                 drawReaderButton(continuousRect, continuous, paints.action, if (s.readingMode == ReaderMode.CONTINUOUS) colors.onPrimary else colors.primary, if (s.readingMode == ReaderMode.CONTINUOUS) colors.primary else Color.Transparent, if (s.readingMode == ReaderMode.CONTINUOUS) null else colors.outlineVariant)
-                drawReaderButton(Rect(size.width - edge - 70.dp.toPx(), row3 - 19.dp.toPx(), size.width - edge, row3 + 19.dp.toPx()), "★", paints.action, colors.primary, outline = colors.outlineVariant)
+                drawReaderButton(Rect(size.width - edge - 72.dp.toPx(), row3 - 22.dp.toPx(), size.width - edge, row3 + 22.dp.toPx()), "★", paints.action, colors.primary, outline = colors.outlineVariant)
                 if (s.readingMode == ReaderMode.CONTINUOUS) {
-                    drawReaderButton(Rect(edge, row4 - 19.dp.toPx(), edge + 48.dp.toPx(), row4 + 19.dp.toPx()), "−", paints.action, colors.primary, outline = colors.outlineVariant)
-                    drawReaderButton(Rect(size.width - edge - 48.dp.toPx(), row4 - 19.dp.toPx(), size.width - edge, row4 + 19.dp.toPx()), "+", paints.action, colors.primary, outline = colors.outlineVariant)
-                    drawReaderText("$speedLabel · $autoLabel", paints.small, edge + 56.dp.toPx(), row4, size.width - edge * 2f - 112.dp.toPx(), centered = true)
+                    drawReaderButton(Rect(edge, row4 - 22.dp.toPx(), edge + 52.dp.toPx(), row4 + 22.dp.toPx()), "−", paints.action, colors.primary, outline = colors.outlineVariant)
+                    drawReaderButton(Rect(size.width - edge - 52.dp.toPx(), row4 - 22.dp.toPx(), size.width - edge, row4 + 22.dp.toPx()), "+", paints.action, colors.primary, outline = colors.outlineVariant)
+                    drawReaderText("$speedLabel · $autoLabel", paints.small, edge + 60.dp.toPx(), row4, size.width - edge * 2f - 120.dp.toPx(), centered = true)
                 }
-                drawReaderButton(Rect(edge, row5 - 20.dp.toPx(), size.width - edge, row5 + 20.dp.toPx()), advanced, paints.action, colors.primary, outline = colors.outlineVariant)
+                drawReaderButton(Rect(edge, row5 - 22.dp.toPx(), size.width - edge, row5 + 22.dp.toPx()), advanced, paints.action, colors.primary, outline = colors.outlineVariant)
             }
-            ReaderCanvasSemanticTarget(continuous, 116.dp, 160.dp, 120.dp, 44.dp, ::setContinuous)
+
+            Row(Modifier.fillMaxWidth().height(48.dp).offset(y = 54.dp).padding(horizontal = 18.dp)) {
+                paletteLabels.forEachIndexed { index, label ->
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight().clickable { setPalette(QUICK_PALETTES[index]) }
+                            .semantics { contentDescription = label },
+                    )
+                }
+            }
+            ReaderCanvasSemanticTarget("−", 18.dp, 108.dp, 52.dp, 48.dp) { font(-1f) }
+            ReaderCanvasSemanticTarget("+", 144.dp, 108.dp, 52.dp, 48.dp) { font(1f) }
+            ReaderLinearSlider(
+                value = s.lineHeightMultiplier,
+                valueRange = 1.15f..2.20f,
+                onValueChange = { value -> actions.onSettingsChanged(s.copy(lineHeightMultiplier = value, preset = ReaderPreset.CUSTOM, activeThemeId = "")) },
+                modifier = Modifier.fillMaxWidth().offset(y = 114.dp).padding(start = 208.dp, end = 18.dp),
+                contentDescription = stringResource(R.string.line_spacing),
+            )
+            ReaderCanvasSemanticTarget(paged, 18.dp, 164.dp, 96.dp, 48.dp, ::setPaged)
+            ReaderCanvasSemanticTarget(continuous, 122.dp, 164.dp, 112.dp, 48.dp, ::setContinuous)
+            Box(
+                Modifier.align(Alignment.TopEnd).offset(y = 164.dp).padding(end = 18.dp).size(72.dp, 48.dp)
+                    .clickable { actions.onAddBookmark() }.semantics { contentDescription = bookmark },
+            )
+            if (s.readingMode == ReaderMode.CONTINUOUS) {
+                ReaderCanvasSemanticTarget("−", 18.dp, 214.dp, 52.dp, 48.dp) { speed(-8f) }
+                Box(
+                    Modifier.fillMaxWidth().height(48.dp).offset(y = 214.dp).padding(horizontal = 82.dp)
+                        .clickable { actions.onClosePanel(); actions.onSettingsChanged(s.copy(readingMode = ReaderMode.CONTINUOUS, autoScrollEnabled = !state.autoScrolling)) }
+                        .semantics { contentDescription = autoLabel },
+                )
+                Box(
+                    Modifier.align(Alignment.TopEnd).offset(y = 214.dp).padding(end = 18.dp).size(52.dp, 48.dp)
+                        .clickable { speed(8f) }.semantics { contentDescription = "+" },
+                )
+            }
+            Box(
+                Modifier.fillMaxWidth().height(48.dp).offset(y = 262.dp).padding(horizontal = 18.dp)
+                    .clickable { actions.onClosePanel(); actions.onOpenPanel(ReaderPanel.SETTINGS) }
+                    .semantics { contentDescription = advanced },
+            )
         }
     }
 }

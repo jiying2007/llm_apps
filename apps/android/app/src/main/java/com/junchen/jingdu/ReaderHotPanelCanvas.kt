@@ -5,12 +5,13 @@ import android.graphics.Typeface
 import android.text.TextPaint
 import android.text.TextUtils
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,7 +38,6 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -119,6 +119,7 @@ internal fun ReaderCanvasPanel(
     description: String,
     actions: List<CustomAccessibilityAction>,
     onTap: (Offset, Float, Float) -> Unit,
+    onSwipe: ((Offset) -> Unit)? = null,
     recordKey: Any? = Unit,
     draw: DrawScope.() -> Unit,
 ) {
@@ -126,6 +127,8 @@ internal fun ReaderCanvasPanel(
     val layoutDirection = LocalLayoutDirection.current
     val layer = rememberGraphicsLayer()
     val latestDraw = rememberUpdatedState(draw)
+    val latestTap = rememberUpdatedState(onTap)
+    val latestSwipe = rememberUpdatedState(onSwipe)
     var layerSize by remember { mutableStateOf(IntSize.Zero) }
     var recordedKey by remember { mutableStateOf<Any?>(null) }
     LaunchedEffect(recordKey, layerSize, density.density, density.fontScale, layoutDirection) {
@@ -138,7 +141,21 @@ internal fun ReaderCanvasPanel(
             .fillMaxSize()
             .onSizeChanged { layerSize = it }
             .pointerInput(description) {
-                detectTapGestures { point -> onTap(point, size.width.toFloat(), size.height.toFloat()) }
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var last = down
+                    do {
+                        val event = awaitPointerEvent()
+                        event.changes.firstOrNull { it.id == down.id }?.let { last = it }
+                    } while (last.pressed)
+                    val delta = last.position - down.position
+                    val swipeHandler = latestSwipe.value
+                    if (swipeHandler != null && delta.getDistance() >= 36.dp.toPx()) {
+                        swipeHandler(delta)
+                    } else if (delta.getDistance() <= viewConfiguration.touchSlop * 1.5f) {
+                        latestTap.value(last.position, size.width.toFloat(), size.height.toFloat())
+                    }
+                }
             }
             .semantics(mergeDescendants = true) {
                 contentDescription = description
@@ -151,7 +168,7 @@ internal fun ReaderCanvasPanel(
     }
 }
 
-/** Tiny positioned semantics target used only where hosted UIAutomator needs a stable control. */
+/** Positioned transparent hit target for hot Canvas panels. It is a real pointer target as well as an accessibility node. */
 @Composable
 internal fun ReaderCanvasSemanticTarget(
     description: String,
@@ -166,13 +183,7 @@ internal fun ReaderCanvasSemanticTarget(
             .offset(x, y)
             .width(width)
             .height(height)
-            .semantics {
-                contentDescription = description
-                role = Role.Button
-                onClick {
-                    onClickAction()
-                    true
-                }
-            },
+            .clickable(role = Role.Button, onClick = onClickAction)
+            .semantics { contentDescription = description },
     )
 }

@@ -25,19 +25,12 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
@@ -168,10 +161,10 @@ fun JingduApp(
                 AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
             }
             if (state.screen == AppScreen.READER) {
-                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS, quickPanelState) {
+                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS) {
                     ReaderQuickSettingsSheet(quickPanelState, trackedActions)
                 }
-                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS, chaptersPanelState) {
+                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS) {
                     ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition)
                 }
             }
@@ -223,35 +216,19 @@ private fun ReaderHotPanelBackHandler(
     }
 }
 
-private class ReaderPanelDisplayListCache {
-    var size: IntSize = IntSize.Zero
-    var recordKey: Any? = null
-}
-
 /**
- * Quick/Chapters stay laid out for the whole Reader session. Their complete visual subtree is
- * explicitly recorded while hidden and replayed on open. Hot-panel state is read only from
- * semantics, pointer and draw phases; opening/closing never recomposes or remeasures the reader.
+ * Quick/Chapters stay measured for the whole Reader session so opening a panel does not rebuild the
+ * reader. Only placement/alpha are phase-local. The panel itself owns any safe draw caching, which
+ * keeps local interaction state (chapter window, repairs, controls) visually authoritative.
  */
 @Composable
 private fun PersistentReaderPanelLayer(
     panelState: State<ReaderPanel?>,
     target: ReaderPanel,
-    recordKey: Any?,
     content: @Composable () -> Unit,
 ) {
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
-    val layer = rememberGraphicsLayer()
-    val cache = remember { ReaderPanelDisplayListCache() }
     Box(
         Modifier.fillMaxSize()
-            .onSizeChanged { size ->
-                if (cache.size != size) {
-                    cache.size = size
-                    cache.recordKey = null
-                }
-            }
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints)
                 layout(placeable.width, placeable.height) {
@@ -262,17 +239,7 @@ private fun PersistentReaderPanelLayer(
                     ) { alpha = if (visible) 1f else 0f }
                 }
             }
-            .semantics { if (panelState.value != target) hideFromAccessibility() }
-            .drawWithContent panelDraw@{
-                val size = cache.size
-                if (size.width > 0 && size.height > 0 && cache.recordKey != recordKey) {
-                    layer.record(density, layoutDirection, size) { this@panelDraw.drawContent() }
-                    cache.recordKey = recordKey
-                }
-                if (panelState.value == target) {
-                    if (cache.recordKey == recordKey) drawLayer(layer) else drawContent()
-                }
-            },
+            .semantics { if (panelState.value != target) hideFromAccessibility() },
     ) { content() }
 }
 

@@ -1,10 +1,18 @@
 package com.junchen.jingdu
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.fetchSemanticsNodes
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -21,12 +29,12 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
     }
 
-    @Test fun readerV2KeepsPrimaryReadingChromeDiscoverable() {
+    @Test fun readerKeepsPrimaryReadingChromeDiscoverable() {
         composeRule.setContent {
             JingduApp(
                 AppUiState(
                     screen = AppScreen.READER, currentBook = sampleBook(),
-                    pageText = "Chapter 1\nA stable body used for Reader V2 UI smoke verification.",
+                    pageText = "Chapter 1\nA stable body used for Reader UI smoke verification.",
                     position = 500, length = 10_000,
                     chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
                     settings = ReaderSettings(gestureCoachDismissed = true),
@@ -40,18 +48,51 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription(context.getString(R.string.start_read_aloud)).assertIsDisplayed()
     }
 
-    @Test fun quickReadingSettingsExposePagedContinuousAndAutoScroll() {
+    @Test fun quickReadingSettingsStayTouchableAcrossRepeatedStateChanges() {
+        var latest = ReaderSettings(gestureCoachDismissed = true)
         composeRule.setContent {
+            var settings by remember { mutableStateOf(latest) }
+            val actions = noOpActions().copy(onSettingsChanged = { updated -> settings = updated; latest = updated })
             JingduApp(
                 AppUiState(
                     screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", length = 10_000,
-                    panel = ReaderPanel.QUICK_SETTINGS, settings = ReaderSettings(gestureCoachDismissed = true),
-                ), noOpActions(),
+                    panel = ReaderPanel.QUICK_SETTINGS, settings = settings,
+                ), actions,
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.reader_mode_paged)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.reader_mode_continuous)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("+").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("+").performClick()
+        composeRule.waitForIdle()
+        assertEquals(22f, latest.fontSizeSp)
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_mode_continuous)).performClick()
+        composeRule.waitForIdle()
+        assertEquals(ReaderMode.CONTINUOUS, latest.readingMode)
+    }
+
+    @Test fun chaptersPagingAndRowsRemainTouchableAfterLocalPanelStateChanges() {
+        var jumped = -1L
+        val chapters = (0 until 20).map { index -> ChapterModel(index * 1000L, "Chapter ${index + 1}") }
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 0, length = 20_000,
+                    panel = ReaderPanel.CHAPTERS, chapters = chapters, chaptersLoaded = true,
+                    settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions().copy(onJump = { jumped = it }),
+            )
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithContentDescription("Chapter 1").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_access_next)).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithContentDescription("Chapter 9").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("Chapter 9").performClick()
+        composeRule.waitForIdle()
+        assertEquals(8_000L, jumped)
     }
 
     @Test fun annotationsAreFirstClassLocalReaderAssets() {
