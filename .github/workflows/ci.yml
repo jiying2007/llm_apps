@@ -133,6 +133,7 @@ jobs:
           python3 ./scripts/verify-android-source-conventions.py
           ./scripts/verify-terminal.sh
           bash ./scripts/verify-terminal-quality.sh
+          test "$(sha256sum config/signing/android-debug.keystore | awk '{print $1}')" = "b327cb3fd3bf5eeaeb3958737335180f5b8c664d47429fd1b9eb08d32e178a56"
 
   publish-source-release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -170,32 +171,58 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Build debug-key-signed APK from immutable source tag
+      - name: Publish stable-debug-key APK from immutable source tag
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(sed -n 's/^version: v//p' releases/source/v2.3.1.md | head -n1)"
+          VERSION="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('apps/android/app/build.gradle').read_text(encoding='utf-8')
+          match = re.search(r'versionNameProperty\.getOrElse\("([^\"]+)"\)', text)
+          if not match:
+              raise SystemExit('Android versionName default not found')
+          print(match.group(1))
+          PY
+          )"
           TAG="v${VERSION}"
-          test "$TAG" = "v2.3.1"
           TAG_SHA="$(git rev-list -n 1 "$TAG")"
-          test "$TAG_SHA" = "30c72dbea26d338f37a515392f152b8a5f6a9793"
-          git checkout --detach "$TAG_SHA"
+          test -n "$TAG_SHA"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
 
-          DEBUG_KEYSTORE="$HOME/.android/debug.keystore"
-          mkdir -p "$HOME/.android"
-          if [[ ! -f "$DEBUG_KEYSTORE" ]]; then
-            keytool -genkeypair -v \
-              -keystore "$DEBUG_KEYSTORE" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
+          KEYSTORE_SOURCE="config/signing/android-debug.keystore"
+          KEYSTORE="$RUNNER_TEMP/android-debug.keystore"
+          test "$(sha256sum "$KEYSTORE_SOURCE" | awk '{print $1}')" = "b327cb3fd3bf5eeaeb3958737335180f5b8c664d47429fd1b9eb08d32e178a56"
+          cp "$KEYSTORE_SOURCE" "$KEYSTORE"
+          keytool -list -v -keystore "$KEYSTORE" -storepass android -alias androiddebugkey > "$RUNNER_TEMP/keytool.txt"
+          KEY_CERT_SHA="$(sed -n 's/.*SHA256: //p' "$RUNNER_TEMP/keytool.txt" | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test "$KEY_CERT_SHA" = "2618e7889486adea5fc083f7cb5155f2ec629baf5dae2a74dabc3abe5cd02a94"
+
+          APK_NAME="Jingdu-v${VERSION}-debug-signed.apk"
+          EXISTING_ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          if grep -Fxq "$APK_NAME" <<<"$EXISTING_ASSETS" \
+            && grep -Fxq "SHA256SUMS.txt" <<<"$EXISTING_ASSETS" \
+            && grep -Fxq "SIGNING-CERT-SHA256.txt" <<<"$EXISTING_ASSETS"; then
+            echo "debug-signed APK assets already published for $TAG"
+            exit 0
           fi
+
+          git checkout --detach "$TAG_SHA"
+          test -f "releases/source/${TAG}.md"
+          grep -Fxq "version: ${TAG}" "releases/source/${TAG}.md"
+          VERSION_CODE="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('apps/android/app/build.gradle').read_text(encoding='utf-8')
+          match = re.search(r'versionCodeProperty\.map \{ Integer\.parseInt\(it\) \}\.getOrElse\((\d+)\)', text)
+          if not match:
+              raise SystemExit('Android versionCode default not found')
+          print(match.group(1))
+          PY
+          )"
+
           cat > apps/android/keystore.properties <<EOF
-          storeFile=$DEBUG_KEYSTORE
+          storeFile=$KEYSTORE
           storePassword=android
           keyAlias=androiddebugkey
           keyPassword=android
@@ -204,7 +231,7 @@ jobs:
           cd apps/android
           ./gradlew --no-daemon --no-configuration-cache --warning-mode all \
             -PjingduApplicationId=com.junchen.jingdu \
-            -PjingduVersionCode=7 \
+            -PjingduVersionCode="$VERSION_CODE" \
             -PjingduVersionName="$VERSION" \
             validateStoreRelease assembleRelease
 
@@ -213,13 +240,14 @@ jobs:
           APKSIGNER="$(find "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}/build-tools" -type f -name apksigner -perm -111 | sort -V | tail -n1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apksigner.txt"
-          grep -q 'Signer #1 certificate DN: CN=Android Debug' "$RUNNER_TEMP/apksigner.txt"
+          APK_CERT_SHA="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apksigner.txt" | head -n1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test "$APK_CERT_SHA" = "$KEY_CERT_SHA"
 
           mkdir -p "$RUNNER_TEMP/jingdu-release"
-          OUT="$RUNNER_TEMP/jingdu-release/Jingdu-v${VERSION}-debug-signed.apk"
+          OUT="$RUNNER_TEMP/jingdu-release/$APK_NAME"
           cp "$APK" "$OUT"
-          sha256sum "$OUT" | sed "s#  .*#  $(basename "$OUT")#" > "$RUNNER_TEMP/jingdu-release/SHA256SUMS.txt"
-          grep 'Signer #1 certificate SHA-256 digest:' "$RUNNER_TEMP/apksigner.txt" > "$RUNNER_TEMP/jingdu-release/SIGNING-CERT-SHA256.txt"
+          sha256sum "$OUT" | sed "s#  .*#  $APK_NAME#" > "$RUNNER_TEMP/jingdu-release/SHA256SUMS.txt"
+          printf '%s\n' "$APK_CERT_SHA" > "$RUNNER_TEMP/jingdu-release/SIGNING-CERT-SHA256.txt"
 
           gh release upload "$TAG" \
             "$OUT" \
@@ -229,14 +257,16 @@ jobs:
 
           BODY="$RUNNER_TEMP/release-body.md"
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$BODY"
-          if ! grep -q 'Jingdu-v2.3.1-debug-signed.apk' "$BODY"; then
-            cat >> "$BODY" <<'EOF'
-
-          ## Android APK
-
-          `Jingdu-v2.3.1-debug-signed.apk` is built from the immutable `v2.3.1` source tag and signed with the standard Android debug key (`androiddebugkey`) used for the current pre-production stage. `SHA256SUMS.txt` and `SIGNING-CERT-SHA256.txt` are published alongside it.
-
-          This downloadable APK is **not Google Play production signing or rollout evidence**.
-          EOF
+          if ! grep -Fq "$APK_NAME" "$BODY"; then
+            {
+              printf '\n## Android APK\n\n'
+              printf '`%s` is built from the immutable `%s` source tag and signed with the repository-stable Android debug key (`androiddebugkey`) used for the current pre-production stage. `SHA256SUMS.txt` and `SIGNING-CERT-SHA256.txt` are published alongside it.\n\n' "$APK_NAME" "$TAG"
+              printf 'This downloadable APK is **not Google Play production signing or rollout evidence**.\n'
+            } >> "$BODY"
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$BODY"
           fi
+
+          FINAL_ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          grep -Fxq "$APK_NAME" <<<"$FINAL_ASSETS"
+          grep -Fxq "SHA256SUMS.txt" <<<"$FINAL_ASSETS"
+          grep -Fxq "SIGNING-CERT-SHA256.txt" <<<"$FINAL_ASSETS"
