@@ -5,8 +5,9 @@ import kotlin.math.abs
 /**
  * Pure gesture arbitration shared by the pointer runtime and regression tests. Interaction
  * correctness owns this boundary: one Reader pointer owner observes the complete stream, including
- * multi-touch pinch, while SelectionContainer may still consume slow selection drags. Performance
- * optimizations must not make paging/taps unreachable or reinterpret selection as a page turn.
+ * multi-touch pinch, while SelectionContainer may still consume slow selection drags. A parallel
+ * transform detector is intentionally forbidden because it can steal real single-finger taps.
+ * Performance optimizations must not make paging/taps unreachable or reinterpret selection.
  */
 internal object ReaderGesturePolicy {
     private const val CONSUMED_SWIPE_MAX_MS = 450L
