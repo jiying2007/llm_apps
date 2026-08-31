@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ParagraphStyle
@@ -287,27 +289,22 @@ internal fun ReaderScreen(
                 .align(Alignment.Center).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)),
         )
 
-        // Keep hot controls composed for the whole reader session. Visibility changes are a
-        // layout-phase placement only, so reopening controls never rebuilds the Material button tree.
+        // Keep hot controls composed for the whole reader session, but move hidden controls in
+        // layout space rather than only transforming their pixels. Visual bounds, pointer hit testing
+        // and accessibility therefore share one authoritative placement while reopening stays cheap.
         Box(
-            Modifier.align(Alignment.TopCenter).graphicsLayer {
-                translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
-                alpha = if (controlsVisible) 1f else 0f
-            },
+            Modifier.align(Alignment.TopCenter)
+                .readerControlLayer(controlsVisibility, -READER_HIDDEN_LAYER_OFFSET_PX),
         ) {
             ReaderTopBar(book.name, currentChapter, actions) { more = true }
         }
         if (more) Box(
-            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp).graphicsLayer {
-                translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
-                alpha = if (controlsVisible) 1f else 0f
-            },
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp)
+                .readerControlLayer(controlsVisibility, -READER_HIDDEN_LAYER_OFFSET_PX),
         ) { ReaderMoreMenu(state.cleanMode, actions) { more = false } }
         Box(
-            Modifier.align(Alignment.BottomCenter).graphicsLayer {
-                translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
-                alpha = if (controlsVisible) 1f else 0f
-            },
+            Modifier.align(Alignment.BottomCenter)
+                .readerControlLayer(controlsVisibility, READER_HIDDEN_LAYER_OFFSET_PX),
         ) {
             ReaderBottomBar(
                 chapters = state.chapters,
@@ -923,6 +920,27 @@ private fun Modifier.readerGestures(
         }
     }
 }
+
+/**
+ * Reader chrome stays resident, but hidden chrome is physically placed off-screen instead of only
+ * receiving a graphics transform. This mirrors PersistentReaderPanelLayer: layout, hit testing and
+ * accessibility all agree on visibility while placeWithLayer keeps reopening allocation-free.
+ */
+private fun Modifier.readerControlLayer(
+    visibility: State<Boolean>,
+    hiddenOffsetPx: Int,
+): Modifier = this
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) {
+            val visible = visibility.value
+            placeable.placeWithLayer(
+                x = 0,
+                y = if (visible) 0 else hiddenOffsetPx,
+            ) { alpha = if (visible) 1f else 0f }
+        }
+    }
+    .semantics { if (!visibility.value) hideFromAccessibility() }
 
 private fun Modifier.readerAccessibilityActions(
     previous: () -> Unit, next: () -> Unit, controls: () -> Unit, bookmark: () -> Unit,
