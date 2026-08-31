@@ -18,7 +18,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -79,6 +78,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 private data class SelectionPayload(val range: ReaderSelectionRange, val clearNative: () -> Unit)
@@ -516,10 +516,7 @@ private fun PagedReaderPage(
         stringResource(R.string.reader_access_bookmark),
     )
     val gestures = if (touchExploration) Modifier else Modifier
-        .readerGestures(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark)
-        .pointerInput(settings.pinchFontEnabled) {
-            if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) }
-        }
+        .readerGestures(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onResizeFont, onBookmark)
 
     Box(
         Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
@@ -788,6 +785,7 @@ private fun Modifier.readerGestures(
     onNext: () -> Unit,
     onToggleControls: () -> Unit,
     onBrightnessDelta: (Float) -> Unit,
+    onResizeFont: (Float) -> Unit,
     onBookmark: () -> Unit,
     onAnyTouch: () -> Unit = {},
 ): Modifier = pointerInput(settings, widthPx, heightPx, systemLeftInsetPx, systemRightInsetPx) {
@@ -818,13 +816,38 @@ private fun Modifier.readerGestures(
             var last = down
             var consumedByChild = down.isConsumed
             var maxPointers = 1
+            var initialPinchDistance: Float? = null
+            var latestPinchDistance: Float? = null
             do {
                 val event = awaitPointerEvent(PointerEventPass.Final)
                 maxPointers = maxOf(maxPointers, event.changes.size)
+                if (event.changes.size >= 2) {
+                    val first = event.changes[0].position
+                    val second = event.changes[1].position
+                    val distance = hypot(
+                        (first.x - second.x).toDouble(),
+                        (first.y - second.y).toDouble(),
+                    ).toFloat()
+                    if (distance > 0f) {
+                        if (initialPinchDistance == null) initialPinchDistance = distance
+                        latestPinchDistance = distance
+                    }
+                }
                 if (event.changes.any { it.isConsumed }) consumedByChild = true
                 event.changes.firstOrNull { it.id == down.id }?.let { last = it }
             } while (last.pressed)
-            if (maxPointers > 1) return@awaitEachGesture
+            if (maxPointers > 1) {
+                cancelPendingCenterTap()
+                if (settings.pinchFontEnabled) {
+                    val start = initialPinchDistance
+                    val end = latestPinchDistance
+                    if (start != null && end != null && start > 0f) {
+                        val zoom = end / start
+                        if (abs(zoom - 1f) >= 0.04f) onResizeFont(zoom)
+                    }
+                }
+                return@awaitEachGesture
+            }
 
             val delta = last.position - down.position
             val duration = last.uptimeMillis - down.uptimeMillis
@@ -925,7 +948,9 @@ private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActi
                 chapter?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) }
             } },
             actions = {
-                TextButton({ actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }) { Text("Aa") }
+                IconButton({ actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }) {
+                    Icon(Icons.Outlined.TextFields, stringResource(R.string.reading_settings))
+                }
                 IconButton({ actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
                 IconButton(onMore) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools)) }
             },

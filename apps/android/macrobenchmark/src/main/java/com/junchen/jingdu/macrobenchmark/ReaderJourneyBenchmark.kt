@@ -102,7 +102,7 @@ class ReaderJourneyBenchmark {
             // panel was open, so prove return to the reader surface by restoring them with a real tap.
             device.pressBack()
             waitForReaderSurfaceAfterBack("chapters")
-            requireClick(By.text("Aa"), "quick reading settings control")
+            requireClick(By.desc("Reading settings"), "quick reading settings control")
             device.waitForIdle()
             device.pressBack()
             waitForReaderSurfaceAfterBack("quick settings")
@@ -290,14 +290,14 @@ class ReaderJourneyBenchmark {
     }
 
     private fun MacrobenchmarkScope.ensureTopControlsVisible() {
-        if (visibleObject(By.text("Aa")) != null) return
+        if (visibleObject(By.desc("Reading settings")) != null) return
         val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
         repeat(2) {
             for ((x, y) in taps) {
                 val px = (device.displayWidth * x).toInt()
                 val py = (device.displayHeight * y).toInt()
                 check(device.click(px, py)) { "Reader top-control tap was not injected through UiDevice" }
-                if (device.wait(Until.hasObject(By.text("Aa")), 1_100) && visibleObject(By.text("Aa")) != null) return
+                if (device.wait(Until.hasObject(By.desc("Reading settings")), 1_100) && visibleObject(By.desc("Reading settings")) != null) return
             }
         }
         error("Reader top reading controls did not become visibly on-screen after real UiDevice tap input")
@@ -320,7 +320,7 @@ class ReaderJourneyBenchmark {
             if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
         }
 
-        val aa = visibleObject(By.text("Aa")) ?: error("Reader visible top reading controls missing")
+        val aa = visibleObject(By.desc("Reading settings")) ?: error("Reader visible top reading controls missing")
         val anchor = runCatching { aa.visibleBounds }.getOrNull() ?: error("Reader Aa control became stale")
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()

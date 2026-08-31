@@ -42,7 +42,7 @@ class JingduUiTest {
         composeRule.onNodeWithText("Long Novel").assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.back_to_library)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.chapters)).assertIsDisplayed()
-        composeRule.onNodeWithText("Aa").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.start_read_aloud)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.bookmarks)).assertIsDisplayed()
     }
