@@ -43,3 +43,10 @@ edit("apps/android/app/src/main/java/com/junchen/jingdu/TtsController.kt", [
     ("HANT_MARKERS.indexOf(cp)", "HANT_MARKERS.indexOf(cp.toChar())"),
     ("HK_MARKERS.indexOf(cp)", "HK_MARKERS.indexOf(cp.toChar())"),
 ])
+edit("apps/android/app/src/main/java/com/junchen/jingdu/BookRepository.kt", [
+    ("charCount = if (sameRevision) existing?.charCount ?: 0L else 0L", "charCount = if (sameRevision) existing.charCount else 0L")
+])
+edit("apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt", [
+    ("override fun onPosition(value: Long) {\n                offset = value.coerceAtLeast(0)", "override fun onPosition(offset: Long) {\n                this@ReaderTtsPlayer.offset = offset.coerceAtLeast(0)"),
+    ("override fun onRange(start: Long, end: Long) {\n                rangeStart = start.coerceAtLeast(0)\n                rangeEnd = end.coerceAtLeast(rangeStart + 1)", "override fun onRange(sourceStart: Long, sourceEnd: Long) {\n                rangeStart = sourceStart.coerceAtLeast(0)\n                rangeEnd = sourceEnd.coerceAtLeast(rangeStart + 1)"),
+])

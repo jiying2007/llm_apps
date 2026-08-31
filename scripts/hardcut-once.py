@@ -65,4 +65,24 @@ subprocess.run(["python3", "scripts/verify-android-source-conventions.py"], cwd=
 if needle not in source:
     raise SystemExit("missing hard-cut verification insertion point")
 source = source.replace(needle, patch)
+
+commit_needle = 'subprocess.run(["git", "add", "-A"], cwd=ROOT, check=True)'
+commit_patch = r'''
+import shutil
+# Actions GITHUB_TOKEN has contents:write but no workflow scope. Validate workflow rewrites in the
+# working tree, then restore .github for the product commit. The connector performs the workflow
+# cleanup atomically after this verified commit lands.
+subprocess.run(["git", "checkout", "HEAD", "--", ".github"], cwd=ROOT, check=True)
+# Never persist local build/interpreter products from the verification run.
+shutil.rmtree(p("apps/android/app/.cxx"), ignore_errors=True)
+for cache in ROOT.rglob("__pycache__"):
+    shutil.rmtree(cache, ignore_errors=True)
+if p("scripts/verify-reader.sh").is_file():
+    p("scripts/verify-reader.sh").chmod(0o755)
+subprocess.run(["git", "add", "-A"], cwd=ROOT, check=True)
+'''.strip()
+if commit_needle not in source:
+    raise SystemExit("missing hard-cut commit staging point")
+source = source.replace(commit_needle, commit_patch, 1)
+
 exec(compile(source, str(body_path), "exec"), {"__file__": __file__, "__name__": "__main__"})
