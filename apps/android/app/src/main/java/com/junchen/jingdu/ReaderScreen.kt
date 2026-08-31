@@ -250,7 +250,7 @@ internal fun ReaderScreen(
         if (settings.readingMode == ReaderMode.CONTINUOUS && !state.cleanMode) {
             ContinuousReaderPage(
                 state, actions, fontFamily, textColor, touchExploration,
-                ::previous, ::next, { controlsVisible = !controlsVisible }, ::updateBrightness, ::resizeFont,
+                ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value }, ::updateBrightness, ::resizeFont,
                 { tick(); actions.onAddBookmark() }, ::acceptSelection,
             )
         } else {
@@ -268,7 +268,7 @@ internal fun ReaderScreen(
                     ) {
                         PagedReaderPage(
                             state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
-                            actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
+                            actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
                             ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                         )
                     }
@@ -276,7 +276,7 @@ internal fun ReaderScreen(
             } else {
                 PagedReaderPage(
                     state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
-                    actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
+                    actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
                     ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                 )
             }

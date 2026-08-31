@@ -142,6 +142,8 @@ forbid_literal "$activity" 'override fun onKeyDown(keyCode: Int' 'late volume ke
 require_literal "$screen" 'SelectionContainer(state = selectionState)' 'paged selection container'
 require_literal "$screen" 'if (fastSelectionMode) {' 'selection container activation gate'
 require_literal "$screen" 'Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures)' 'outer paged gesture observer'
+require_literal "$screen" '{ controlsVisibility.value = !controlsVisibility.value }' 'current-state controls toggle callback'
+forbid_literal "$screen" '{ controlsVisible = !controlsVisible }' 'stale captured controls toggle callback'
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/UiModels.kt 'val pageTurnDirection: Int = 0' 'page direction UI state'
 require_literal "$screen" 'state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout' 'paged route minimal source'
 require_literal "$screen" 'private data class ReaderPreparedPage' 'single prepared page state'
