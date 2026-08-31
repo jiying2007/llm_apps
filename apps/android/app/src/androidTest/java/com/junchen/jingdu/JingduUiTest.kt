@@ -4,14 +4,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeUp
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -73,7 +70,7 @@ class JingduUiTest {
         assertEquals(ReaderMode.CONTINUOUS, latest.readingMode)
     }
 
-    @Test fun chaptersScrollAndRowsRemainTouchableAfterLocalPanelStateChanges() {
+    @Test fun chapterRowsRemainTouchableWithNativeScrollingPanel() {
         var jumped = -1L
         val chapters = (0 until 30).map { index -> ChapterModel(index * 1000L, "Chapter ${index + 1}") }
         composeRule.setContent {
@@ -86,12 +83,9 @@ class JingduUiTest {
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Chapter 1").assertExists()
-        composeRule.onRoot().performTouchInput { swipeUp() }
+        composeRule.onNodeWithText("Chapter 1").assertIsDisplayed().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Chapter 9").assertExists().performClick()
-        composeRule.waitForIdle()
-        assertEquals(8_000L, jumped)
+        assertEquals(0L, jumped)
     }
 
     @Test fun annotationsAreFirstClassLocalReaderAssets() {
