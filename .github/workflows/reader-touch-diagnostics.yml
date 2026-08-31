@@ -1,0 +1,130 @@
+name: Reader touch diagnostics
+
+on:
+  push:
+    branches: [ux/reader-comprehensive]
+    paths: [.github/workflows/reader-touch-diagnostics.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Add read-only Reader touch diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          experience = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt')
+          text = experience.read_text()
+          anchor = '    @Volatile var lastVolumeEligible: Boolean = false\n\n    fun resetVolumeDiagnostics() {'
+          replacement = '''    @Volatile var lastVolumeEligible: Boolean = false
+    @Volatile var controlsVisible: Boolean = true
+    @Volatile var centerTapCandidates: Long = 0L
+    @Volatile var centerTapDispatches: Long = 0L
+    @Volatile var lastTapDurationMs: Long = -1L
+    @Volatile var lastTapDistancePx: Float = -1f
+    @Volatile var lastTapConsumedByChild: Boolean = false
+
+    fun resetTouchDiagnostics() {
+        controlsVisible = true
+        centerTapCandidates = 0L
+        centerTapDispatches = 0L
+        lastTapDurationMs = -1L
+        lastTapDistancePx = -1f
+        lastTapConsumedByChild = false
+    }
+
+    fun resetVolumeDiagnostics() {'''
+          if text.count(anchor) != 1:
+              raise SystemExit('ReaderInteractionRuntime anchor mismatch')
+          experience.write_text(text.replace(anchor, replacement))
+
+          screen = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt')
+          text = screen.read_text()
+          state_anchor = '    var controlsVisible by controlsVisibility\n    var more by remember { mutableStateOf(false) }'
+          state_replacement = '''    var controlsVisible by controlsVisibility
+    SideEffect { ReaderInteractionRuntime.controlsVisible = controlsVisible }
+    var more by remember { mutableStateOf(false) }'''
+          if text.count(state_anchor) != 1:
+              raise SystemExit('Reader controls state anchor mismatch')
+          text = text.replace(state_anchor, state_replacement)
+
+          dispatch_anchor = '''            when (action) {
+                ReaderGestureAction.CONTROLS -> onToggleControls()'''
+          dispatch_replacement = '''            when (action) {
+                ReaderGestureAction.CONTROLS -> {
+                    ReaderInteractionRuntime.centerTapDispatches += 1L
+                    onToggleControls()
+                }'''
+          if text.count(dispatch_anchor) != 1:
+              raise SystemExit('Reader dispatch anchor mismatch')
+          text = text.replace(dispatch_anchor, dispatch_replacement)
+
+          gesture_anchor = '''            val delta = last.position - down.position
+            val duration = last.uptimeMillis - down.uptimeMillis
+            val edgeGuard = 8.dp.toPx()'''
+          gesture_replacement = '''            val delta = last.position - down.position
+            val duration = last.uptimeMillis - down.uptimeMillis
+            ReaderInteractionRuntime.lastTapDurationMs = duration
+            ReaderInteractionRuntime.lastTapDistancePx = delta.getDistance()
+            ReaderInteractionRuntime.lastTapConsumedByChild = consumedByChild
+            val edgeGuard = 8.dp.toPx()'''
+          if text.count(gesture_anchor) != 1:
+              raise SystemExit('Reader gesture metric anchor mismatch')
+          text = text.replace(gesture_anchor, gesture_replacement)
+
+          center_anchor = '''                    else -> {
+                        val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS'''
+          center_replacement = '''                    else -> {
+                        ReaderInteractionRuntime.centerTapCandidates += 1L
+                        val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS'''
+          if text.count(center_anchor) != 1:
+              raise SystemExit('Reader center tap anchor mismatch')
+          screen.write_text(text.replace(center_anchor, center_replacement))
+
+          fixture = Path('apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt')
+          text = fixture.read_text()
+          reset_anchor = '''                ReaderInteractionRuntime.continuousReady = false
+                ReaderInteractionRuntime.resetVolumeDiagnostics()'''
+          reset_replacement = '''                ReaderInteractionRuntime.continuousReady = false
+                ReaderInteractionRuntime.resetVolumeDiagnostics()
+                ReaderInteractionRuntime.resetTouchDiagnostics()'''
+          if text.count(reset_anchor) != 1:
+              raise SystemExit('Benchmark diagnostic reset anchor mismatch')
+          text = text.replace(reset_anchor, reset_replacement)
+
+          output_anchor = '''                    putBoolean("lastVolumeForegroundTtsPlaying", ReaderInteractionRuntime.lastVolumeForegroundTtsPlaying)
+                    putBoolean("lastVolumeEligible", ReaderInteractionRuntime.lastVolumeEligible)'''
+          output_replacement = '''                    putBoolean("lastVolumeForegroundTtsPlaying", ReaderInteractionRuntime.lastVolumeForegroundTtsPlaying)
+                    putBoolean("lastVolumeEligible", ReaderInteractionRuntime.lastVolumeEligible)
+                    putBoolean("controlsVisible", ReaderInteractionRuntime.controlsVisible)
+                    putLong("centerTapCandidates", ReaderInteractionRuntime.centerTapCandidates)
+                    putLong("centerTapDispatches", ReaderInteractionRuntime.centerTapDispatches)
+                    putLong("lastTapDurationMs", ReaderInteractionRuntime.lastTapDurationMs)
+                    putFloat("lastTapDistancePx", ReaderInteractionRuntime.lastTapDistancePx)
+                    putBoolean("lastTapConsumedByChild", ReaderInteractionRuntime.lastTapConsumedByChild)'''
+          if text.count(output_anchor) != 1:
+              raise SystemExit('Benchmark inputState output anchor mismatch')
+          fixture.write_text(text.replace(output_anchor, output_replacement))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+      - name: Commit diagnostics and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-touch-diagnostics.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
+          git commit -m 'test: expose reader touch diagnostics'
+          git push origin HEAD:ux/reader-comprehensive
