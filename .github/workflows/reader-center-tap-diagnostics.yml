@@ -1,0 +1,86 @@
+name: Reader center tap diagnostics
+
+on:
+  push:
+    branches: [ux/reader-comprehensive]
+    paths: [.github/workflows/reader-center-tap-diagnostics.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  instrument:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Add bounded Reader tap diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          experience = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt')
+          text = experience.read_text()
+          anchor = '''    @Volatile var lastVolumeEligible: Boolean = false\n\n    fun resetVolumeDiagnostics() {'''
+          replacement = '''    @Volatile var lastVolumeEligible: Boolean = false\n    @Volatile var controlsVisible: Boolean = true\n    @Volatile var pagedGestureDowns: Long = 0L\n    @Volatile var pagedTapCandidates: Long = 0L\n    @Volatile var pagedCenterDispatches: Long = 0L\n    @Volatile var lastPagedGestureDurationMs: Long = -1L\n    @Volatile var lastPagedGestureDistancePx: Float = -1f\n    @Volatile var lastPagedGestureConsumedByChild: Boolean = false\n\n    fun resetPagedGestureDiagnostics() {\n        controlsVisible = true\n        pagedGestureDowns = 0L\n        pagedTapCandidates = 0L\n        pagedCenterDispatches = 0L\n        lastPagedGestureDurationMs = -1L\n        lastPagedGestureDistancePx = -1f\n        lastPagedGestureConsumedByChild = false\n    }\n\n    fun resetVolumeDiagnostics() {'''
+          if text.count(anchor) != 1:
+              raise SystemExit('ReaderInteractionRuntime anchor mismatch')
+          experience.write_text(text.replace(anchor, replacement))
+
+          screen = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt')
+          text = screen.read_text()
+          anchor = '''    var controlsVisible by controlsVisibility\n    var more by remember { mutableStateOf(false) }'''
+          replacement = '''    var controlsVisible by controlsVisibility\n    SideEffect { ReaderInteractionRuntime.controlsVisible = controlsVisible }\n    var more by remember { mutableStateOf(false) }'''
+          if text.count(anchor) != 1:
+              raise SystemExit('controls visibility diagnostic anchor mismatch')
+          text = text.replace(anchor, replacement)
+          anchor = '''            val down = awaitFirstDown(requireUnconsumed = false)\n            onAnyTouch()'''
+          replacement = '''            val down = awaitFirstDown(requireUnconsumed = false)\n            ReaderInteractionRuntime.pagedGestureDowns += 1L\n            onAnyTouch()'''
+          if text.count(anchor) != 1:
+              raise SystemExit('paged down diagnostic anchor mismatch')
+          text = text.replace(anchor, replacement)
+          anchor = '''            val delta = last.position - down.position\n            val duration = last.uptimeMillis - down.uptimeMillis\n            val edgeGuard = 8.dp.toPx()'''
+          replacement = '''            val delta = last.position - down.position\n            val duration = last.uptimeMillis - down.uptimeMillis\n            ReaderInteractionRuntime.lastPagedGestureDurationMs = duration\n            ReaderInteractionRuntime.lastPagedGestureDistancePx = delta.getDistance()\n            ReaderInteractionRuntime.lastPagedGestureConsumedByChild = consumedByChild\n            val edgeGuard = 8.dp.toPx()'''
+          if text.count(anchor) != 1:
+              raise SystemExit('paged completion diagnostic anchor mismatch')
+          text = text.replace(anchor, replacement)
+          anchor = '''            if (duration <= 360 && delta.getDistance() <= tapSlop && widthPx > 0) {\n                if (down.position.x <= systemLeftInsetPx + edgeGuard ||'''
+          replacement = '''            if (duration <= 360 && delta.getDistance() <= tapSlop && widthPx > 0) {\n                ReaderInteractionRuntime.pagedTapCandidates += 1L\n                if (down.position.x <= systemLeftInsetPx + edgeGuard ||'''
+          if text.count(anchor) != 1:
+              raise SystemExit('paged tap diagnostic anchor mismatch')
+          text = text.replace(anchor, replacement)
+          anchor = '''                    else -> {\n                        val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS'''
+          replacement = '''                    else -> {\n                        ReaderInteractionRuntime.pagedCenterDispatches += 1L\n                        val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS'''
+          if text.count(anchor) != 1:
+              raise SystemExit('paged center diagnostic anchor mismatch')
+          screen.write_text(text.replace(anchor, replacement))
+
+          fixture = Path('apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt')
+          text = fixture.read_text()
+          anchor = '''                ReaderInteractionRuntime.resetVolumeDiagnostics()\n                val preferences = ReaderPreferences(context)'''
+          replacement = '''                ReaderInteractionRuntime.resetVolumeDiagnostics()\n                ReaderInteractionRuntime.resetPagedGestureDiagnostics()\n                val preferences = ReaderPreferences(context)'''
+          if text.count(anchor) != 1:
+              raise SystemExit('fixture reset diagnostic anchor mismatch')
+          text = text.replace(anchor, replacement)
+          anchor = '''                    putBoolean("lastVolumeEligible", ReaderInteractionRuntime.lastVolumeEligible)\n                }'''
+          replacement = '''                    putBoolean("lastVolumeEligible", ReaderInteractionRuntime.lastVolumeEligible)\n                    putBoolean("controlsVisible", ReaderInteractionRuntime.controlsVisible)\n                    putLong("pagedGestureDowns", ReaderInteractionRuntime.pagedGestureDowns)\n                    putLong("pagedTapCandidates", ReaderInteractionRuntime.pagedTapCandidates)\n                    putLong("pagedCenterDispatches", ReaderInteractionRuntime.pagedCenterDispatches)\n                    putLong("lastPagedGestureDurationMs", ReaderInteractionRuntime.lastPagedGestureDurationMs)\n                    putFloat("lastPagedGestureDistancePx", ReaderInteractionRuntime.lastPagedGestureDistancePx)\n                    putBoolean("lastPagedGestureConsumedByChild", ReaderInteractionRuntime.lastPagedGestureConsumedByChild)\n                }'''
+          if text.count(anchor) != 1:
+              raise SystemExit('fixture inputState diagnostic anchor mismatch')
+          fixture.write_text(text.replace(anchor, replacement))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+      - name: Commit diagnostics and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-center-tap-diagnostics.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderExperience.kt apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt apps/android/app/src/benchmark/java/com/junchen/jingdu/ReaderBenchmarkFixtureProvider.kt
+          git commit -m 'test: expose reader center tap runtime diagnostics'
+          git push origin HEAD:ux/reader-comprehensive
