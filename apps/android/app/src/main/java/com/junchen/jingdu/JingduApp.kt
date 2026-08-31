@@ -27,18 +27,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -226,30 +219,19 @@ private fun ReaderHotPanelBackHandler(
 }
 
 /**
- * Hot panels stay measured for the Reader session. Only the flat scrim is pre-recorded; interactive
- * panel content always draws live, so local chapter/settings state can never replay stale pixels.
+ * Hot Quick/Chapters panels stay measured for the Reader session, but all visible content draws
+ * live. Visibility is placement-phase only, so hidden panels cannot intercept pointer input and
+ * local panel state can never replay stale pixels.
  */
 @Composable
 private fun PersistentReaderPanelLayer(
     panelState: State<ReaderPanel?>,
     target: ReaderPanel,
-    recordKey: Any?,
+    @Suppress("UNUSED_PARAMETER") recordKey: Any?,
     content: @Composable () -> Unit,
 ) {
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
-    val layer = rememberGraphicsLayer()
-    val scrim = MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f)
-    var size by remember { mutableStateOf(IntSize.Zero) }
-    var recordedKey by remember { mutableStateOf<Any?>(null) }
-    LaunchedEffect(recordKey, size, scrim, density.density, density.fontScale, layoutDirection) {
-        if (size.width <= 0 || size.height <= 0) return@LaunchedEffect
-        layer.record(density, layoutDirection, size) { drawRect(scrim) }
-        recordedKey = recordKey
-    }
     Box(
         Modifier.fillMaxSize()
-            .onSizeChanged { size = it }
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints)
                 layout(placeable.width, placeable.height) {
@@ -260,11 +242,7 @@ private fun PersistentReaderPanelLayer(
                     ) { alpha = if (visible) 1f else 0f }
                 }
             }
-            .semantics { if (panelState.value != target) hideFromAccessibility() }
-            .drawWithContent {
-                if (panelState.value == target && recordedKey == recordKey) drawLayer(layer)
-                drawContent()
-            },
+            .semantics { if (panelState.value != target) hideFromAccessibility() },
     ) { content() }
 }
 

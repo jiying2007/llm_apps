@@ -10,6 +10,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -45,6 +47,7 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription(context.getString(R.string.chapters)).assertIsDisplayed()
         composeRule.onNodeWithText("Aa").assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.start_read_aloud)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.bookmarks)).assertIsDisplayed()
     }
 
     @Test fun quickReadingSettingsStayTouchableAcrossRepeatedStateChanges() {
@@ -60,33 +63,33 @@ class JingduUiTest {
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("+").performClick()
+        composeRule.onNodeWithText("+").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("+").performClick()
+        composeRule.onNodeWithText("+").performClick()
         composeRule.waitForIdle()
         assertEquals(22f, latest.fontSizeSp)
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_mode_continuous)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_mode_continuous)).performClick()
         composeRule.waitForIdle()
         assertEquals(ReaderMode.CONTINUOUS, latest.readingMode)
     }
 
-    @Test fun chaptersPagingAndRowsRemainTouchableAfterLocalPanelStateChanges() {
+    @Test fun chaptersScrollAndRowsRemainTouchableAfterLocalPanelStateChanges() {
         var jumped = -1L
-        val chapters = (0 until 20).map { index -> ChapterModel(index * 1000L, "Chapter ${index + 1}") }
+        val chapters = (0 until 30).map { index -> ChapterModel(index * 1000L, "Chapter ${index + 1}") }
         composeRule.setContent {
             JingduApp(
                 AppUiState(
-                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 0, length = 20_000,
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 0, length = 30_000,
                     panel = ReaderPanel.CHAPTERS, chapters = chapters, chaptersLoaded = true,
                     settings = ReaderSettings(gestureCoachDismissed = true),
                 ), noOpActions().copy(onJump = { jumped = it }),
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Chapter 1").assertExists()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_access_next)).performClick()
+        composeRule.onNodeWithText("Chapter 1").assertExists()
+        composeRule.onRoot().performTouchInput { swipeUp() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Chapter 9").assertExists().performClick()
+        composeRule.onNodeWithText("Chapter 9").assertExists().performClick()
         composeRule.waitForIdle()
         assertEquals(8_000L, jumped)
     }

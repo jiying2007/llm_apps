@@ -90,6 +90,14 @@ class ReaderJourneyBenchmark {
             ensureTopControlsVisible()
             requireChaptersClick()
             device.waitForIdle()
+            check(device.swipe(
+                device.displayWidth / 2,
+                (device.displayHeight * 0.82).toInt(),
+                device.displayWidth / 2,
+                (device.displayHeight * 0.46).toInt(),
+                18,
+            )) { "Reader chapters list swipe was not injected" }
+            device.waitForIdle()
             // BACK closes the hot panel. Reader controls may legitimately have auto-hidden while the
             // panel was open, so prove return to the reader surface by restoring them with a real tap.
             device.pressBack()

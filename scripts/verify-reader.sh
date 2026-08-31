@@ -79,7 +79,6 @@ panel_surface=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurfa
 smart_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
 smart_toc_cache=apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
 hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
-hot_panel_canvas=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotPanelCanvas.kt
 fast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt
 service=apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
 player=apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
@@ -193,9 +192,16 @@ require_literal "$screen" 'ReaderTopBar(book.name, currentChapter' 'top bar mini
 require_literal "$screen" 'chapters = state.chapters' 'bottom bar explicit chapters'
 require_literal "$screen" 'autoPaging = state.autoPaging' 'bottom bar explicit motion'
 forbid_literal "$screen" 'private fun ReaderTopBar(state: AppUiState' 'whole-state top bar subscription'
-require_literal "$hot_controls" 'Exact overload used by ReaderReadingStatus' 'Canvas reading status text'
 require_literal "$hot_controls" 'CenterAlignedTopAppBar' 'flattened reader top bar'
-require_literal "$hot_controls" 'Canvas(modifier.fillMaxWidth().height(22.dp))' 'fixed-cost status drawing'
+forbid_literal "$hot_controls" 'ReaderHotLine' 'Canvas-only reader chrome text'
+require_literal "$quick_panel" 'real Compose controls' 'native quick settings controls'
+forbid_literal "$quick_panel" 'ReaderCanvasPanel(' 'quick settings Canvas hit map'
+require_literal "$smart_panel" 'LazyColumn(' 'scrolling chapters list'
+require_literal "$smart_panel" 'rememberLazyListState()' 'chapter list state'
+forbid_literal "$smart_panel" 'CHAPTER_WINDOW_ROWS' 'manual chapter pagination'
+forbid_literal "$smart_panel" 'ReaderCanvasPanel(' 'chapter Canvas hit map'
+require_literal apps/android/app/src/main/java/com/junchen/jingdu/ReaderGesturePolicy.kt 'allowsPageSwipe' 'selection-aware paging policy'
+require_literal apps/android/app/src/test/java/com/junchen/jingdu/ReaderGesturePolicyTest.kt 'fastHorizontalSwipeCanPassSelectionConsumption' 'gesture arbitration regression test'
 forbid_literal "$app" 'if (state.screen == AppScreen.READER && state.currentBook != null && !state.chaptersLoaded) actions.onEnsureChapters()' 'eager chapter UI-state preload'
 
 require_literal "$activity" 'progressWorkers: ExecutorService' 'progress IO worker'
@@ -228,9 +234,6 @@ require_literal "$screen" 'val controlsVisibility = rememberSaveable(book.id)' '
 require_literal "$screen" 'ReaderReadingStatusHost(' 'isolated reading status restart group'
 forbid_literal "$screen" 'if (settings.showReadingStatus) ReaderReadingStatus(' 'root reading-status page subscription'
 forbid_literal "$screen" 'padding(bottom = if (controlsVisible)' 'controls visibility composition padding'
-require_literal "$app" 'rememberGraphicsLayer()' 'full hot-panel graphics layer cache'
-require_literal "$app" 'layer.record(density, layoutDirection, size)' 'full hot-panel pre-record'
-require_literal "$app" 'drawLayer(layer)' 'full hot-panel replay'
 forbid_literal "$app" 'awaitPointerEvent(PointerEventPass.Initial)' 'hidden panel swallowing reader input'
 require_literal "$app" '.layout { measurable, constraints ->' 'placement-phase hot-panel visibility'
 require_literal "$app" 'placeable.placeWithLayer(' 'hot-panel hit-test placement'
@@ -400,12 +403,7 @@ fi
 
 echo 'Reader prelaunch contract OK: correctness/Media3/Room/Proto/UDF/cache/hot-path/soak/Macrobenchmark/BaselineProfile/RSS gates aligned'
 
-# Explicit display-list pre-recording keeps first visible panel draw and continuous text recording outside interaction frames.
-require_literal "$hot_panel_canvas" 'rememberGraphicsLayer()' 'hot panel graphics layer'
-require_literal "$hot_panel_canvas" 'layer.record(density, layoutDirection, layerSize)' 'hot panel pre-record'
-require_literal "$hot_panel_canvas" 'drawLayer(layer)' 'hot panel display-list replay'
-require_literal "$quick_panel" 'recordKey = listOf(colors' 'quick panel record invalidation key'
-require_literal "$smart_panel" 'recordKey = listOf(colors' 'chapters panel record invalidation key'
+# Interactive hot panels use real controls/lists; only the reader text raster path may use display caching.
 require_literal "$app" 'hideFromAccessibility()' 'supported hidden panel accessibility semantics'
 forbid_literal "$app" 'invisibleToUser()' 'deprecated hidden panel accessibility semantics'
 
