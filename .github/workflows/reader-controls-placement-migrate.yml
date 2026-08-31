@@ -1,0 +1,28 @@
+name: Reader controls placement migration
+
+on:
+  push:
+    branches:
+      - "ux/reader-comprehensive"
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.event.head_commit.message == 'ci: run reader controls placement migration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - run: python3 scripts/migrate-reader-control-placement.py
+      - run: git diff --check
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-controls-placement-migrate.yml scripts/migrate-reader-control-placement.py
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderScreen.kt scripts/verify-reader.sh
+          git commit -m 'fix: align reader controls with hit-test placement'
+          git push origin HEAD:ux/reader-comprehensive
