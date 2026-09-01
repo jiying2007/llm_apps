@@ -16,6 +16,7 @@ internal object ReaderTextPresentation {
         return Presented(source, display, TextProjection.between(source, display))
     }
 
+    /** Display-only text does not need source/display offset projection. */
     fun display(source: String, settings: ReaderSettings): String =
         display(source, settings.chineseMode, settings.chineseOverrides)
 
