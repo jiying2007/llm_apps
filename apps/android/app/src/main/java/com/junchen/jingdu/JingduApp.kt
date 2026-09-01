@@ -236,10 +236,10 @@ private fun PersistentReaderPanelLayer(
                 val placeable = measurable.measure(constraints)
                 layout(placeable.width, placeable.height) {
                     val visible = panelState.value == target
-                    placeable.placeWithLayer(
+                    placeable.place(
                         x = 0,
                         y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
-                    ) { alpha = if (visible) 1f else 0f }
+                    )
                 }
             }
             .semantics { if (panelState.value != target) hideFromAccessibility() },
