@@ -1,8 +1,27 @@
 # Release
 
-Source control contains releasable source and store metadata. During the current pre-production stage it also contains the intentionally public, repository-stable Android debug keystore under `config/signing/`; GitHub Releases may carry an installable APK signed with that key. This is a convenience/test distribution identity, not Google Play production signing evidence.
+Source control contains releasable source, store metadata and the intentionally public Android debug keystore used for the **current GitHub release stage**.
 
-## Android v2.x build
+## Current Android release stage
+
+The current Android release is a GitHub Release backed by an immutable, fully-gated source tag plus an installable APK signed with the repository-stable Android debug identity.
+
+Current-stage rules:
+
+- `main` branch protection / repository rulesets are **not required**;
+- ordinary source changes continue to use pull requests and hosted CI as the normal workflow;
+- the release tag is immutable historical provenance and is never moved by release automation;
+- the Android APK is built from the immutable source tag;
+- the APK uses `config/signing/android-debug.keystore`, alias `androiddebugkey`;
+- the APK certificate SHA-256 is `26:18:E7:88:94:86:AD:EA:5F:C0:83:F7:CB:51:55:F2:EC:62:9B:AF:5D:AE:2A:74:DA:BC:3A:BE:5C:D0:2A:94`;
+- `apksigner` verification, APK SHA-256 and signing-certificate SHA-256 are required release evidence;
+- `Jingdu-vX.Y.Z-debug-signed.apk`, `SHA256SUMS.txt` and `SIGNING-CERT-SHA256.txt` are published as GitHub Release assets.
+
+The debug key is intentionally public/test signing material so successive GitHub APKs retain a stable Android identity and can upgrade one another. For the current stage this debug-signed APK is the official installable Android release artifact.
+
+This does **not** mean Google Play production signing or rollout has occurred. Play production is a separate future stage described in `PRODUCTION_READINESS.md`.
+
+## Android build
 
 ```bash
 cd apps/android
@@ -13,15 +32,11 @@ cd apps/android
   androidStoreCheck writeAndroidReleaseChecksums
 ```
 
-For the current pre-production stage, GitHub downloadable APKs use the exact repository-stable key at `config/signing/android-debug.keystore` with alias `androiddebugkey`. Its certificate SHA-256 is `26:18:E7:88:94:86:AD:EA:5F:C0:83:F7:CB:51:55:F2:EC:62:9B:AF:5D:AE:2A:74:DA:BC:3A:BE:5C:D0:2A:94`. The key is deliberately public/test-only so successive GitHub APKs retain a stable signing identity and can upgrade one another. The APK must still be built from the immutable source tag, pass `apksigner` verification, and publish SHA-256 plus signing-certificate fingerprint evidence.
-
-Production Play infrastructure remains separate: it archives production-key-signed APK/AAB, R8 mapping, SHA-256 manifest and signing-certificate fingerprint using the retained production/upload key when production qualification begins. Future Play production releases reuse the retained Android upload key created for v2.0.0; never replace it with the public debug key.
-
-The external production evidence gate is `PRODUCTION_READINESS.md`. Hosted source CI must never convert an unchecked Play/device/repository-administration row into claimed production evidence.
+For GitHub release publication the workflow supplies the repository-stable debug keystore and builds the release APK from the immutable source tag. Production Play signing, when that later stage begins, uses the retained production/upload signing path and must never substitute this public debug key for the Play production identity.
 
 ## Source release automation
 
-GitHub source provenance has one authority: the `publish-source-release` tail job in `.github/workflows/ci.yml`. There is no separate Source Release workflow, ref-only trigger, `workflow_run` relay, PR-close release path, or polling protocol.
+GitHub source provenance has one authority: the `publish-source-release` tail job in `.github/workflows/ci.yml`. There is no separate Source Release workflow, ref-only trigger, `workflow_run` relay, PR-close release path or polling protocol.
 
 A source release is represented by a permanent manifest `releases/source/vX.Y.Z.md`. The source-declared Android version must match `X.Y.Z`, and the manifest must contain:
 
@@ -44,25 +59,32 @@ A release manifest is reviewed and merged through the normal pull-request proces
 
 `scripts/publish-source-release.py` resolves the Android source version and matching permanent manifest. If no manifest exists for that version, source publication is skipped. If a manifest exists, the publisher uses three explicit states:
 
-1. **tag + GitHub Release already exist** — publication is complete and becomes a permanent no-op on all later `main` pushes for that same version, even after `main` advances; the tag is never moved;
-2. **tag exists but Release is missing** — this is treated as an interrupted first publication and may be completed only if the orphan tag already resolves to the current fully-gated `github.sha`;
-3. **neither tag nor Release exists** — create an annotated tag object that binds the exact fully-gated `github.sha` to the checked-in source-manifest SHA-256, create its GitHub Release, then verify the tag resolves to that SHA.
+1. **tag + GitHub Release already exist** — publication is complete and becomes a permanent no-op on later `main` pushes for the same version; the tag is never moved;
+2. **tag exists but Release is missing** — the interrupted first publication may be completed only if the orphan tag already resolves to the current fully-gated `github.sha`;
+3. **neither tag nor Release exists** — create an annotated tag object binding the exact fully-gated `github.sha` to the checked-in source-manifest SHA-256, create its GitHub Release, then verify the tag resolves to that SHA.
 
-A Release without its tag is an inconsistent state and fails hard. Existing published tags are historical provenance: later development on the same version cannot retarget them and cannot cause ordinary CI to fail merely because `main` advanced. The publisher itself never moves/deletes a release tag. GitHub repository tag rules remain a separate administration control required by `PRODUCTION_READINESS.md` before production rollout.
+A Release without its tag is inconsistent and fails hard. Existing published tags remain historical provenance even after `main` advances.
 
-After publication/no-op resolution, the publisher removes closed same-repository temporary PR branches under `feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`, plus `release/source-v*`, while preserving every currently open PR head. This cleanup intentionally removes both merged and abandoned closed temporary PR branches. Long-lived branch names outside the explicit temporary prefixes are never pruned automatically.
+After publication/no-op resolution, the publisher removes closed same-repository temporary PR branches under `feat/`, `fix/`, `chore/`, `ci/`, `refactor/`, `docs/`, `test/`, `perf/`, plus `release/source-v*`, while preserving currently open PR heads and long-lived branch names outside those prefixes.
 
-After source publication, `publish-android-debug-apk` resolves the current source version, resolves its annotated tag to the immutable release commit, preserves the repository-stable debug keystore outside the tag worktree, detaches to that tag commit, runs `validateStoreRelease assembleRelease`, verifies the APK certificate with `apksigner`, and publishes the versioned APK together with `SHA256SUMS.txt` and `SIGNING-CERT-SHA256.txt`. Existing complete APK assets are treated as a no-op; the source tag is never moved.
+## Android debug-signed release automation
 
-A GitHub source tag remains **source provenance only**. A debug-signed GitHub APK is an installable pre-production artifact, not evidence of Google Play production or HarmonyOS device qualification.
+After source publication, `publish-android-debug-apk` resolves the current source version and its immutable source tag, verifies the repository-stable debug keystore checksum/certificate, detaches to the tag commit, runs `validateStoreRelease assembleRelease`, verifies the resulting APK with `apksigner`, and publishes:
+
+- `Jingdu-vX.Y.Z-debug-signed.apk`;
+- `SHA256SUMS.txt`;
+- `SIGNING-CERT-SHA256.txt`.
+
+Existing complete assets are not rebuilt or overwritten unnecessarily. The workflow still ensures the GitHub Release notes state that the debug-signed APK is the current-stage Android release artifact and is not Google Play production evidence.
 
 ## Android 2.3.x commercial / Reader release
 
 Android 2.3.x carries the Reader product line and lifetime Pro model while keeping Free as a complete reader.
 
-### Play Console prerequisites
+### Future Play Console prerequisites
 
-Before any production rollout, follow `PLAY_CONSOLE_SETUP.md` and `PRODUCTION_READINESS.md` and verify:
+When Google Play production work begins, follow `PLAY_CONSOLE_SETUP.md` and `PRODUCTION_READINESS.md` and verify:
+
 - INAPP one-time product id exactly `jingdu_pro_lifetime`;
 - product is active and localized price configured;
 - license testers cover successful purchase, cancel, pending, acknowledgement, reinstall restore and offline launch after verified ownership;
@@ -70,25 +92,26 @@ Before any production rollout, follow `PLAY_CONSOLE_SETUP.md` and `PRODUCTION_RE
 - default listing metadata comes from `fastlane/metadata/android`;
 - Custom Listing/search keyword specs and screenshot brief under `store/play/` are applied where supported;
 - Data safety/privacy declarations match actual app behavior;
-- platform-enforced `main` / `v*` repository protection evidence is captured before production rollout.
+- production repository governance, signing, device and staged-rollout evidence is captured for that later stage.
 
-Source CI cannot create/activate Play Console products, publish listings, qualify physical devices or change GitHub administration settings in the current environment; repository assets/runbooks make those external actions deterministic and auditable.
+Source CI cannot create/activate Play Console products, publish listings, qualify physical devices or establish Google Play production evidence.
 
-### Store artifact acceptance
+### Future Play production artifact acceptance
 
-An Android 2.3.x production release requires:
-- exact candidate Hosted gates green;
+A Google Play production release requires:
+
+- exact candidate hosted gates green;
 - `androidStoreCheck` green with production identity/version/signing;
-- production-key-signed APK/AAB verified with retained upload key;
+- production-key-signed APK/AAB verified with the retained production/upload path;
 - mapping/checksum/certificate evidence archived;
 - physical-device matrix and release performance SLO evidence;
 - Play license-test purchase/restore/acknowledge evidence;
 - store listing screenshots/text uploaded and reviewed;
 - internal/closed Play-installed candidate testing;
-- staged rollout rather than immediate 100% production where practical;
-- immutable source tag/GitHub Release provenance plus repository protection evidence.
+- staged rollout evidence;
+- immutable source tag/GitHub Release provenance.
 
-The current debug-key-signed GitHub APK does not satisfy the production-key signing row above.
+The current debug-key-signed GitHub APK satisfies the **current GitHub release stage**, but does not satisfy future Google Play production signing.
 
 ## Portable local-user backup
 
@@ -102,11 +125,12 @@ Reader schema 4 backs up portable, text-free user assets:
 - local reading sessions and pace;
 - Smart Clean KEEP/DELETE/PROTECT memory as one-way candidate fingerprints and decisions.
 
-The backup declares `containsBookText=false` and does not contain source, normalized or Clean book payloads. Schema 3 settings/rules/annotation backups remain importable for pre-production testers. SAF folder URI grants and imported font binaries are not falsely treated as portable credentials/assets; destination devices must re-select them when unavailable.
+The backup declares `containsBookText=false` and does not contain source, normalized or Clean book payloads. Schema 3 settings/rules/annotation backups remain importable. SAF folder URI grants and imported font binaries are not treated as portable credentials/assets; destination devices must re-select them when unavailable.
 
 ## Growth release checklist
 
-Before rollout:
+Before a future Play rollout:
+
 1. run `./scripts/verify-play-store.sh`;
 2. verify default zh-CN title is `净读 - TXT 小说阅读器`;
 3. confirm screenshot claims reflect device-tested behavior;
@@ -117,11 +141,11 @@ Before rollout:
 8. verify staged progress restores only for the exact normalized revision;
 9. verify Smart Clean feedback backup contains fingerprints/decisions only;
 10. verify In-App Review is not shown on first launch;
-11. capture Play experiment plan (icon/first screenshot/short description/price one variable at a time).
+11. capture Play experiment plan with one major variable at a time.
 
 ## HarmonyOS
 
-HarmonyOS remains source-complete/pre-release until official HAP/device gates execute. Android 2.3.x commerce/store readiness is not Harmony production evidence.
+HarmonyOS remains source-complete/pre-release until official HAP/device gates execute. Android GitHub release or Play readiness is not Harmony production evidence.
 
 ## Historical hard cut
 

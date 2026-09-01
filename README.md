@@ -59,7 +59,7 @@ HarmonyOS ArkUI / ArkTS platform shell ----- NAPI --+
 - portable progress 只在 exact `normalizedSha256` 匹配时恢复；
 - Smart Clean 只给建议，用户显式 Apply 才改变派生 Clean 输出；
 - 商业化不允许把基本阅读能力移到 Pro；
-- 不允许兼容 Core、旧 ABI bridge、prototype production root、提交 release binary/signing material。
+- 不允许兼容 Core、旧 ABI bridge、prototype production root、提交 release binary 或 production signing material；`config/signing/android-debug.keystore` 是当前 GitHub release 阶段明确允许的公开 debug 签名例外。
 
 ## Gates
 
@@ -74,7 +74,9 @@ cd ../..
 
 Hosted CI 运行 `native-core / android / android-performance / play-store-contract / harmony-contract / terminal-contract`。Harmony 真 HAP 仍依赖官方 HarmonyOS/DevEco toolchain 与 `self-hosted,harmonyos` runner，不阻断 Android-only 2.x source merge/release。
 
-Hosted source CI 是 regression/source gate，不是 Google Play production 证明。签名 AAB、真实 Android 设备矩阵、License Tester、listing、repository protection 与 staged rollout 的最终证据合同见 `docs/PRODUCTION_READINESS.md`。
+当前 Android GitHub release 阶段以 hosted source gates + immutable source tag + Android 通用 debug 签名 APK 为发布标准。`main` branch protection / repository ruleset **不是当前阶段发布门禁**。发布 APK 由 immutable tag 构建，使用仓库稳定 `androiddebugkey`，并附带 APK SHA-256 与 signing-certificate SHA-256。
+
+这不等于 Google Play production。生产 AAB/Play 签名、真实 Android 设备矩阵、License Tester、listing 和 staged rollout 的未来外部证据合同见 `docs/PRODUCTION_READINESS.md`。
 
 ## Google Play discovery / commerce
 
@@ -83,11 +85,13 @@ Hosted source CI 是 regression/source gate，不是 Google Play production 证�
 - Lifetime Pro 商品：`jingdu_pro_lifetime`，Play Console 商品名/说明同样按 `zh-CN / zh-TW / zh-HK / en-US` 本地化。
 - Play Console 实际商品激活、价格实验、listing 上传和 staged rollout 按 `docs/PLAY_CONSOLE_SETUP.md` / `docs/PRODUCTION_READINESS.md` / `docs/RELEASE.md` 执行；当前源码工具不能代替真实 Console 发布操作。
 
-## Source provenance
+## Source provenance / current Android release
 
-Android 2.3.x source releases由 `publish-source-release` 在六项 hosted gate 全绿后的 `main` tail 创建。新的 source tag 使用 annotated tag object，把 exact gated `main` SHA 与永久 `releases/source/vX.Y.Z.md` 的 SHA-256 绑定；publisher 从不移动已有 tag。
+Android 2.3.x source releases 由 `publish-source-release` 在六项 hosted gate 全绿后的 `main` tail 创建。新的 source tag 使用 annotated tag object，把 exact gated `main` SHA 与永久 `releases/source/vX.Y.Z.md` 的 SHA-256 绑定；publisher 从不移动已有 tag。
 
-Source Release 仍然只代表源码 provenance，不代表签名 APK/AAB、Google Play rollout 或 HarmonyOS 真机资格。
+随后 `publish-android-debug-apk` 从该 immutable source tag 构建并发布 `Jingdu-vX.Y.Z-debug-signed.apk`。它使用仓库稳定 Android debug key (`androiddebugkey`)；`SHA256SUMS.txt` 与 `SIGNING-CERT-SHA256.txt` 同步发布。这个 debug-signed APK 是**当前阶段正式可安装的 Android GitHub release artifact**。
+
+当前 GitHub release 不要求 `main` protection；同时它也不声称 Google Play production signing/rollout 或 HarmonyOS 真机资格。
 
 ## Documentation
 
@@ -98,4 +102,4 @@ Source Release 仍然只代表源码 provenance，不代表签名 APK/AAB、Goog
 4. `ENCODING.md` / `PERFORMANCE.md` / `PERFORMANCE_SLO.md` / `TESTING.md` / `DEVICE_MATRIX.md`
 5. `PLAY_CONSOLE_SETUP.md` / `PRODUCTION_READINESS.md` / `QUALITY_GATES.md` / `RELEASE.md`
 
-`main` 保持可发布源码；APK/AAB/HAP、mapping/symbol package 和签名材料只属于构建/发布基础设施。
+`main` 保持可发布源码；APK/AAB/HAP、mapping/symbol package 不提交仓库。当前 GitHub release 所需的公开 Android debug keystore 是唯一明确的签名材料例外；production/upload key 不进入源码仓库。

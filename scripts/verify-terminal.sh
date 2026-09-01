@@ -101,8 +101,11 @@ grep -q 'jingdu-reading-stats' apps/android/app/src/main/java/com/junchen/jingdu
 grep -q 'jingdu-smartclean-feedback' apps/android/app/src/main/java/com/junchen/jingdu/SmartCleanFeedbackStore.kt
 grep -q 'manifest-sha256' scripts/publish-source-release.py
 grep -q '"/git/tags"' scripts/publish-source-release.py
-grep -q 'platform-enforced protection' .github/REPOSITORY_POLICY.md
+grep -q 'Current GitHub release governance' .github/REPOSITORY_POLICY.md
+grep -q 'debug-signed Android release' docs/PRODUCTION_READINESS.md
 grep -q 'Google Play production-qualified' docs/PRODUCTION_READINESS.md
+grep -q 'branch protection / repository rulesets are \*\*not required\*\*' docs/RELEASE.md
+grep -q 'Display-only text does not need source/display offset projection' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTextPresentation.kt
 
 if grep -q 'Android product line/source release: \*\*2\.2\.x' docs/PRODUCT.md; then
   echo 'stale 2.2.x current-product SSOT remains' >&2; exit 1
@@ -117,6 +120,6 @@ grep -q 'DocumentViewPicker' apps/harmony/entry/src/main/ets/pages/Index.ets
 grep -q 'gradle-9.5.0-bin.zip' apps/android/gradle/wrapper/gradle-wrapper.properties
 echo '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  apps/android/gradle/wrapper/gradle-wrapper.jar' | sha256sum --check --strict
 
-echo 'Terminal prelaunch Reader architecture/product/localization/profile/portable-assets/provenance contract OK'
+echo 'Terminal Reader architecture/product/localization/profile/portable-assets/provenance/current-release contract OK'
 
 python3 scripts/verify-android-source-conventions.py

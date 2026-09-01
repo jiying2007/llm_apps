@@ -4,6 +4,8 @@
 This script is intentionally stdlib-only. It is invoked only by the tail job of the
 main CI workflow after all required product gates succeed. New releases use annotated
 tag objects whose message binds the exact gated commit to the checked-in manifest hash.
+The current Android GitHub release stage adds a stable-debug-key APK in the following
+tail job; Google Play production remains a separate later stage.
 """
 
 from __future__ import annotations
@@ -20,6 +22,17 @@ from pathlib import Path
 
 TEMP_PREFIXES = ("feat/", "fix/", "chore/", "ci/", "refactor/", "docs/", "test/", "perf/", "tmp/")
 RELEASE_PREFIX = "release/source-v"
+CURRENT_STAGE_MARKER = "## Current Android release stage"
+OLD_SOURCE_ONLY_TEXT = (
+    "This records source provenance only. It is not evidence of a signed APK/AAB or "
+    "Google Play production rollout. Android production still requires the retained upload key, "
+    "Play Console product/listing/license-test evidence and staged rollout documented in `docs/RELEASE.md`."
+)
+CURRENT_STAGE_TEXT = (
+    "This release records immutable source provenance. The attached debug-signed APK is the official "
+    "installable Android artifact for the current GitHub release stage. GitHub `main` protection is not "
+    "a gate for this stage. This is not Google Play production signing or rollout evidence."
+)
 
 
 def fail(message: str) -> "NoReturn":
@@ -161,15 +174,44 @@ def create_annotated_tag(tag: str, manifest: Path) -> None:
         fail(f"annotated tag {tag} does not resolve to gated main {MAIN_SHA}")
 
 
+def ensure_current_stage_release_notes(release: dict) -> None:
+    release_id = release.get("id")
+    if not release_id:
+        fail("existing GitHub Release has no id")
+    body = release.get("body") or ""
+    updated = body
+    if OLD_SOURCE_ONLY_TEXT in updated:
+        updated = updated.replace(OLD_SOURCE_ONLY_TEXT, CURRENT_STAGE_TEXT)
+    updated = updated.replace("used for the current pre-production stage", "used for the current GitHub release stage")
+    if CURRENT_STAGE_MARKER not in updated:
+        updated = (
+            updated.rstrip()
+            + "\n\n"
+            + CURRENT_STAGE_MARKER
+            + "\n\n"
+            + "The attached `Jingdu-vX.Y.Z-debug-signed.apk` pattern is the official installable Android "
+              "artifact for the current GitHub release stage. It is signed with the repository-stable Android "
+              "debug key (`androiddebugkey`); the APK checksum and signing-certificate fingerprint are published "
+              "beside it. `main` branch protection / repository rulesets are not required for this stage.\n\n"
+              "This remains separate from a future Google Play production release, which uses the production/upload "
+              "signing path and external Play/device evidence."
+        )
+    if updated != body:
+        request(f"/releases/{release_id}", method="PATCH", payload={"body": updated})
+        print("updated GitHub Release notes for current debug-signed release stage")
+
+
 def publish(tag: str, manifest: Path) -> None:
     existing = read_tag(tag)
     encoded = urllib.parse.quote(tag, safe="")
     release_status, release = request(f"/releases/tags/{encoded}", allowed=(404,))
 
-    # A completed tag + Release is immutable historical provenance by publisher contract. Later
-    # main commits may retain the same version until the next bump; this script never moves a tag.
+    # A completed tag + Release keeps immutable tag provenance. Later main commits may retain the
+    # same version until the next bump; the publisher never moves the tag. Release notes may be
+    # refreshed to keep current-stage distribution semantics accurate.
     if existing is not None and release_status != 404:
         _, target_sha = existing
+        ensure_current_stage_release_notes(release)
         print(
             f"source release already published at immutable {tag} -> {target_sha}: "
             f"{release.get('html_url')}"
@@ -226,12 +268,16 @@ def publish(tag: str, manifest: Path) -> None:
 
 def release_body(tag: str, manifest: Path) -> str:
     return (
-        f"Jingdu {tag} source release.\n\n"
+        f"Jingdu {tag} source provenance and current-stage Android GitHub release.\n\n"
         f"Immutable source manifest: `{manifest.as_posix()}`.\n"
         f"Manifest SHA-256: `{manifest_sha256(manifest)}`.\n\n"
-        "This records source provenance only. It is not evidence of a signed APK/AAB or "
-        "Google Play production rollout. Android production still requires the retained upload key, "
-        "Play Console product/listing/license-test evidence and staged rollout documented in `docs/RELEASE.md`."
+        f"{CURRENT_STAGE_TEXT}\n\n"
+        f"{CURRENT_STAGE_MARKER}\n\n"
+        "The current Android release stage publishes an installable APK from this immutable source tag "
+        "using the repository-stable Android debug key (`androiddebugkey`), with APK checksum and signing-"
+        "certificate fingerprint evidence attached to the GitHub Release.\n\n"
+        "A future Play production release uses the separate production/upload signing path plus the Play "
+        "Console and physical-device evidence documented in `docs/PRODUCTION_READINESS.md`."
     )
 
 

@@ -1,31 +1,36 @@
 # Production Readiness — Android
 
-This document is the final external-evidence gate between a fully-gated **source release** and a **Google Play production rollout**. It is intentionally fail-closed: an unchecked item is not production evidence, and hosted source CI must never mark an external item complete on its own.
+This document separates the **current GitHub release stage** from a future **Google Play production rollout**. Hosted source CI is authoritative for source acceptance, while Play/device evidence remains external and fail-closed.
 
-## Current boundary
+## Current release stage
 
-- Source line: Reader / Android 2.3.x.
-- GitHub source release: provenance only.
-- Signed APK/AAB, physical-device qualification, Play product/listing state and rollout state are external release evidence.
-- HarmonyOS has a separate HAP/device qualification chain and is not covered by an Android production declaration.
+Current Android distribution is complete when all of the following are true:
 
-## P0 — repository governance
+- the exact source commit passes the required hosted source gates;
+- the version has an immutable annotated source tag and GitHub Release;
+- the tag resolves to the intended fully-gated source commit;
+- the downloadable Android APK is built from that immutable tag;
+- the APK is signed with the repository-stable Android debug key (`androiddebugkey`) from `config/signing/android-debug.keystore`;
+- `apksigner` verifies the APK certificate;
+- `SHA256SUMS.txt` and `SIGNING-CERT-SHA256.txt` are published beside the APK.
 
-Before the first production staged rollout, capture actual GitHub administration evidence that:
+For this stage, **`main` branch protection / repository rulesets are not required release gates**. The repository may remain unprotected while pull requests and hosted CI continue to be the normal source workflow.
 
-- [ ] `main` is protected by branch protection or an equivalent ruleset;
-- [ ] force-push and branch deletion are blocked;
-- [ ] pull-request based changes are required for ordinary source changes;
-- [ ] required status checks match the hosted source gates in `QUALITY_GATES.md`;
-- [ ] `v*` tag update/deletion is blocked by repository rules where available;
-- [ ] the candidate source tag resolves to the exact fully-gated `main` commit;
-- [ ] new source tags are annotated provenance objects containing the source-manifest SHA-256.
+The debug-signed GitHub APK is the official installable artifact for this stage. It is intentionally **not** Google Play production signing or Google Play rollout evidence.
 
-The repository policy and publisher enforce intent, but only the actual GitHub settings prove platform enforcement.
+## Future Google Play production boundary
 
-## P0 — signed Android artifact
+Google Play production is a later, separate stage. The rows below apply only when a Play production rollout is actually being prepared; they do not block the current GitHub debug-signed release.
 
-Run with the retained upload key and explicit monotonically increasing version values:
+### Repository governance for Play production
+
+Before the first Play production staged rollout, capture actual GitHub administration evidence appropriate to that stage, including any chosen `main` / `v*` protection policy, required hosted checks, force-push/deletion controls, and tag immutability controls.
+
+Regardless of repository settings, the candidate source tag must resolve to the exact intended fully-gated commit and new source tags must remain annotated provenance objects containing the source-manifest SHA-256.
+
+### Production-signed Android artifact
+
+Use the retained production/upload signing path and explicit monotonically increasing version values:
 
 ```bash
 cd apps/android
@@ -38,17 +43,17 @@ cd apps/android
 
 Archive and record:
 
-- [ ] signed release AAB;
-- [ ] optional signed release APK used for direct device qualification;
+- [ ] signed production AAB;
+- [ ] optional signed production APK used for direct device qualification;
 - [ ] R8 `mapping.txt`;
 - [ ] `SHA256SUMS`;
-- [ ] upload/signing certificate fingerprint;
+- [ ] production/upload signing certificate fingerprint;
 - [ ] exact source commit/tag used to build the artifacts;
 - [ ] successful Play pre-launch/app-bundle validation for the exact AAB.
 
-Do not commit any signing key or signed binary to this repository.
+Do not commit production signing keys or production-signed binaries to this repository.
 
-## P0 — physical Android qualification
+### Physical Android qualification
 
 Execute `DEVICE_MATRIX.md` and `PERFORMANCE_SLO.md` on real release-derived builds. Minimum evidence:
 
@@ -64,9 +69,9 @@ Execute `DEVICE_MATRIX.md` and `PERFORMANCE_SLO.md` on real release-derived buil
 - [ ] physical Reader Macrobenchmark meets the release SLOs in `PERFORMANCE_SLO.md`;
 - [ ] physical volume-key paging advances the authoritative Reader source position.
 
-Hosted emulator numbers are regression evidence only and cannot satisfy these rows.
+Hosted emulator numbers are regression evidence only and cannot satisfy Play production physical-device rows.
 
-## P0 — Google Play commerce
+### Google Play commerce
 
 Using license testers and the production application id `com.junchen.jingdu`:
 
@@ -81,7 +86,7 @@ Using license testers and the production application id `com.junchen.jingdu`:
 - [ ] authoritative no-ownership refresh removes stale entitlement;
 - [ ] product unavailable / Billing unavailable leaves all Free Reader paths functional.
 
-## P0 — Play listing and policy
+### Play listing and policy
 
 - [ ] default listings uploaded from `fastlane/metadata/android` for all four supported Play locales;
 - [ ] screenshots captured from the actual release UI using synthetic/public-domain TXT;
@@ -91,7 +96,7 @@ Using license testers and the production application id `com.junchen.jingdu`:
 - [ ] no screenshot or description contains unverified performance/ranking claims;
 - [ ] In-App Review remains milestone/cooldown driven and is not a first-launch gate.
 
-## P0 — rollout
+### Rollout
 
 - [ ] upload the exact qualified AAB to the intended Play track;
 - [ ] complete internal/closed testing on Play-installed builds;
@@ -104,7 +109,7 @@ Using license testers and the production application id `com.junchen.jingdu`:
 
 ## Portable local-user backup acceptance
 
-The Reader portable backup is text-free by contract. Before production rollout verify on a device:
+Before Play production rollout verify on a device:
 
 - [ ] export/import Reader settings and named/custom reading preferences;
 - [ ] export/import global Clean rules;
@@ -120,6 +125,6 @@ The Reader portable backup is text-free by contract. Before production rollout v
 
 ## Release declaration
 
-A release may be called **Google Play production-qualified** only when all applicable P0 rows above have concrete evidence attached to the release system/PR and the exact production AAB is traceable to the fully-gated source tag.
+For the current stage, the correct wording is **GitHub release / debug-signed Android release** once the hosted gates, immutable tag and published debug-signed APK evidence are complete.
 
-Until then, the correct wording remains **source-complete / launch candidate / source provenance release**.
+A release may be called **Google Play production-qualified** only when all applicable future Play-production rows above have concrete evidence and the exact production AAB is traceable to the fully-gated source tag.
