@@ -151,11 +151,26 @@ internal fun ReaderSmartChaptersPanel(
     }
 
     val chapters = report?.chapters.orEmpty()
-    val displayTitles = remember(chapters, state.settings.chineseMode, state.settings.chineseOverrides) {
-        chapters.map { ReaderTextPresentation.chapterTitle(it.title, state.settings) }
-    }
     val activePosition = currentPosition()
-    val currentIndex = chapters.indexOfLast { it.offset <= activePosition }.coerceAtLeast(0)
+    val currentIndex = remember(chapters, activePosition) {
+        if (chapters.isEmpty()) {
+            0
+        } else {
+            var low = 0
+            var high = chapters.lastIndex
+            var result = 0
+            while (low <= high) {
+                val mid = (low + high) ushr 1
+                if (chapters[mid].offset <= activePosition) {
+                    result = mid
+                    low = mid + 1
+                } else {
+                    high = mid - 1
+                }
+            }
+            result
+        }
+    }
 
     LaunchedEffect(book?.id, chapters.size, currentIndex) {
         if (!positioned && chapters.isNotEmpty()) {
@@ -241,6 +256,7 @@ internal fun ReaderSmartChaptersPanel(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     itemsIndexed(chapters, key = { _, item -> item.offset }) { index, chapter ->
+                        val displayTitle = ReaderTextPresentation.chapterTitle(chapter.title, state.settings)
                         val selected = index == currentIndex
                         val percent = if (state.length <= 0L) 0 else {
                             ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
@@ -258,7 +274,7 @@ internal fun ReaderSmartChaptersPanel(
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    displayTitles[index],
+                                    displayTitle,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodyLarge,
@@ -274,7 +290,7 @@ internal fun ReaderSmartChaptersPanel(
                             IconButton({ hide(index) }) {
                                 Icon(
                                     Icons.Outlined.DeleteOutline,
-                                    "${stringResource(R.string.toc_hide_heading)}: ${displayTitles[index]}",
+                                    "${stringResource(R.string.toc_hide_heading)}: ${displayTitle}",
                                 )
                             }
                         }

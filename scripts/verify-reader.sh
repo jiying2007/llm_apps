@@ -261,6 +261,10 @@ require_literal "$smart_panel" 'if (cachedBase != null)' 'cache-first Chapters b
 require_literal "$smart_panel" 'val overrides = withContext(Dispatchers.IO)' 'panel override IO off main'
 require_literal "$smart_panel" 'withContext(Dispatchers.Default) { store.apply(computedBase, overrides) }' 'panel override projection off main'
 require_literal "$smart_panel" 'SmartToc.evaluate(state.chapters.map' 'bounded cache-eviction fallback'
+forbid_literal "$smart_panel" 'chapters.map { ReaderTextPresentation.chapterTitle' 'eager all-chapter title presentation'
+require_literal "$smart_panel" 'val displayTitle = ReaderTextPresentation.chapterTitle(chapter.title, state.settings)' 'viewport-only chapter title presentation'
+require_literal "$smart_panel" 'val mid = (low + high) ushr 1' 'logarithmic current chapter lookup'
+require_literal "$baseline" 'visibleBounds(By.desc("Reading settings")) ?: visibleBounds(By.text("Aa"))' 'profile semantic settings selector'
 forbid_literal "$smart_panel" 'SmartToc.analyze(reader)' 'full scan inside panel'
 require_literal "$panel_surface" 'same composition tree' 'single composition panel surface'
 test ! -e apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotPanels.kt || { echo 'Reader superseded hot panels remain' >&2; exit 1; }
