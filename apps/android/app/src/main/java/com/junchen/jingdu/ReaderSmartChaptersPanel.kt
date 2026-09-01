@@ -261,13 +261,16 @@ internal fun ReaderSmartChaptersPanel(
                         val percent = if (state.length <= 0L) 0 else {
                             ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
                         }
-                        Row(
+                        val rowModifier = if (selected) {
+                            Modifier.fillMaxWidth().background(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                                RoundedCornerShape(14.dp),
+                            )
+                        } else {
                             Modifier.fillMaxWidth()
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
-                                    else MaterialTheme.colorScheme.surface,
-                                    RoundedCornerShape(14.dp),
-                                )
+                        }
+                        Row(
+                            rowModifier
                                 .clickable { actions.onJump(chapter.offset) }
                                 .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,

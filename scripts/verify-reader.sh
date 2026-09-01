@@ -264,6 +264,7 @@ require_literal "$smart_panel" 'withContext(Dispatchers.Default) { store.apply(c
 require_literal "$smart_panel" 'SmartToc.evaluate(state.chapters.map' 'bounded cache-eviction fallback'
 forbid_literal "$smart_panel" 'chapters.map { ReaderTextPresentation.chapterTitle' 'eager all-chapter title presentation'
 require_literal "$smart_panel" 'val displayTitle = ReaderTextPresentation.chapterTitle(chapter.title, state.settings)' 'viewport-only chapter title presentation'
+forbid_literal "$smart_panel" 'else MaterialTheme.colorScheme.surface,' 'redundant unselected chapter row surface draw'
 require_literal "$smart_panel" 'val mid = (low + high) ushr 1' 'logarithmic current chapter lookup'
 require_literal "$baseline" 'visibleBounds(By.desc("Reading settings")) ?: visibleBounds(By.text("Aa"))' 'profile semantic settings selector'
 forbid_literal "$smart_panel" 'SmartToc.analyze(reader)' 'full scan inside panel'
