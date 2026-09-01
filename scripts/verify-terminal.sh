@@ -56,7 +56,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/SmartCleanFeedbackStore.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/PortableUserAssetsTest.kt
-  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
+  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/ReaderJourneyBenchmark.kt
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "required terminal asset missing: $path" >&2; exit 1; }; done
 
@@ -105,6 +105,7 @@ grep -q 'Current GitHub release governance' .github/REPOSITORY_POLICY.md
 grep -q 'debug-signed Android release' docs/PRODUCTION_READINESS.md
 grep -q 'Google Play production-qualified' docs/PRODUCTION_READINESS.md
 grep -q 'branch protection / repository rulesets are \*\*not required\*\*' docs/RELEASE.md
+grep -q 'Display-only text does not need source/display offset projection' apps/android/app/src/main/java/com/junchen/jingdu/ReaderTextPresentation.kt
 
 if grep -q 'Android product line/source release: \*\*2\.2\.x' docs/PRODUCT.md; then
   echo 'stale 2.2.x current-product SSOT remains' >&2; exit 1
