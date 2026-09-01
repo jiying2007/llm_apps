@@ -1,0 +1,91 @@
+name: Reader hot-panel accessibility P99 fix
+
+on:
+  push:
+    branches:
+      - fix/reader-chapter-first-show-p99
+    paths:
+      - .github/workflows/reader-hot-panel-accessibility-p99-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/reader-chapter-first-show-p99
+          fetch-depth: 0
+      - name: Avoid hot-panel accessibility subtree rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app = Path('apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt')
+          text = app.read_text()
+          for line in [
+              'import androidx.compose.ui.semantics.hideFromAccessibility\n',
+              'import androidx.compose.ui.semantics.semantics\n',
+          ]:
+              assert text.count(line) == 1, f'import anchor mismatch: {line!r}'
+              text = text.replace(line, '')
+          old = '            }\n            .semantics { if (panelState.value != target) hideFromAccessibility() },\n'
+          new = '            },\n'
+          assert text.count(old) == 1, 'dynamic hot-panel semantics anchor mismatch'
+          text = text.replace(old, new)
+          comment_old = ' * live. Visibility is placement-phase only, so hidden panels cannot intercept pointer input and\n * local panel state can never replay stale pixels.\n'
+          comment_new = ' * live. Visibility is placement-phase only: hidden panels are physically outside the window, so\n * they cannot intercept pointer input or be reported as displayed, while local state stays warm.\n'
+          assert text.count(comment_old) == 1, 'hot-panel lifecycle comment anchor mismatch'
+          text = text.replace(comment_old, comment_new)
+          app.write_text(text)
+
+          ui = Path('apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt')
+          text = ui.read_text()
+          anchor = '    @Test fun annotationsAreFirstClassLocalReaderAssets() {\n'
+          addition = '\n'.join([
+              '    @Test fun hiddenHotPanelsRemainPhysicallyOffscreen() {',
+              '        val chapters = listOf(ChapterModel(0, "Chapter 1"))',
+              '        composeRule.setContent {',
+              '            JingduApp(',
+              '                AppUiState(',
+              '                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 0, length = 10_000,',
+              '                    panel = null, chapters = chapters, chaptersLoaded = true,',
+              '                    settings = ReaderSettings(gestureCoachDismissed = true),',
+              '                ), noOpActions(),',
+              '            )',
+              '        }',
+              '        composeRule.waitForIdle()',
+              '        composeRule.onNodeWithText("Chapter 1").assertIsNotDisplayed()',
+              '        composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsNotDisplayed()',
+              '    }',
+              '',
+              anchor.rstrip('\n'),
+          ]) + '\n'
+          assert text.count(anchor) == 1, 'hidden hot-panel UI test anchor mismatch'
+          ui.write_text(text.replace(anchor, addition))
+
+          contract = Path('scripts/verify-reader.sh')
+          text = contract.read_text()
+          anchor = 'require_literal "$app" \'y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX\' \'offscreen hidden hot-panel hit isolation\'\n'
+          addition = anchor + 'forbid_literal "$app" \'hideFromAccessibility()\' \'dynamic hot-panel accessibility subtree rebuild\'\nrequire_literal apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt \'hiddenHotPanelsRemainPhysicallyOffscreen\' \'hidden hot-panel offscreen UI verification\'\n'
+          assert text.count(anchor) == 1, 'hot-panel contract anchor mismatch'
+          contract.write_text(text.replace(anchor, addition))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+          python3 scripts/verify-reader-profile-contract.py
+          python3 scripts/test-android-performance-slo.py
+      - name: Commit fix and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-hot-panel-accessibility-p99-fix.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt scripts/verify-reader.sh
+          git commit -m 'perf: avoid hot-panel accessibility subtree rebuild'
+          git push origin HEAD:fix/reader-chapter-first-show-p99
