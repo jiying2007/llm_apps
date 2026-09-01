@@ -70,6 +70,9 @@ jobs:
 
           contract = Path('scripts/verify-reader.sh')
           text = contract.read_text()
+          old_contract = 'require_literal "$app" \'.semantics { if (panelState.value != target) hideFromAccessibility() }\' \'phase-owned hidden panel semantics\'\n'
+          assert text.count(old_contract) == 1, 'legacy hot-panel semantics contract anchor mismatch'
+          text = text.replace(old_contract, '')
           anchor = 'require_literal "$app" \'y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX\' \'offscreen hidden hot-panel hit isolation\'\n'
           addition = anchor + 'forbid_literal "$app" \'hideFromAccessibility()\' \'dynamic hot-panel accessibility subtree rebuild\'\nrequire_literal apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt \'hiddenHotPanelsRemainPhysicallyOffscreen\' \'hidden hot-panel offscreen UI verification\'\n'
           assert text.count(anchor) == 1, 'hot-panel contract anchor mismatch'
