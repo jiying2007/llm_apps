@@ -37,7 +37,6 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurface.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
-  apps/android/app/src/main/java/com/junchen/jingdu/ReaderChapterListState.kt
   apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt
@@ -78,7 +77,6 @@ activity=apps/android/app/src/main/java/com/junchen/jingdu/MainActivity.kt
 quick_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
 panel_surface=apps/android/app/src/main/java/com/junchen/jingdu/ReaderPanelSurface.kt
 smart_panel=apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt
-chapter_list_state=apps/android/app/src/main/java/com/junchen/jingdu/ReaderChapterListState.kt
 smart_toc_cache=apps/android/app/src/main/java/com/junchen/jingdu/SmartTocCacheStore.kt
 hot_controls=apps/android/app/src/main/java/com/junchen/jingdu/ReaderHotControls.kt
 fast_text=apps/android/app/src/main/java/com/junchen/jingdu/ReaderFastText.kt
@@ -202,11 +200,7 @@ forbid_literal "$hot_controls" 'ReaderHotLine' 'Canvas-only reader chrome text'
 require_literal "$quick_panel" 'real Compose controls' 'native quick settings controls'
 forbid_literal "$quick_panel" 'ReaderCanvasPanel(' 'quick settings Canvas hit map'
 require_literal "$smart_panel" 'LazyColumn(' 'scrolling chapters list'
-require_literal "$smart_panel" 'rememberReaderChapterListState()' 'chapter list state'
-require_literal "$chapter_list_state" 'LazyListPrefetchStrategy' 'chapter no-prefetch strategy'
-require_literal "$chapter_list_state" 'onScroll(delta: Float, layoutInfo: LazyListLayoutInfo) = Unit' 'chapter scroll prefetch disabled'
-require_literal "$chapter_list_state" 'onVisibleItemsUpdated(layoutInfo: LazyListLayoutInfo) = Unit' 'chapter visible-item prefetch disabled'
-require_literal "$chapter_list_state" 'onNestedPrefetch(firstVisibleItemIndex: Int) = Unit' 'chapter nested prefetch disabled'
+require_literal "$smart_panel" 'rememberLazyListState()' 'chapter list state'
 forbid_literal "$smart_panel" 'CHAPTER_WINDOW_ROWS' 'manual chapter pagination'
 forbid_literal "$smart_panel" 'ReaderCanvasPanel(' 'chapter Canvas hit map'
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/ReaderGesturePolicy.kt 'allowsPageSwipe' 'selection-aware paging policy'
