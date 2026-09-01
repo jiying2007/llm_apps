@@ -12,11 +12,15 @@ internal object ReaderTextPresentation {
         present(source, settings.chineseMode, settings.chineseOverrides)
 
     fun present(source: String, mode: ChineseDisplayMode, overrides: String): Presented {
-        val display = ChineseTextConverter.convert(source, mode, overrides)
+        val display = display(source, mode, overrides)
         return Presented(source, display, TextProjection.between(source, display))
     }
 
-    fun display(source: String, settings: ReaderSettings): String = present(source, settings).displayText
+    fun display(source: String, settings: ReaderSettings): String =
+        display(source, settings.chineseMode, settings.chineseOverrides)
+
+    fun display(source: String, mode: ChineseDisplayMode, overrides: String): String =
+        ChineseTextConverter.convert(source, mode, overrides)
 
     fun chapterTitle(sourceTitle: String, settings: ReaderSettings): String = display(sourceTitle, settings)
 
