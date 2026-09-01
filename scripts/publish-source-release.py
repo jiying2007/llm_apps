@@ -4,6 +4,8 @@
 This script is intentionally stdlib-only. It is invoked only by the tail job of the
 main CI workflow after all required product gates succeed. New releases use annotated
 tag objects whose message binds the exact gated commit to the checked-in manifest hash.
+The current Android GitHub release stage adds a stable-debug-key APK in the following
+tail job; Google Play production remains a separate later stage.
 """
 
 from __future__ import annotations
@@ -226,12 +228,16 @@ def publish(tag: str, manifest: Path) -> None:
 
 def release_body(tag: str, manifest: Path) -> str:
     return (
-        f"Jingdu {tag} source release.\n\n"
+        f"Jingdu {tag} source provenance and current-stage Android GitHub release.\n\n"
         f"Immutable source manifest: `{manifest.as_posix()}`.\n"
         f"Manifest SHA-256: `{manifest_sha256(manifest)}`.\n\n"
-        "This records source provenance only. It is not evidence of a signed APK/AAB or "
-        "Google Play production rollout. Android production still requires the retained upload key, "
-        "Play Console product/listing/license-test evidence and staged rollout documented in `docs/RELEASE.md`."
+        "The current Android release stage publishes an installable APK from this immutable source tag "
+        "using the repository-stable Android debug key (`androiddebugkey`), with APK checksum and signing-"
+        "certificate fingerprint evidence attached to the GitHub Release. GitHub `main` protection is not "
+        "a gate for this stage.\n\n"
+        "This is not Google Play production signing or rollout evidence. A future Play production release "
+        "uses the separate production/upload signing path plus the Play Console and physical-device evidence "
+        "documented in `docs/PRODUCTION_READINESS.md`."
     )
 
 
