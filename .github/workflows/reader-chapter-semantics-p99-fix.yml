@@ -32,47 +32,51 @@ jobs:
           assert text.count(import_anchor) == 1, 'semantics import anchor mismatch'
           text = text.replace(import_anchor, imports)
 
-          percent_anchor = '''                        val percent = if (state.length <= 0L) 0 else {
-                            ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
-                        }
-'''
-          percent_replacement = percent_anchor + '''                        val hideActionLabel = "${stringResource(R.string.toc_hide_heading)}: $displayTitle"
-'''
+          percent_anchor = '\n'.join([
+              '                        val percent = if (state.length <= 0L) 0 else {',
+              '                            ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)',
+              '                        }',
+          ]) + '\n'
+          percent_replacement = percent_anchor + '                        val hideActionLabel = "${stringResource(R.string.toc_hide_heading)}: $displayTitle"\n'
           assert text.count(percent_anchor) == 1, 'hide action label anchor mismatch'
           text = text.replace(percent_anchor, percent_replacement)
 
-          click_anchor = '''                            rowModifier
-                                .clickable { actions.onJump(chapter.offset) }
-                                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),
-'''
-          click_replacement = '''                            rowModifier
-                                .clickable { actions.onJump(chapter.offset) }
-                                .semantics(mergeDescendants = true) {
-                                    customActions = listOf(
-                                        CustomAccessibilityAction(hideActionLabel) {
-                                            hide(index)
-                                            true
-                                        },
-                                    )
-                                }
-                                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),
-'''
+          click_anchor = '\n'.join([
+              '                            rowModifier',
+              '                                .clickable { actions.onJump(chapter.offset) }',
+              '                                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),',
+          ])
+          click_replacement = '\n'.join([
+              '                            rowModifier',
+              '                                .clickable { actions.onJump(chapter.offset) }',
+              '                                .semantics(mergeDescendants = true) {',
+              '                                    customActions = listOf(',
+              '                                        CustomAccessibilityAction(hideActionLabel) {',
+              '                                            hide(index)',
+              '                                            true',
+              '                                        },',
+              '                                    )',
+              '                                }',
+              '                                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),',
+          ])
           assert text.count(click_anchor) == 1, 'row semantics anchor mismatch'
           text = text.replace(click_anchor, click_replacement)
 
-          icon_anchor = '''                            IconButton({ hide(index) }) {
-                                Icon(
-                                    Icons.Outlined.DeleteOutline,
-                                    "${stringResource(R.string.toc_hide_heading)}: ${displayTitle}",
-                                )
-                            }
-'''
-          icon_replacement = '''                            Box(Modifier.clearAndSetSemantics {}) {
-                                IconButton({ hide(index) }) {
-                                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
-                                }
-                            }
-'''
+          icon_anchor = '\n'.join([
+              '                            IconButton({ hide(index) }) {',
+              '                                Icon(',
+              '                                    Icons.Outlined.DeleteOutline,',
+              '                                    "${stringResource(R.string.toc_hide_heading)}: ${displayTitle}",',
+              '                                )',
+              '                            }',
+          ])
+          icon_replacement = '\n'.join([
+              '                            Box(Modifier.clearAndSetSemantics {}) {',
+              '                                IconButton({ hide(index) }) {',
+              '                                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)',
+              '                                }',
+              '                            }',
+          ])
           assert text.count(icon_anchor) == 1, 'delete icon semantics anchor mismatch'
           text = text.replace(icon_anchor, icon_replacement)
           panel.write_text(text)
