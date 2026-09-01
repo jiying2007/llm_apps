@@ -112,6 +112,22 @@ class JingduUiTest {
         assertEquals(0L, jumped)
     }
 
+    @Test fun hiddenHotPanelsRemainPhysicallyOffscreen() {
+        val chapters = listOf(ChapterModel(0, "Chapter 1"))
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 0, length = 10_000,
+                    panel = null, chapters = chapters, chaptersLoaded = true,
+                    settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
+            )
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Chapter 1").assertIsNotDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsNotDisplayed()
+    }
+
     @Test fun annotationsAreFirstClassLocalReaderAssets() {
         val book = sampleBook()
         val annotation = ReaderAnnotation(
