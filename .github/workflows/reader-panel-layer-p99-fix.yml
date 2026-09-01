@@ -24,23 +24,10 @@ jobs:
           from pathlib import Path
           app = Path('apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt')
           text = app.read_text()
-          old = """                    placeable.placeWithLayer(
-                        x = 0,
-                        y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
-                    ) { alpha = if (visible) 1f else 0f }
-"""
-          new = """                    placeable.place(
-                        x = 0,
-                        y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
-                    )
-"""
+          old = '                    placeable.placeWithLayer(\n                        x = 0,\n                        y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,\n                    ) { alpha = if (visible) 1f else 0f }\n'
+          new = '                    placeable.place(\n                        x = 0,\n                        y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,\n                    )\n'
           assert text.count(old) == 1, 'persistent panel placeWithLayer anchor mismatch'
-          text = text.replace(old, new)
-          old_comment = ' * owns the cached flat scrim; this shell keeps outside-tap dismissal and the live panel surface so\n'
-          if old_comment in text:
-              text = text.replace(old_comment, ' * owns the cached flat scrim; this shell keeps outside-tap dismissal and the live panel surface so\n')
-          app.write_text(text)
-
+          app.write_text(text.replace(old, new))
           contract = Path('scripts/verify-reader.sh')
           text = contract.read_text()
           old = "require_literal \"$app\" 'placeable.placeWithLayer(' 'hot-panel hit-test placement'\n"
