@@ -6,7 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -92,7 +91,7 @@ internal fun ReaderSmartChaptersPanel(
     var addDialog by rememberSaveable(book?.id) { mutableStateOf(false) }
     var title by rememberSaveable(book?.id) { mutableStateOf("") }
     var positioned by remember(book?.id) { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    val listState = rememberReaderChapterListState()
 
     LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {
         if (book == null) {
