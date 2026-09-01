@@ -56,7 +56,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/SmartCleanFeedbackStore.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/PortableUserAssetsTest.kt
-  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/ReaderJourneyBenchmark.kt
+  apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "required terminal asset missing: $path" >&2; exit 1; }; done
 
