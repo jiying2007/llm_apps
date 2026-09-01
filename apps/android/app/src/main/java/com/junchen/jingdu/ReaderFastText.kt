@@ -72,11 +72,15 @@ import kotlin.math.roundToInt
  * frame thread and the Canvas only draws a ready layout.
  */
 @Composable
-internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow) {
+internal fun Text(
+    text: AnnotatedString, modifier: Modifier, style: TextStyle, overflow: TextOverflow,
+    selectionMode: Boolean? = null, onRequestSelection: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
-    var selectionMode by remember(text.text) { mutableStateOf(false) }
-    if (selectionMode || accessibility.isTouchExplorationEnabled) {
+    var internalSelectionMode by remember(text.text) { mutableStateOf(false) }
+    val selecting = selectionMode ?: internalSelectionMode
+    if (selecting || accessibility.isTouchExplorationEnabled) {
         androidx.compose.material3.Text(text = text, modifier = modifier, style = style, overflow = overflow)
         return
     }
@@ -89,7 +93,9 @@ internal fun Text(text: AnnotatedString, modifier: Modifier, style: TextStyle, o
         fontSynthesis = style.fontSynthesis ?: FontSynthesis.All,
     )
     val resolvedColor = if (style.color == Color.Unspecified) MaterialTheme.colorScheme.onBackground else style.color
-    BoxWithConstraints(modifier.fillMaxWidth().armSelectionOnLongPress(text.text) { selectionMode = true }) {
+    BoxWithConstraints(modifier.fillMaxWidth().armSelectionOnLongPress(text.text) {
+        if (onRequestSelection != null) onRequestSelection() else internalSelectionMode = true
+    }) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
         val heightPx = constraints.maxHeight.coerceAtLeast(1)
         val reusable = remember(text, widthPx, heightPx) {
@@ -524,12 +530,14 @@ internal fun Text(
     onBookmark: () -> Unit,
     onAnyTouch: () -> Unit,
     onScrollSettled: () -> Unit,
+    selectionMode: Boolean? = null,
+    onRequestSelection: (() -> Unit)? = null,
     onTextLayout: (ReaderContinuousLayout) -> Unit,
 ) {
     val context = LocalContext.current
     val accessibility = remember(context) { context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager }
-    var selectionMode by remember(text.text) { mutableStateOf(false) }
-    val fallback = selectionMode || accessibility.isTouchExplorationEnabled
+    var internalSelectionMode by remember(text.text) { mutableStateOf(false) }
+    val fallback = (selectionMode ?: internalSelectionMode) || accessibility.isTouchExplorationEnabled
     val density = LocalDensity.current
     val resolver = LocalFontFamilyResolver.current
     val nativeTypeface by resolver.resolveAsTypeface(
@@ -605,7 +613,7 @@ internal fun Text(
                         onBookmark,
                         onAnyTouch,
                         onScrollSettled,
-                    ) { selectionMode = true }
+                    ) { if (onRequestSelection != null) onRequestSelection() else internalSelectionMode = true }
                 },
             )
         }

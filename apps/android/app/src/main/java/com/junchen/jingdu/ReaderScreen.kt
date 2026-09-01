@@ -18,7 +18,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -42,6 +41,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ParagraphStyle
@@ -65,6 +66,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collect
@@ -76,6 +80,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 private data class SelectionPayload(val range: ReaderSelectionRange, val clearNative: () -> Unit)
@@ -110,6 +115,7 @@ internal fun ReaderScreen(
     val skim = remember(book.id) { ReaderSkimController(context, book.id) }
     val controlsVisibility = rememberSaveable(book.id) { mutableStateOf(true) }
     var controlsVisible by controlsVisibility
+    SideEffect { ReaderInteractionRuntime.controlsVisible = controlsVisible }
     var more by remember { mutableStateOf(false) }
     var selection by remember(book.id) { mutableStateOf<SelectionPayload?>(null) }
     var twoStageAnchor by remember(book.id) { mutableStateOf<ReaderSelectionRange?>(null) }
@@ -245,7 +251,7 @@ internal fun ReaderScreen(
         if (settings.readingMode == ReaderMode.CONTINUOUS && !state.cleanMode) {
             ContinuousReaderPage(
                 state, actions, fontFamily, textColor, touchExploration,
-                ::previous, ::next, { controlsVisible = !controlsVisible }, ::updateBrightness, ::resizeFont,
+                ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value }, ::updateBrightness, ::resizeFont,
                 { tick(); actions.onAddBookmark() }, ::acceptSelection,
             )
         } else {
@@ -263,7 +269,7 @@ internal fun ReaderScreen(
                     ) {
                         PagedReaderPage(
                             state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
-                            actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
+                            actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
                             ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                         )
                     }
@@ -271,7 +277,7 @@ internal fun ReaderScreen(
             } else {
                 PagedReaderPage(
                     state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
-                    actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisible = !controlsVisible },
+                    actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
                     ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                 )
             }
@@ -284,60 +290,53 @@ internal fun ReaderScreen(
                 .align(Alignment.Center).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.07f)),
         )
 
-        // Keep hot controls composed for the whole reader session. Visibility changes are a
-        // layout-phase placement only, so reopening controls never rebuilds the Material button tree.
-        Box(
-            Modifier.align(Alignment.TopCenter).graphicsLayer {
-                translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
-                alpha = if (controlsVisible) 1f else 0f
-            },
-        ) {
-            ReaderTopBar(book.name, currentChapter, actions) { more = true }
-        }
-        if (more) Box(
-            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp).graphicsLayer {
-                translationY = if (controlsVisible) 0f else -READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
-                alpha = if (controlsVisible) 1f else 0f
-            },
-        ) { ReaderMoreMenu(state.cleanMode, actions) { more = false } }
-        Box(
-            Modifier.align(Alignment.BottomCenter).graphicsLayer {
-                translationY = if (controlsVisible) 0f else READER_HIDDEN_LAYER_OFFSET_PX.toFloat()
-                alpha = if (controlsVisible) 1f else 0f
-            },
-        ) {
-            ReaderBottomBar(
-                chapters = state.chapters,
-                length = state.length,
-                autoPaging = state.autoPaging,
-                ttsPlaying = state.ttsPlaying,
-                chapter = currentChapter,
-                fraction = skimFraction,
-                skimPreview = skimPreview,
-                skimDragging = skimDragging,
-                showSkimReturn = showSkimReturn,
-                canLocationBack = canLocationBack,
-                canLocationForward = canLocationForward,
-                onLocationBack = onLocationBack,
-                onLocationForward = onLocationForward,
-                onOpenQuick = { actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) },
-                onTts = actions.onToggleTts,
-                onAutoPage = actions.onToggleAutoPaging,
-                onFractionChange = { value ->
-                    if (!skimDragging) { skimOrigin = state.position; skimDragging = true; showSkimReturn = false }
-                    skimFraction = value
-                },
-                onFractionCommit = {
-                    skimDragging = false
-                    showSkimReturn = true
-                    actions.onSeekFraction(skimFraction)
-                },
-                onReturnSkim = {
-                    actions.onJump(skimOrigin)
-                    skimPreview = null
-                    showSkimReturn = false
-                },
-            )
+        if (controlsVisible) {
+            // Recreate the Material chrome semantics subtree whenever controls reopen. Android accessibility
+            // must never retain hidden semantics from a previously off-screen resident control node.
+            Box(
+                Modifier.align(Alignment.TopCenter),
+            ) {
+                ReaderTopBar(book.name, currentChapter, actions) { more = true }
+            }
+            if (more) Box(
+                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp),
+            ) { ReaderMoreMenu(state.cleanMode, actions) { more = false } }
+            Box(
+                Modifier.align(Alignment.BottomCenter),
+            ) {
+                ReaderBottomBar(
+                    chapters = state.chapters,
+                    length = state.length,
+                    autoPaging = state.autoPaging,
+                    ttsPlaying = state.ttsPlaying,
+                    chapter = currentChapter,
+                    fraction = skimFraction,
+                    skimPreview = skimPreview,
+                    skimDragging = skimDragging,
+                    showSkimReturn = showSkimReturn,
+                    canLocationBack = canLocationBack,
+                    canLocationForward = canLocationForward,
+                    onLocationBack = onLocationBack,
+                    onLocationForward = onLocationForward,
+                    onBookmarks = { actions.onOpenPanel(ReaderPanel.BOOKMARKS) },
+                    onTts = actions.onToggleTts,
+                    onAutoPage = actions.onToggleAutoPaging,
+                    onFractionChange = { value ->
+                        if (!skimDragging) { skimOrigin = state.position; skimDragging = true; showSkimReturn = false }
+                        skimFraction = value
+                    },
+                    onFractionCommit = {
+                        skimDragging = false
+                        showSkimReturn = true
+                        actions.onSeekFraction(skimFraction)
+                    },
+                    onReturnSkim = {
+                        actions.onJump(skimOrigin)
+                        skimPreview = null
+                        showSkimReturn = false
+                    },
+                )
+            }
         }
         if (settings.showReadingStatus) ReaderReadingStatusHost(
             controlsVisibility = controlsVisibility,
@@ -498,8 +497,12 @@ private fun PagedReaderPage(
     }
 
     val selectionState = rememberSelectionState()
+    var fastSelectionMode by remember(sourceStart) { mutableStateOf(false) }
+    var sawFastSelection by remember(sourceStart) { mutableStateOf(false) }
     LaunchedEffect(selectionState.selectedTexts) {
         val range = ReaderSelectionController.fromSelectedTexts(selectionState.selectedTexts)
+        if (range != null) sawFastSelection = true
+        else if (sawFastSelection) { fastSelectionMode = false; sawFastSelection = false }
         onSelection(range?.let { SelectionPayload(it) { selectionState.clear() } })
     }
     val semantics = Modifier.readerAccessibilityActions(
@@ -509,40 +512,53 @@ private fun PagedReaderPage(
         stringResource(R.string.reader_access_bookmark),
     )
     val gestures = if (touchExploration) Modifier else Modifier
-        .readerGestures(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onBookmark)
-        .pointerInput(settings.pinchFontEnabled) {
-            if (settings.pinchFontEnabled) detectTransformGestures { _, _, zoom, _ -> onResizeFont(zoom) }
+        .readerGestures(settings, widthPx, heightPx, systemLeft, systemRight, onPrevious, onNext, onToggleControls, onBrightnessDelta, onResizeFont, onBookmark)
+
+    val pageContent: @Composable () -> Unit = {
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+        val ready = preparedValue ?: return@Box
+        val annotated = ready.annotated
+        if (columns == 2 && annotated.isNotEmpty()) {
+            val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
+            Row(
+                Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                horizontalArrangement = Arrangement.spacedBy(28.dp),
+            ) {
+                Text(
+                    annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style,
+                    overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
+                    onRequestSelection = { fastSelectionMode = true },
+                )
+                Text(
+                    annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style,
+                    overflow = TextOverflow.Clip, selectionMode = fastSelectionMode,
+                    onRequestSelection = { fastSelectionMode = true },
+                )
+            }
+        } else if (annotated.isNotEmpty()) {
+            Text(
+                annotated,
+                Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                style = style,
+                overflow = TextOverflow.Clip,
+                selectionMode = fastSelectionMode,
+                onRequestSelection = { fastSelectionMode = true },
+            )
         }
+        }
+    }
 
     Box(
         Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; heightPx = it.height }.then(semantics).then(gestures),
         contentAlignment = Alignment.TopCenter,
     ) {
-        SelectionContainer(state = selectionState) {
-            Box(
-                Modifier.fillMaxSize(),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-            val ready = preparedValue ?: return@Box
-            val annotated = ready.annotated
-            if (columns == 2 && annotated.isNotEmpty()) {
-                val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
-                Row(
-                    Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
-                ) {
-                    Text(annotated.subSequence(0, firstEnd), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
-                    Text(annotated.subSequence(firstEnd, annotated.length), Modifier.weight(1f).fillMaxHeight(), style = style, overflow = TextOverflow.Clip)
-                }
-            } else if (annotated.isNotEmpty()) {
-                Text(
-                    annotated,
-                    Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
-                    style = style,
-                    overflow = TextOverflow.Clip,
-                )
-            }
-            }
+        if (fastSelectionMode) {
+            SelectionContainer(state = selectionState) { pageContent() }
+        } else {
+            pageContent()
         }
     }
 }
@@ -685,8 +701,12 @@ private fun ContinuousReaderPage(
         )
     }
     val selectionState = rememberSelectionState()
+    var fastSelectionMode by remember(start) { mutableStateOf(false) }
+    var sawFastSelection by remember(start) { mutableStateOf(false) }
     LaunchedEffect(selectionState.selectedTexts) {
         val range = ReaderSelectionController.fromSelectedTexts(selectionState.selectedTexts)
+        if (range != null) sawFastSelection = true
+        else if (sawFastSelection) { fastSelectionMode = false; sawFastSelection = false }
         onSelection(range?.let { SelectionPayload(it) { selectionState.clear() } })
     }
     val semantics = Modifier.readerAccessibilityActions(onPrevious, onNext, onToggleControls, onBookmark,
@@ -711,6 +731,8 @@ private fun ContinuousReaderPage(
                 onBookmark = onBookmark,
                 onAnyTouch = { if (state.autoScrolling) actions.onSettingsChanged(settings.copy(autoScrollEnabled = false)) },
                 onScrollSettled = { settleEvents.tryEmit(Unit) },
+                selectionMode = fastSelectionMode,
+                onRequestSelection = { fastSelectionMode = true },
                 onTextLayout = { layoutResult = it },
             )
             if (loading && display.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -765,68 +787,144 @@ private fun Modifier.readerGestures(
     onNext: () -> Unit,
     onToggleControls: () -> Unit,
     onBrightnessDelta: (Float) -> Unit,
+    onResizeFont: (Float) -> Unit,
     onBookmark: () -> Unit,
     onAnyTouch: () -> Unit = {},
 ): Modifier = pointerInput(settings, widthPx, heightPx, systemLeftInsetPx, systemRightInsetPx) {
-    val swipe = 52.dp.toPx()
-    val tapSlop = 14.dp.toPx()
-    var lastCenterTapAt = 0L
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        onAnyTouch()
-        var last = down
-        var consumedByChild = down.isConsumed
-        var maxPointers = 1
-        do {
-            val event = awaitPointerEvent(PointerEventPass.Final)
-            maxPointers = maxOf(maxPointers, event.changes.size)
-            if (event.changes.any { it.isConsumed }) consumedByChild = true
-            event.changes.firstOrNull { it.id == down.id }?.let { last = it }
-        } while (last.pressed)
-        if (maxPointers > 1) return@awaitEachGesture
-        val delta = last.position - down.position
-        val duration = last.uptimeMillis - down.uptimeMillis
-        val edgeGuard = 8.dp.toPx()
-        // SelectionContainer consumes the pointer stream even for a short tap. Preserve consumed
-        // drags/selection, but allow a completed short tap to reach the reader's paging/control zones.
-        if (!consumedByChild && settings.brightnessGestureEnabled && widthPx > 0 && down.position.x >= systemLeftInsetPx + edgeGuard && down.position.x <= systemLeftInsetPx + widthPx * 0.14f && abs(delta.y) > abs(delta.x) * 1.35f && abs(delta.y) >= swipe) {
-            onBrightnessDelta((-delta.y / heightPx.coerceAtLeast(1).toFloat()) * 0.8f); return@awaitEachGesture
-        }
-        if (!consumedByChild && settings.swipePagingEnabled && down.position.x > systemLeftInsetPx + edgeGuard && down.position.x < widthPx - systemRightInsetPx - edgeGuard && abs(delta.x) >= swipe && abs(delta.x) > abs(delta.y) * 1.25f) {
-            var forward = delta.x < 0
-            if (settings.reversePagingGestures) forward = !forward
-            if (forward) onNext() else onPrevious()
-            return@awaitEachGesture
-        }
-        if (duration <= 360 && delta.getDistance() <= tapSlop && widthPx > 0) {
-            if (down.position.x <= systemLeftInsetPx + edgeGuard || down.position.x >= widthPx - systemRightInsetPx - edgeGuard) return@awaitEachGesture
-            val edge = when (settings.tapZonePreset) {
-                ReaderTapZonePreset.BALANCED, ReaderTapZonePreset.CUSTOM -> widthPx * settings.tapZoneEdgeFraction
-                ReaderTapZonePreset.RIGHT_HANDED -> widthPx * 0.22f
-                ReaderTapZonePreset.LEFT_HANDED -> widthPx * 0.32f
+    coroutineScope {
+        val swipe = 52.dp.toPx()
+        val tapSlop = 14.dp.toPx()
+        var lastCenterTapAt = 0L
+        var pendingCenterTap: Job? = null
+
+        fun dispatch(action: ReaderGestureAction) {
+            when (action) {
+                ReaderGestureAction.CONTROLS -> onToggleControls()
+                ReaderGestureAction.BOOKMARK -> onBookmark()
+                ReaderGestureAction.NEXT -> onNext()
+                ReaderGestureAction.PREVIOUS -> onPrevious()
+                ReaderGestureAction.NONE -> Unit
             }
-            when {
-                down.position.x < edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onNext() else onPrevious()
-                down.position.x > widthPx - edge && settings.tapPagingEnabled -> if (settings.reversePagingGestures) onPrevious() else onNext()
-                else -> {
-                    fun dispatch(action: ReaderGestureAction) {
-                        when (action) {
-                            ReaderGestureAction.CONTROLS -> onToggleControls()
-                            ReaderGestureAction.BOOKMARK -> onBookmark()
-                            ReaderGestureAction.NEXT -> onNext()
-                            ReaderGestureAction.PREVIOUS -> onPrevious()
-                            ReaderGestureAction.NONE -> Unit
-                        }
+        }
+        fun cancelPendingCenterTap() {
+            pendingCenterTap?.cancel()
+            pendingCenterTap = null
+            lastCenterTapAt = 0L
+        }
+
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            ReaderInteractionRuntime.pagedGestureDowns += 1L
+            onAnyTouch()
+            var last = down
+            var consumedByChild = down.isConsumed
+            var maxPointers = 1
+            var initialPinchDistance: Float? = null
+            var latestPinchDistance: Float? = null
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Final)
+                maxPointers = maxOf(maxPointers, event.changes.size)
+                if (event.changes.size >= 2) {
+                    val first = event.changes[0].position
+                    val second = event.changes[1].position
+                    val distance = hypot(
+                        (first.x - second.x).toDouble(),
+                        (first.y - second.y).toDouble(),
+                    ).toFloat()
+                    if (distance > 0f) {
+                        if (initialPinchDistance == null) initialPinchDistance = distance
+                        latestPinchDistance = distance
                     }
-                    val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS
-                    val doubleAction = if (settings.advancedGestureCustomizationEnabled) settings.doubleTapAction else if (settings.doubleTapBookmarkEnabled) ReaderGestureAction.BOOKMARK else ReaderGestureAction.NONE
-                    val tapAt = last.uptimeMillis
-                    if (doubleAction != ReaderGestureAction.NONE && lastCenterTapAt > 0L && tapAt - lastCenterTapAt in 40L..320L) {
-                        lastCenterTapAt = 0L
-                        dispatch(doubleAction)
-                    } else {
-                        lastCenterTapAt = tapAt
-                        dispatch(centerAction)
+                }
+                if (event.changes.any { it.isConsumed }) consumedByChild = true
+                event.changes.firstOrNull { it.id == down.id }?.let { last = it }
+            } while (last.pressed)
+            if (maxPointers > 1) {
+                cancelPendingCenterTap()
+                if (settings.pinchFontEnabled) {
+                    val start = initialPinchDistance
+                    val end = latestPinchDistance
+                    if (start != null && end != null && start > 0f) {
+                        val zoom = end / start
+                        if (abs(zoom - 1f) >= 0.04f) onResizeFont(zoom)
+                    }
+                }
+                return@awaitEachGesture
+            }
+
+            val delta = last.position - down.position
+            val duration = last.uptimeMillis - down.uptimeMillis
+            ReaderInteractionRuntime.lastPagedGestureDurationMs = duration
+            ReaderInteractionRuntime.lastPagedGestureDistancePx = delta.getDistance()
+            ReaderInteractionRuntime.lastPagedGestureConsumedByChild = consumedByChild
+            val edgeGuard = 8.dp.toPx()
+            if (!consumedByChild && settings.brightnessGestureEnabled && widthPx > 0 &&
+                down.position.x >= systemLeftInsetPx + edgeGuard &&
+                down.position.x <= systemLeftInsetPx + widthPx * 0.14f &&
+                abs(delta.y) > abs(delta.x) * 1.35f && abs(delta.y) >= swipe
+            ) {
+                cancelPendingCenterTap()
+                onBrightnessDelta((-delta.y / heightPx.coerceAtLeast(1).toFloat()) * 0.8f)
+                return@awaitEachGesture
+            }
+
+            if (settings.swipePagingEnabled && widthPx > 0 &&
+                down.position.x > systemLeftInsetPx + edgeGuard &&
+                down.position.x < widthPx - systemRightInsetPx - edgeGuard &&
+                ReaderGesturePolicy.allowsPageSwipe(consumedByChild, duration, delta.x, delta.y, swipe)
+            ) {
+                cancelPendingCenterTap()
+                var forward = delta.x < 0
+                if (settings.reversePagingGestures) forward = !forward
+                if (forward) onNext() else onPrevious()
+                return@awaitEachGesture
+            }
+
+            if (duration <= 360 && delta.getDistance() <= tapSlop && widthPx > 0) {
+                ReaderInteractionRuntime.pagedTapCandidates += 1L
+                if (down.position.x <= systemLeftInsetPx + edgeGuard ||
+                    down.position.x >= widthPx - systemRightInsetPx - edgeGuard
+                ) return@awaitEachGesture
+                val edge = when (settings.tapZonePreset) {
+                    ReaderTapZonePreset.BALANCED, ReaderTapZonePreset.CUSTOM -> widthPx * settings.tapZoneEdgeFraction
+                    ReaderTapZonePreset.RIGHT_HANDED -> widthPx * 0.22f
+                    ReaderTapZonePreset.LEFT_HANDED -> widthPx * 0.32f
+                }
+                when {
+                    down.position.x < edge && settings.tapPagingEnabled -> {
+                        cancelPendingCenterTap()
+                        if (settings.reversePagingGestures) onNext() else onPrevious()
+                    }
+                    down.position.x > widthPx - edge && settings.tapPagingEnabled -> {
+                        cancelPendingCenterTap()
+                        if (settings.reversePagingGestures) onPrevious() else onNext()
+                    }
+                    else -> {
+                        ReaderInteractionRuntime.pagedCenterDispatches += 1L
+                        val centerAction = if (settings.advancedGestureCustomizationEnabled) settings.centerTapAction else ReaderGestureAction.CONTROLS
+                        val doubleAction = if (settings.advancedGestureCustomizationEnabled) settings.doubleTapAction
+                        else if (settings.doubleTapBookmarkEnabled) ReaderGestureAction.BOOKMARK else ReaderGestureAction.NONE
+                        val tapAt = last.uptimeMillis
+                        if (doubleAction == ReaderGestureAction.NONE) {
+                            cancelPendingCenterTap()
+                            dispatch(centerAction)
+                        } else if (ReaderGesturePolicy.isDoubleTap(lastCenterTapAt, tapAt)) {
+                            pendingCenterTap?.cancel()
+                            pendingCenterTap = null
+                            lastCenterTapAt = 0L
+                            dispatch(doubleAction)
+                        } else {
+                            pendingCenterTap?.cancel()
+                            lastCenterTapAt = tapAt
+                            pendingCenterTap = launch {
+                                delay(330L)
+                                if (lastCenterTapAt == tapAt) {
+                                    lastCenterTapAt = 0L
+                                    pendingCenterTap = null
+                                    dispatch(centerAction)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -858,7 +956,9 @@ private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActi
                 chapter?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) }
             } },
             actions = {
-                TextButton({ actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }) { Text("Aa") }
+                IconButton({ actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }) {
+                    Icon(Icons.Outlined.TextFields, stringResource(R.string.reading_settings))
+                }
                 IconButton({ actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
                 IconButton(onMore) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools)) }
             },
@@ -871,6 +971,7 @@ private fun ReaderMoreMenu(cleanMode: Boolean, actions: JingduActions, onDismiss
     DropdownMenu(true, onDismissRequest = onDismiss) {
         fun close(action: () -> Unit) { onDismiss(); action() }
         DropdownMenuItem({ Text(stringResource(R.string.full_text_search)) }, { close { actions.onOpenPanel(ReaderPanel.SEARCH) } }, leadingIcon = { Icon(Icons.Default.Search, null) })
+        DropdownMenuItem({ Text(stringResource(R.string.bookmarks)) }, { close { actions.onOpenPanel(ReaderPanel.BOOKMARKS) } }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) })
         DropdownMenuItem({ Text(stringResource(R.string.reader_annotations)) }, { close { actions.onOpenPanel(ReaderPanel.ANNOTATIONS) } }, leadingIcon = { Icon(Icons.Outlined.EditNote, null) })
         DropdownMenuItem({ Text(stringResource(R.string.reader_reading_map)) }, { close { actions.onOpenPanel(ReaderPanel.READING_MAP); actions.onEnsureChapters() } }, leadingIcon = { Icon(Icons.Outlined.Map, null) })
         DropdownMenuItem({ Text(stringResource(R.string.reader_reading_history)) }, { close { actions.onOpenPanel(ReaderPanel.READING_HISTORY) } }, leadingIcon = { Icon(Icons.Outlined.CalendarMonth, null) })
@@ -897,7 +998,7 @@ private fun ReaderBottomBar(
     canLocationForward: Boolean,
     onLocationBack: () -> Unit,
     onLocationForward: () -> Unit,
-    onOpenQuick: () -> Unit,
+    onBookmarks: () -> Unit,
     onTts: () -> Unit,
     onAutoPage: () -> Unit,
     onFractionChange: (Float) -> Unit,
@@ -913,7 +1014,7 @@ private fun ReaderBottomBar(
             Slider(fraction, onFractionChange, onValueChangeFinished = onFractionCommit, modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressDescription })
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
-                TextButton(onOpenQuick) { Text("Aa") }
+                IconButton(onBookmarks) { Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks)) }
                 IconButton(onAutoPage) { Icon(if (autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (autoPaging) R.string.stop_auto_page else R.string.start_auto_page)) }
                 IconButton(onTts) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud)) }
                 IconButton(onLocationForward, enabled = canLocationForward) { Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.reader_location_forward)) }
@@ -991,7 +1092,7 @@ private fun ReaderReadingStatus(state: AppUiState, chapterIndex: Int, color: Col
     val bookProgress = if (state.length <= 0) 0 else ((state.position.toDouble() / state.length.toDouble()) * 100).roundToInt().coerceIn(0, 100)
     val remaining = stats.remainingMinutes(state.position, state.length)
     val pieces = buildList {
-        chapter?.title?.take(18)?.let(::add)
+        chapter?.title?.let { ReaderTextPresentation.chapterTitle(it, state.settings).take(18) }?.let(::add)
         chapterProgress?.let { add(resources.getString(R.string.reader_chapter_progress_value, it)) }
         add(resources.getString(R.string.reader_book_progress_value, bookProgress))
         remaining?.let { add(resources.getString(R.string.reader_book_remaining, it)) }

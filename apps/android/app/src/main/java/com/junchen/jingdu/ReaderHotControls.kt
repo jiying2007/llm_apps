@@ -1,34 +1,19 @@
 package com.junchen.jingdu
 
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.text.TextPaint
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /**
- * Hot-path overload for the reader bottom scrubber. The signature intentionally matches the
- * ReaderScreen call that does not provide valueRange/steps, so advanced settings continue to use
- * Material3 Slider while page/continuous position updates use the fixed-cost Canvas implementation.
+ * Fixed-cost progress scrubber used on the frame-critical reader bottom bar. Advanced settings keep
+ * the normal Material slider overload; only this exact signature resolves here.
  */
 @Composable
 internal fun Slider(
@@ -47,9 +32,9 @@ internal fun Slider(
 }
 
 /**
- * ReaderTopBar is updated on every reader-state publication. Keep the existing navigation/action
- * children and their accessibility semantics, but avoid Material's multi-pass TopAppBar measure
- * tree in the frame-critical reader composition.
+ * Lightweight reader top-bar geometry without replacing Text with Canvas. Real Material Text keeps
+ * selectable font scaling, semantics and accessibility while this container avoids a deep app-bar
+ * measure tree on page turns.
  */
 @Composable
 internal fun CenterAlignedTopAppBar(
@@ -65,90 +50,5 @@ internal fun CenterAlignedTopAppBar(
             contentAlignment = Alignment.Center,
         ) { title() }
         Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = actions)
-    }
-}
-
-/** Exact overload used by ReaderReadingStatus: one-line status text stays on the Canvas hot path. */
-@Composable
-internal fun Text(
-    text: String,
-    modifier: Modifier,
-    style: TextStyle,
-    color: Color,
-    maxLines: Int,
-) {
-    if (maxLines != 1) {
-        androidx.compose.material3.Text(text = text, modifier = modifier, style = style, color = color, maxLines = maxLines)
-    } else {
-        ReaderHotLine(text, modifier, style, color)
-    }
-}
-
-/** One-line reader-title overload. Multiline callers retain Material text/layout semantics. */
-@Composable
-internal fun Text(
-    text: String,
-    maxLines: Int,
-    overflow: TextOverflow,
-) {
-    if (maxLines != 1) {
-        androidx.compose.material3.Text(text = text, maxLines = maxLines, overflow = overflow)
-    } else {
-        ReaderHotLine(text, Modifier, MaterialTheme.typography.titleMedium, MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-/** One-line chapter-label overload used by the reader top bar. */
-@Composable
-internal fun Text(
-    text: String,
-    maxLines: Int,
-    overflow: TextOverflow,
-    style: TextStyle,
-) {
-    if (maxLines != 1) {
-        androidx.compose.material3.Text(text = text, maxLines = maxLines, overflow = overflow, style = style)
-    } else {
-        ReaderHotLine(text, Modifier, style, MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-/** One-line chapter-label overload used by the reader bottom bar. */
-@Composable
-internal fun Text(
-    text: String,
-    modifier: Modifier,
-    maxLines: Int,
-    overflow: TextOverflow,
-    style: TextStyle,
-) {
-    if (maxLines != 1) {
-        androidx.compose.material3.Text(text = text, modifier = modifier, maxLines = maxLines, overflow = overflow, style = style)
-    } else {
-        ReaderHotLine(text, modifier, style, MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun ReaderHotLine(
-    text: String,
-    modifier: Modifier,
-    style: TextStyle,
-    color: Color,
-) {
-    val density = LocalDensity.current
-    val paint = remember(color, style.fontSize, style.fontWeight, density.density, density.fontScale) {
-        val size = if (style.fontSize == TextUnit.Unspecified || style.fontSize.value <= 0f) 12.sp else style.fontSize
-        TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
-            this.color = color.toArgb()
-            textSize = with(density) { size.toPx() }
-            typeface = Typeface.create(
-                Typeface.SANS_SERIF,
-                if ((style.fontWeight ?: FontWeight.Normal) >= FontWeight.SemiBold) Typeface.BOLD else Typeface.NORMAL,
-            )
-        }
-    }
-    Canvas(modifier.fillMaxWidth().height(22.dp)) {
-        if (text.isNotEmpty()) drawReaderText(text, paint, 0f, size.height / 2f, size.width, centered = true)
     }
 }

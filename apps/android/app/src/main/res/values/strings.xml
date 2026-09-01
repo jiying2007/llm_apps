@@ -200,4 +200,5 @@
     <string name="noise_reason_promo">Promotion</string>
     <string name="noise_reason_repeated">Repeated line</string>
     <string name="noise_reason_promo_repeated">Promotion + repeated</string>
+    <string name="library_more_actions">More library actions</string>
 </resources>

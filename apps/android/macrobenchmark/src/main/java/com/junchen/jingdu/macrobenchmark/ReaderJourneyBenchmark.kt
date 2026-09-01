@@ -90,11 +90,19 @@ class ReaderJourneyBenchmark {
             ensureTopControlsVisible()
             requireChaptersClick()
             device.waitForIdle()
+            check(device.swipe(
+                device.displayWidth / 2,
+                (device.displayHeight * 0.82).toInt(),
+                device.displayWidth / 2,
+                (device.displayHeight * 0.46).toInt(),
+                18,
+            )) { "Reader chapters list swipe was not injected" }
+            device.waitForIdle()
             // BACK closes the hot panel. Reader controls may legitimately have auto-hidden while the
             // panel was open, so prove return to the reader surface by restoring them with a real tap.
             device.pressBack()
             waitForReaderSurfaceAfterBack("chapters")
-            requireClick(By.text("Aa"), "quick reading settings control")
+            requireReadingSettingsClick()
             device.waitForIdle()
             device.pressBack()
             waitForReaderSurfaceAfterBack("quick settings")
@@ -281,18 +289,35 @@ class ReaderJourneyBenchmark {
         }
     }
 
+    private fun MacrobenchmarkScope.readerTopControlsVisible(): Boolean =
+        visibleObject(By.desc("Reading settings")) != null ||
+            visibleObject(By.desc("Chapters")) != null ||
+            visibleObject(By.textContains("Benchmark Novel")) != null
+
+    private fun MacrobenchmarkScope.waitForTopControlsVisible(timeoutMs: Long): Boolean {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        while (System.nanoTime() < deadline) {
+            if (readerTopControlsVisible()) return true
+            Thread.sleep(INPUT_POLL_MS)
+        }
+        return readerTopControlsVisible()
+    }
+
     private fun MacrobenchmarkScope.ensureTopControlsVisible() {
-        if (visibleObject(By.text("Aa")) != null) return
+        if (readerTopControlsVisible()) return
         val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
         repeat(2) {
             for ((x, y) in taps) {
                 val px = (device.displayWidth * x).toInt()
                 val py = (device.displayHeight * y).toInt()
                 check(device.click(px, py)) { "Reader top-control tap was not injected through UiDevice" }
-                if (device.wait(Until.hasObject(By.text("Aa")), 1_100) && visibleObject(By.text("Aa")) != null) return
+                if (waitForTopControlsVisible(1_100L)) return
             }
         }
-        error("Reader top reading controls did not become visibly on-screen after real UiDevice tap input")
+        error(
+            "Reader top reading controls did not become visibly on-screen after real UiDevice tap input; " +
+                "runtime=${readerInputState()}",
+        )
     }
 
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
@@ -302,33 +327,49 @@ class ReaderJourneyBenchmark {
         check(device.click(bounds.centerX(), bounds.centerY())) { "Reader $label tap was not injected" }
     }
 
+    private fun MacrobenchmarkScope.visibleTopActionNodes(): List<UiObject2> {
+        val title = visibleObject(By.textContains("Benchmark Novel")) ?: return emptyList()
+        val titleBounds = runCatching { title.visibleBounds }.getOrNull() ?: return emptyList()
+        return device.findObjects(By.clickable(true))
+            .asSequence()
+            .filter { node -> runCatching { isOnScreen(node) }.getOrDefault(false) }
+            .filter { node ->
+                val bounds = runCatching { node.visibleBounds }.getOrNull() ?: return@filter false
+                bounds.centerX() > titleBounds.centerX() &&
+                    abs(bounds.centerY() - titleBounds.centerY()) <= maxOf(titleBounds.height(), bounds.height())
+            }
+            .sortedBy { node -> runCatching { node.visibleBounds.centerX() }.getOrDefault(Int.MAX_VALUE) }
+            .toList()
+    }
+
+    private fun MacrobenchmarkScope.clickNode(target: UiObject2, label: String) {
+        val bounds = runCatching { target.visibleBounds }.getOrNull() ?: error("Reader $label became stale")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader $label tap was not injected" }
+    }
+
+    private fun MacrobenchmarkScope.requireReadingSettingsClick() {
+        visibleObject(By.desc("Reading settings"))?.let { target ->
+            clickNode(target, "quick reading settings control")
+            return
+        }
+        val target = visibleTopActionNodes().firstOrNull()
+            ?: error("Reader visible quick reading settings control missing from top action row")
+        clickNode(target, "quick reading settings control")
+    }
+
     private fun MacrobenchmarkScope.requireChaptersClick() {
         visibleObject(By.desc("Chapters"))?.let { target ->
-            val bounds = runCatching { target.visibleBounds }.getOrNull()
-            if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
+            clickNode(target, "chapters control")
+            return
         }
         visibleObject(By.descContains("Chapter"))?.let { target ->
-            val bounds = runCatching { target.visibleBounds }.getOrNull()
-            if (bounds != null && device.click(bounds.centerX(), bounds.centerY())) return
+            clickNode(target, "chapters control")
+            return
         }
-
-        val aa = visibleObject(By.text("Aa")) ?: error("Reader visible top reading controls missing")
-        val anchor = runCatching { aa.visibleBounds }.getOrNull() ?: error("Reader Aa control became stale")
-        val candidate = device.findObjects(By.clickable(true))
-            .asSequence()
-            .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }
-            .filter { bounds ->
-                bounds.width() > 0 && bounds.height() > 0 &&
-                    bounds.right > 0 && bounds.bottom > 0 &&
-                    bounds.left < device.displayWidth && bounds.top < device.displayHeight
-            }
-            .filter { bounds ->
-                bounds.centerX() > anchor.centerX() &&
-                    abs(bounds.centerY() - anchor.centerY()) <= maxOf(anchor.height(), bounds.height())
-            }
-            .minByOrNull { bounds -> bounds.centerX() - anchor.centerX() }
-            ?: error("Reader visible chapters control missing beside Aa")
-        check(device.click(candidate.centerX(), candidate.centerY())) { "Reader chapters tap was not injected" }
+        val actions = visibleTopActionNodes()
+        val target = actions.getOrNull(1)
+            ?: error("Reader visible chapters control missing from top action row: actions=${actions.size}")
+        clickNode(target, "chapters control")
     }
 
     private fun frameMetrics(): List<Metric> = listOf(FrameTimingMetric())

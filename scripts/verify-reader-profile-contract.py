@@ -131,6 +131,8 @@ assert 'sort -u > "$RESULT_ROOT/profile/startup-prof.txt"' in runner
 last_slo_exit = runner.rfind('exit "$SLO_STATUS"')
 assert last_slo_exit > runner.index(profile_call), "red performance gate must still fail after profiles are emitted"
 assert 'GPU_MODE="${JINGDU_EMULATOR_GPU_MODE:-auto}"' in runner, "hosted emulator must use the recommended auto graphics mode by default"
+assert 'settings put secure immersive_mode_confirmations confirmed' in runner, "hosted emulator must suppress system immersive onboarding before Reader input"
+assert 'settings get secure immersive_mode_confirmations' in runner and 'immersive_confirmation' in runner, "immersive onboarding suppression must be verified by read-back"
 
 # Hosted instrumentation must run only the authority for each stage. This prevents unrelated
 # Startup/Profile tests from turning the frame gate into a mixed-suite infrastructure result.

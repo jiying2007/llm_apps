@@ -64,7 +64,7 @@ class BaselineProfileGenerator {
             // next while still exercising the real launch, library-card tap, Reader and panel UI.
             restartProfileReader("paged")
             ensureTopControlsVisible()
-            requireClick(By.text("Aa"), "quick reading settings control")
+            requireReadingSettingsClick()
             device.waitForIdle()
             device.pressBack()
             device.waitForIdle()
@@ -174,18 +174,26 @@ class BaselineProfileGenerator {
                     bounds.left < device.displayWidth && bounds.top < device.displayHeight
             }
 
+    private fun MacrobenchmarkScope.readingSettingsBounds(): android.graphics.Rect? =
+        visibleBounds(By.desc("Reading settings")) ?: visibleBounds(By.text("Aa"))
+
     private fun MacrobenchmarkScope.ensureTopControlsVisible() {
-        if (visibleBounds(By.text("Aa")) != null) return
+        if (readingSettingsBounds() != null) return
         val taps = listOf(0.50f to 0.52f, 0.50f to 0.68f, 0.50f to 0.36f)
         repeat(2) {
             for ((x, y) in taps) {
                 check(device.click((device.displayWidth * x).toInt(), (device.displayHeight * y).toInt())) {
                     "Reader baseline top-control tap was not injected"
                 }
-                if (device.wait(Until.hasObject(By.text("Aa")), 900) && visibleBounds(By.text("Aa")) != null) return
+                if (device.wait(Until.hasObject(By.desc("Reading settings")), 900) && readingSettingsBounds() != null) return
             }
         }
         error("Reader baseline top reading controls did not become visibly on-screen")
+    }
+
+    private fun MacrobenchmarkScope.requireReadingSettingsClick() {
+        val bounds = readingSettingsBounds() ?: error("Reader baseline quick reading settings control missing")
+        check(device.click(bounds.centerX(), bounds.centerY())) { "Reader baseline quick reading settings tap was not injected" }
     }
 
     private fun MacrobenchmarkScope.requireClick(selector: BySelector, label: String) {
@@ -202,7 +210,7 @@ class BaselineProfileGenerator {
             if (device.click(bounds.centerX(), bounds.centerY())) return
         }
 
-        val anchor = visibleBounds(By.text("Aa")) ?: error("Reader baseline visible top Aa control missing")
+        val anchor = readingSettingsBounds() ?: error("Reader baseline visible top settings control missing")
         val candidate = device.findObjects(By.clickable(true))
             .asSequence()
             .mapNotNull { node -> runCatching { node.visibleBounds }.getOrNull() }

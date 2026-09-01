@@ -2,6 +2,8 @@
 package com.junchen.jingdu
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -57,9 +59,11 @@ internal fun ReaderSettingsScreen(state: AppUiState, actions: JingduActions) {
 
 @Composable
 private fun SettingsList(content: @Composable ColumnScope.() -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp, 12.dp, 20.dp, 36.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Column(verticalArrangement = Arrangement.spacedBy(16.dp), content = content) }
-    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 36.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        content = content,
+    )
 }
 
 @Composable

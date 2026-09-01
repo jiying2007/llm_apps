@@ -235,6 +235,12 @@ if (( booted == 0 )); then
 fi
 
 "$ADB" shell input keyevent 82 || true
+"$ADB" shell settings put secure immersive_mode_confirmations confirmed
+immersive_confirmation="$("$ADB" shell settings get secure immersive_mode_confirmations | tr -d '\r')"
+if [[ "$immersive_confirmation" != "confirmed" ]]; then
+  echo "Android immersive-mode confirmation was not suppressed: ${immersive_confirmation:-<empty>}" >&2
+  exit 1
+fi
 "$ADB" shell settings put global window_animation_scale 0
 "$ADB" shell settings put global transition_animation_scale 0
 "$ADB" shell settings put global animator_duration_scale 0

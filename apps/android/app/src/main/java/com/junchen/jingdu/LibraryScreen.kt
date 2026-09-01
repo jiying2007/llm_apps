@@ -49,6 +49,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
     var filterName by rememberSaveable { mutableStateOf("ALL") }
     var sortName by rememberSaveable { mutableStateOf(LibrarySort.RECENT.name) }
     var sortMenu by remember { mutableStateOf(false) }
+    var libraryToolsMenu by remember { mutableStateOf(false) }
     var importPreview by remember { mutableStateOf<ImportPreview?>(null) }
     var previewBusy by remember { mutableStateOf(false) }
     var previewBookId by remember { mutableStateOf<String?>(null) }
@@ -217,17 +218,20 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
         modifier = Modifier.fillMaxSize(),
         topBar = {
             Column(Modifier.fillMaxWidth().statusBarsPaddingCompat().padding(horizontal = 24.dp, vertical = 18.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.app_title), modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-                    if (state.books.isNotEmpty()) TextButton(onClick = actions.onBatchImport) { Text(stringResource(R.string.batch_import)) }
-                }
+                Text(stringResource(R.string.app_title), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
                 Text(stringResource(R.string.library_tagline_terminal), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     AssistChip(onClick = { folderLauncher.launch(null) }, label = { Text(stringResource(R.string.add_folder_library)) }, leadingIcon = { Icon(Icons.Outlined.FolderOpen, null) })
                     AssistChip(onClick = ::startFolderSync, enabled = !syncBusy, label = { Text(stringResource(R.string.sync_folders, folderRoots.size)) }, leadingIcon = { if (syncBusy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Default.Refresh, null) })
-                    if (folderRoots.isNotEmpty()) AssistChip(onClick = { manageFolders = true }, label = { Text(stringResource(R.string.manage_folder_library, folderRoots.size)) }, leadingIcon = { Icon(Icons.Default.Folder, null) })
-                    AssistChip(onClick = { runBatch(false) }, enabled = !batchBusy && state.books.isNotEmpty(), label = { Text(stringResource(R.string.batch_optimize)) }, leadingIcon = { Icon(Icons.Default.AutoFixHigh, null) })
+                    Box {
+                        AssistChip(onClick = { libraryToolsMenu = true }, label = { Text(stringResource(R.string.library_more_actions)) }, leadingIcon = { Icon(Icons.Default.MoreVert, null) })
+                        DropdownMenu(expanded = libraryToolsMenu, onDismissRequest = { libraryToolsMenu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.batch_import)) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.MenuBook, null) }, onClick = { libraryToolsMenu = false; actions.onBatchImport() })
+                            if (folderRoots.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.manage_folder_library, folderRoots.size)) }, leadingIcon = { Icon(Icons.Default.Folder, null) }, onClick = { libraryToolsMenu = false; manageFolders = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.batch_optimize)) }, enabled = !batchBusy && state.books.isNotEmpty(), leadingIcon = { Icon(Icons.Default.AutoFixHigh, null) }, onClick = { libraryToolsMenu = false; runBatch(false) })
+                        }
+                    }
                 }
                 if (state.books.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))

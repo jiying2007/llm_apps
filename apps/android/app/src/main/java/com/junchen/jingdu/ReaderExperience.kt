@@ -15,6 +15,23 @@ internal object ReaderInteractionRuntime {
     @Volatile var volumeEligibilityChecks: Long = 0L
     @Volatile var lastVolumeForegroundTtsPlaying: Boolean = false
     @Volatile var lastVolumeEligible: Boolean = false
+    @Volatile var controlsVisible: Boolean = true
+    @Volatile var pagedGestureDowns: Long = 0L
+    @Volatile var pagedTapCandidates: Long = 0L
+    @Volatile var pagedCenterDispatches: Long = 0L
+    @Volatile var lastPagedGestureDurationMs: Long = -1L
+    @Volatile var lastPagedGestureDistancePx: Float = -1f
+    @Volatile var lastPagedGestureConsumedByChild: Boolean = false
+
+    fun resetPagedGestureDiagnostics() {
+        controlsVisible = true
+        pagedGestureDowns = 0L
+        pagedTapCandidates = 0L
+        pagedCenterDispatches = 0L
+        lastPagedGestureDurationMs = -1L
+        lastPagedGestureDistancePx = -1f
+        lastPagedGestureConsumedByChild = false
+    }
 
     fun resetVolumeDiagnostics() {
         volumeEligibilityChecks = 0L
