@@ -1,0 +1,100 @@
+name: Reader chapter semantics P99 fix
+
+on:
+  push:
+    branches:
+      - fix/reader-chapter-first-show-p99
+    paths:
+      - .github/workflows/reader-chapter-semantics-p99-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/reader-chapter-first-show-p99
+          fetch-depth: 0
+      - name: Collapse duplicate chapter row semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          panel = Path('apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt')
+          text = panel.read_text()
+          import_anchor = 'import androidx.compose.ui.res.stringResource\n'
+          imports = import_anchor + 'import androidx.compose.ui.semantics.CustomAccessibilityAction\nimport androidx.compose.ui.semantics.clearAndSetSemantics\nimport androidx.compose.ui.semantics.customActions\nimport androidx.compose.ui.semantics.semantics\n'
+          assert text.count(import_anchor) == 1, 'semantics import anchor mismatch'
+          text = text.replace(import_anchor, imports)
+
+          percent_anchor = '''                        val percent = if (state.length <= 0L) 0 else {
+                            ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
+                        }
+'''
+          percent_replacement = percent_anchor + '''                        val hideActionLabel = "${stringResource(R.string.toc_hide_heading)}: $displayTitle"
+'''
+          assert text.count(percent_anchor) == 1, 'hide action label anchor mismatch'
+          text = text.replace(percent_anchor, percent_replacement)
+
+          click_anchor = '''                            rowModifier
+                                .clickable { actions.onJump(chapter.offset) }
+                                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),
+'''
+          click_replacement = '''                            rowModifier
+                                .clickable { actions.onJump(chapter.offset) }
+                                .semantics(mergeDescendants = true) {
+                                    customActions = listOf(
+                                        CustomAccessibilityAction(hideActionLabel) {
+                                            hide(index)
+                                            true
+                                        },
+                                    )
+                                }
+                                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),
+'''
+          assert text.count(click_anchor) == 1, 'row semantics anchor mismatch'
+          text = text.replace(click_anchor, click_replacement)
+
+          icon_anchor = '''                            IconButton({ hide(index) }) {
+                                Icon(
+                                    Icons.Outlined.DeleteOutline,
+                                    "${stringResource(R.string.toc_hide_heading)}: ${displayTitle}",
+                                )
+                            }
+'''
+          icon_replacement = '''                            Box(Modifier.clearAndSetSemantics {}) {
+                                IconButton({ hide(index) }) {
+                                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                                }
+                            }
+'''
+          assert text.count(icon_anchor) == 1, 'delete icon semantics anchor mismatch'
+          text = text.replace(icon_anchor, icon_replacement)
+          panel.write_text(text)
+
+          contract = Path('scripts/verify-reader.sh')
+          text = contract.read_text()
+          anchor = 'forbid_literal "$smart_panel" \'else MaterialTheme.colorScheme.surface,\' \'redundant unselected chapter row surface draw\'\n'
+          addition = anchor + 'require_literal "$smart_panel" \'CustomAccessibilityAction(hideActionLabel)\' \'chapter hide custom accessibility action\'\nrequire_literal "$smart_panel" \'Box(Modifier.clearAndSetSemantics {})\' \'deduplicated chapter delete semantics\'\nforbid_literal "$smart_panel" \'"${stringResource(R.string.toc_hide_heading)}: ${displayTitle}"\' \'nested delete icon content description\'\n'
+          assert text.count(anchor) == 1, 'semantics contract anchor mismatch'
+          contract.write_text(text.replace(anchor, addition))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+          python3 scripts/verify-reader-profile-contract.py
+          python3 scripts/test-android-performance-slo.py
+      - name: Commit fix and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-chapter-semantics-p99-fix.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/ReaderSmartChaptersPanel.kt scripts/verify-reader.sh
+          git commit -m 'perf: collapse chapter row accessibility nodes'
+          git push origin HEAD:fix/reader-chapter-first-show-p99
