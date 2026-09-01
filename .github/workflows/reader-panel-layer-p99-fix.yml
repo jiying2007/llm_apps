@@ -1,0 +1,64 @@
+name: Reader panel layer P99 fix
+
+on:
+  push:
+    branches: [ux/reader-comprehensive]
+    paths: [.github/workflows/reader-panel-layer-p99-fix.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ux/reader-comprehensive
+          fetch-depth: 0
+      - name: Remove persistent full-screen panel graphics layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          app = Path('apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt')
+          text = app.read_text()
+          old = """                    placeable.placeWithLayer(
+                        x = 0,
+                        y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
+                    ) { alpha = if (visible) 1f else 0f }
+"""
+          new = """                    placeable.place(
+                        x = 0,
+                        y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
+                    )
+"""
+          assert text.count(old) == 1, 'persistent panel placeWithLayer anchor mismatch'
+          text = text.replace(old, new)
+          old_comment = ' * owns the cached flat scrim; this shell keeps outside-tap dismissal and the live panel surface so\n'
+          if old_comment in text:
+              text = text.replace(old_comment, ' * owns the cached flat scrim; this shell keeps outside-tap dismissal and the live panel surface so\n')
+          app.write_text(text)
+
+          contract = Path('scripts/verify-reader.sh')
+          text = contract.read_text()
+          old = "require_literal \"$app\" 'placeable.placeWithLayer(' 'hot-panel hit-test placement'\n"
+          new = "require_literal \"$app\" 'placeable.place(' 'hot-panel hit-test placement without full-screen graphics layer'\nforbid_literal \"$app\" 'placeable.placeWithLayer(' 'persistent full-screen hot-panel graphics layer'\n"
+          assert text.count(old) == 1, 'persistent panel placement contract anchor mismatch'
+          contract.write_text(text.replace(old, new))
+          PY
+          git diff --check
+          bash scripts/verify-reader.sh
+          python3 scripts/verify-reader-profile-contract.py
+          python3 scripts/test-android-performance-slo.py
+      - name: Commit fix and self-remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reader-panel-layer-p99-fix.yml
+          git add apps/android/app/src/main/java/com/junchen/jingdu/JingduApp.kt scripts/verify-reader.sh
+          git commit -m 'perf: avoid full-screen hot-panel graphics layers'
+          git push origin HEAD:ux/reader-comprehensive
