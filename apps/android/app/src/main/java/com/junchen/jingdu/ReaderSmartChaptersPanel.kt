@@ -20,6 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -261,6 +265,7 @@ internal fun ReaderSmartChaptersPanel(
                         val percent = if (state.length <= 0L) 0 else {
                             ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
                         }
+                        val hideActionLabel = "${stringResource(R.string.toc_hide_heading)}: $displayTitle"
                         val rowModifier = if (selected) {
                             Modifier.fillMaxWidth().background(
                                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
@@ -272,6 +277,14 @@ internal fun ReaderSmartChaptersPanel(
                         Row(
                             rowModifier
                                 .clickable { actions.onJump(chapter.offset) }
+                                .semantics(mergeDescendants = true) {
+                                    customActions = listOf(
+                                        CustomAccessibilityAction(hideActionLabel) {
+                                            hide(index)
+                                            true
+                                        },
+                                    )
+                                }
                                 .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -290,11 +303,10 @@ internal fun ReaderSmartChaptersPanel(
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            IconButton({ hide(index) }) {
-                                Icon(
-                                    Icons.Outlined.DeleteOutline,
-                                    "${stringResource(R.string.toc_hide_heading)}: ${displayTitle}",
-                                )
+                            Box(Modifier.clearAndSetSemantics {}) {
+                                IconButton({ hide(index) }) {
+                                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                                }
                             }
                         }
                     }
