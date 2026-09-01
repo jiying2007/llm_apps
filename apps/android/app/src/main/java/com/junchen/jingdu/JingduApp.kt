@@ -30,8 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.hideFromAccessibility
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -220,8 +218,8 @@ private fun ReaderHotPanelBackHandler(
 
 /**
  * Hot Quick/Chapters panels stay measured for the Reader session, but all visible content draws
- * live. Visibility is placement-phase only, so hidden panels cannot intercept pointer input and
- * local panel state can never replay stale pixels.
+ * live. Visibility is placement-phase only: hidden panels are physically outside the window, so
+ * they cannot intercept pointer input or be reported as displayed, while local state stays warm.
  */
 @Composable
 private fun PersistentReaderPanelLayer(
@@ -241,8 +239,7 @@ private fun PersistentReaderPanelLayer(
                         y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
                     )
                 }
-            }
-            .semantics { if (panelState.value != target) hideFromAccessibility() },
+            },
     ) { content() }
 }
 

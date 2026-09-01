@@ -224,7 +224,6 @@ require_literal "$app" 'val hotPanelState: State<ReaderPanel?>' 'stable hot pane
 require_literal "$app" 'ReaderHotPanelBackHandler(hotPanelState' 'isolated hot panel BackHandler'
 require_literal "$app" 'PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS, quickPanelState)' 'cached quick panel visibility'
 require_literal "$app" 'PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS, chaptersPanelState)' 'cached chapters panel visibility'
-require_literal "$app" '.semantics { if (panelState.value != target) hideFromAccessibility() }' 'phase-owned hidden panel semantics'
 forbid_literal "$app" 'PersistentReaderPanelLayer(panel ==' 'composition-owned panel visibility'
 require_literal apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewModel.kt 'val hotPanel: StateFlow<ReaderPanel?>' 'hot panel state flow'
 require_literal "$activity" 'readerViewModel.openHotPanel(panel)' 'hot panel publication boundary'
@@ -249,6 +248,8 @@ require_literal "$app" '.layout { measurable, constraints ->' 'placement-phase h
 require_literal "$app" 'placeable.place(' 'hot-panel hit-test placement without full-screen graphics layer'
 forbid_literal "$app" 'placeable.placeWithLayer(' 'persistent full-screen hot-panel graphics layer'
 require_literal "$app" 'y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX' 'offscreen hidden hot-panel hit isolation'
+forbid_literal "$app" 'hideFromAccessibility()' 'dynamic hot-panel accessibility subtree rebuild'
+require_literal apps/android/app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt 'hiddenHotPanelsRemainPhysicallyOffscreen' 'hidden hot-panel offscreen UI verification'
 forbid_literal "$app" 'translationY = if (visible) 0f else READER_PANEL_HIDDEN_OFFSET_PX.toFloat()' 'graphics-only hot-panel hit isolation'
 require_literal "$quick_panel" 'ReaderPanelSurface(onDismiss = actions.onClosePanel)' 'quick panel surface'
 require_literal "$smart_panel" 'ReaderPanelSurface(onDismiss = actions.onClosePanel)' 'chapters panel surface'
@@ -428,7 +429,6 @@ fi
 echo 'Reader prelaunch contract OK: correctness/Media3/Room/Proto/UDF/cache/hot-path/soak/Macrobenchmark/BaselineProfile/RSS gates aligned'
 
 # Interactive hot panels use real controls/lists; only the reader text raster path may use display caching.
-require_literal "$app" 'hideFromAccessibility()' 'supported hidden panel accessibility semantics'
 forbid_literal "$app" 'invisibleToUser()' 'deprecated hidden panel accessibility semantics'
 
 # Reader controls must not drive OS inset animations on every show/hide.
