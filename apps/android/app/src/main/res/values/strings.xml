@@ -214,8 +214,10 @@
     <string name="reader_more_gesture_options">More gesture options</string>
     <string name="reader_paging_path_required">Keep tap or swipe paging enabled so touch page turns always remain reachable.</string>
     <string name="reader_typography_preview">Live preview</string>
-    <string name="reader_typography_preview_sample">Chapter 12 — Night Rain\nThe lamp is quiet. Turn a page and keep reading.</string>
+    <string name="reader_typography_preview_sample">Chapter 12 — Night Rain\n\nThe lamp is quiet. Turn a page and keep reading.</string>
     <string name="reader_text_tools">Text tools</string>
     <string name="reader_more_tools">More tools</string>
     <string name="reader_more_menu_back">Back</string>
+    <string name="reader_toc_edit">Edit chapters</string>
+    <string name="reader_toc_done">Done</string>
 </resources>

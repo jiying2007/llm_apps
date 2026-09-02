@@ -14,6 +14,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -146,22 +148,33 @@ private fun TypographySettings(state: AppUiState, actions: JingduActions) = Sett
 
 @Composable
 private fun TypographyPreview(s: ReaderSettings) {
+    val context = LocalContext.current
+    val family = rememberReaderFontFamily(context, s)
+    val baseStyle = ReaderTypographySpec.from(s).composeTextStyle(readerTextColor(s.palette), family)
+    val paragraphGap = with(LocalDensity.current) { (s.fontSizeSp * s.paragraphSpacingEm).sp.toDp() }
+    val paragraphs = stringResource(R.string.reader_typography_preview_sample).split("\n\n")
     Section(stringResource(R.string.reader_typography_preview)) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            color = readerBackground(s.palette),
+            shadowElevation = 1.dp,
         ) {
-            Text(
-                stringResource(R.string.reader_typography_preview_sample),
-                modifier = Modifier.fillMaxWidth().padding(
+            Column(
+                Modifier.fillMaxWidth().padding(
                     horizontal = s.horizontalPaddingDp.coerceIn(8f, 56f).dp,
-                    vertical = 18.dp,
+                    vertical = s.verticalPaddingDp.coerceIn(4f, 56f).dp,
                 ),
-                fontSize = s.fontSizeSp.sp,
-                lineHeight = (s.fontSizeSp * s.lineHeightMultiplier).sp,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+                verticalArrangement = Arrangement.spacedBy(paragraphGap),
+            ) {
+                paragraphs.forEachIndexed { index, paragraph ->
+                    Text(
+                        paragraph,
+                        style = if (index == 0 && s.emphasizeHeadings) baseStyle.copy(fontWeight = FontWeight.SemiBold) else baseStyle,
+                        maxLines = if (index == 0) 2 else 4,
+                    )
+                }
+            }
         }
     }
 }

@@ -40,7 +40,7 @@ internal fun ReaderPanelText(
             typeface = Typeface.create(Typeface.SANS_SERIF, if (bold) Typeface.BOLD else Typeface.NORMAL)
         }
     }
-    Canvas(modifier) {
+    Canvas(modifier.semantics { contentDescription = text }) {
         val available = (size.width - 4.dp.toPx()).coerceAtLeast(1f)
         val shown = TextUtils.ellipsize(text, paint, available, TextUtils.TruncateAt.END).toString()
         val metrics = paint.fontMetrics
