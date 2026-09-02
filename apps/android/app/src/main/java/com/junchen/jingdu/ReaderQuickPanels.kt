@@ -2,6 +2,8 @@
 package com.junchen.jingdu
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -24,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -76,23 +79,30 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
             }
 
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 QUICK_PALETTES.forEach { palette ->
-                    FilterChip(
-                        selected = s.palette == palette,
-                        onClick = { visual(s.copy(palette = palette)) },
-                        label = { Text(quickPaletteLabel(palette)) },
-                        leadingIcon = {
-                            Box(
-                                Modifier.size(14.dp).background(
-                                    quickPaletteSwatch(palette),
-                                    CircleShape,
-                                ),
-                            )
-                        },
-                    )
+                    val selected = s.palette == palette
+                    val label = quickPaletteLabel(palette)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(
+                            Modifier
+                                .size(42.dp)
+                                .background(quickPaletteSwatch(palette), CircleShape)
+                                .border(
+                                    width = if (selected) 3.dp else 1.dp,
+                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = CircleShape,
+                                )
+                                .clickable { visual(s.copy(palette = palette)) }
+                                .semantics {
+                                    contentDescription = label
+                                    this.selected = selected
+                                },
+                        )
+                        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    }
                 }
             }
 

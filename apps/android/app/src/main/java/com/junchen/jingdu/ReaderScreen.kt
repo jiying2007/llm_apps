@@ -90,12 +90,37 @@ private data class ReaderPreparedPage(
     val annotated: AnnotatedString,
 )
 
+internal object ReaderChromeRuntime {
+    var panelOpen: Boolean = false
+        private set
+    private var wakeRequest: (() -> Unit)? = null
+
+    fun markPanelOpen() {
+        panelOpen = true
+    }
+
+    fun markPanelClosedAndWake() {
+        panelOpen = false
+        wakeRequest?.invoke()
+    }
+
+    fun bindWakeRequest(request: () -> Unit) {
+        wakeRequest = request
+    }
+
+    fun unbindWakeRequest(request: () -> Unit) {
+        if (wakeRequest === request) wakeRequest = null
+        panelOpen = false
+    }
+}
+
 @Composable
 internal fun ReaderScreen(
     state: AppUiState,
     actions: JingduActions,
     snackbar: SnackbarHostState,
     adaptiveLayout: ReaderAdaptiveLayout,
+    panelState: State<ReaderPanel?>,
     canLocationBack: Boolean,
     canLocationForward: Boolean,
     onLocationBack: () -> Unit,
@@ -115,6 +140,10 @@ internal fun ReaderScreen(
     val skim = remember(book.id) { ReaderSkimController(context, book.id) }
     val controlsVisibility = rememberSaveable(book.id) { mutableStateOf(true) }
     var controlsVisible by controlsVisibility
+    var chromeInteractionEpoch by remember { mutableLongStateOf(0L) }
+    var readerContentReady by remember(book.id, settings.readingMode) {
+        mutableStateOf(settings.readingMode != ReaderMode.PAGED)
+    }
     SideEffect { ReaderInteractionRuntime.controlsVisible = controlsVisible }
     var more by remember { mutableStateOf(false) }
     var selection by remember(book.id) { mutableStateOf<SelectionPayload?>(null) }
@@ -128,6 +157,17 @@ internal fun ReaderScreen(
     var skimPreview by remember { mutableStateOf<ReaderSkimPreview?>(null) }
     var skimOrigin by remember { mutableLongStateOf(state.position) }
     var showSkimReturn by remember { mutableStateOf(false) }
+    val wakeChrome = remember(book.id) {
+        {
+            controlsVisibility.value = true
+            chromeInteractionEpoch++
+            Unit
+        }
+    }
+    DisposableEffect(wakeChrome) {
+        ReaderChromeRuntime.bindWakeRequest(wakeChrome)
+        onDispose { ReaderChromeRuntime.unbindWakeRequest(wakeChrome) }
+    }
 
     val fraction = if (state.length <= 0) 0f else (state.position.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
     val currentChapterIndex = remember(state.chapters, state.position) { state.chapters.indexOfLast { it.offset <= state.position } }
@@ -172,19 +212,34 @@ internal fun ReaderScreen(
             else window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
-    LaunchedEffect(activity, state.panel) {
-        activity?.window?.let { window ->
-            val controller = WindowCompat.getInsetsController(window, window.decorView)
-            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            if (state.panel != null) controller.show(WindowInsetsCompat.Type.systemBars())
-            else controller.hide(WindowInsetsCompat.Type.systemBars())
-        }
+    LaunchedEffect(activity, panelState) {
+        snapshotFlow { panelState.value }
+            .distinctUntilChanged()
+            .collectLatest { panel ->
+                activity?.window?.let { window ->
+                    val controller = WindowCompat.getInsetsController(window, window.decorView)
+                    controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    if (panel != null) controller.show(WindowInsetsCompat.Type.systemBars())
+                    else controller.hide(WindowInsetsCompat.Type.systemBars())
+                }
+            }
     }
-    LaunchedEffect(state.panel, settings.controlsAutoHideMs) {
-        snapshotFlow { controlsVisible }.distinctUntilChanged().collectLatest { visible ->
-            if (visible && state.panel == null) {
-                delay(settings.controlsAutoHideMs)
-                controlsVisible = false
+    LaunchedEffect(
+        readerContentReady, controlsVisible, more, selection, skimDragging,
+        chromeInteractionEpoch, settings.controlsAutoHideMs,
+    ) {
+        if (readerChromeCanAutoHide(
+                readerContentReady, controlsVisible, ReaderChromeRuntime.panelOpen,
+                more, selection != null, skimDragging,
+            )
+        ) {
+            delay(settings.controlsAutoHideMs)
+            if (readerChromeCanAutoHide(
+                    readerContentReady, controlsVisibility.value, ReaderChromeRuntime.panelOpen,
+                    more, selection != null, skimDragging,
+                )
+            ) {
+                controlsVisibility.value = false
             }
         }
     }
@@ -202,6 +257,18 @@ internal fun ReaderScreen(
         }.getOrNull()
     }
 
+    fun publishVisibleChars(chars: Long) {
+        if (!readerContentReady) readerContentReady = true
+        actions.onVisibleCharsChanged(chars)
+    }
+    fun keepChromeAlive() {
+        controlsVisible = true
+        chromeInteractionEpoch++
+    }
+    fun toggleChrome() {
+        controlsVisible = !controlsVisible
+        if (controlsVisible) chromeInteractionEpoch++
+    }
     fun tick() { if (settings.hapticEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
     fun previous() {
         selection?.clearNative?.invoke(); selection = null; tick()
@@ -239,7 +306,7 @@ internal fun ReaderScreen(
             twoStageAnchor = null
             twoStageDirection = 0
         } else selection = payload
-        controlsVisible = true
+        keepChromeAlive()
     }
 
     val snackbarControlsShiftPx = with(LocalDensity.current) { 88.dp.toPx() }
@@ -249,7 +316,7 @@ internal fun ReaderScreen(
         if (settings.readingMode == ReaderMode.CONTINUOUS && !state.cleanMode) {
             ContinuousReaderPage(
                 state, actions, fontFamily, textColor, touchExploration,
-                ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value }, ::updateBrightness, ::resizeFont,
+                ::previous, ::next, ::toggleChrome, ::updateBrightness, ::resizeFont,
                 { tick(); actions.onAddBookmark() }, ::acceptSelection,
             )
         } else {
@@ -267,7 +334,7 @@ internal fun ReaderScreen(
                     ) {
                         PagedReaderPage(
                             state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
-                            actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
+                            ::publishVisibleChars, ::previous, ::next, ::toggleChrome,
                             ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                         )
                     }
@@ -275,7 +342,7 @@ internal fun ReaderScreen(
             } else {
                 PagedReaderPage(
                     state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
-                    actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
+                    ::publishVisibleChars, ::previous, ::next, ::toggleChrome,
                     ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                 )
             }
@@ -289,19 +356,13 @@ internal fun ReaderScreen(
         )
 
         if (controlsVisible) {
-            // Recreate the Material chrome semantics subtree whenever controls reopen. Android accessibility
-            // must never retain hidden semantics from a previously off-screen resident control node.
-            Box(
-                Modifier.align(Alignment.TopCenter),
-            ) {
-                ReaderTopBar(book.name, currentChapter, actions) { more = true }
+            Box(Modifier.align(Alignment.TopCenter)) {
+                ReaderTopBar(book.name, currentChapter, actions, { more = true }, ::keepChromeAlive)
             }
             if (more) Box(
                 Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp),
             ) { ReaderMoreMenu(actions) { more = false } }
-            Box(
-                Modifier.align(Alignment.BottomCenter),
-            ) {
+            Box(Modifier.align(Alignment.BottomCenter)) {
                 ReaderBottomBar(
                     chapters = state.chapters,
                     length = state.length,
@@ -332,6 +393,7 @@ internal fun ReaderScreen(
                         skimPreview = null
                         showSkimReturn = false
                     },
+                    onInteraction = ::keepChromeAlive,
                 )
             }
         }
@@ -942,7 +1004,7 @@ private fun Modifier.readerAccessibilityActions(
 }
 
 @Composable
-private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit) {
+private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit, onInteraction: () -> Unit) {
     val cleanBookName = bookName.removeSuffix(".txt").removeSuffix(".TXT")
     val primaryTitle = chapter ?: cleanBookName
     val settingsDescription = stringResource(R.string.reading_settings)
@@ -964,12 +1026,12 @@ private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActi
             },
             actions = {
                 TextButton(
-                    onClick = { actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) },
+                    onClick = { onInteraction(); actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) },
                     modifier = Modifier.semantics { contentDescription = settingsDescription },
                     contentPadding = PaddingValues(horizontal = 8.dp),
                 ) { Text("Aa", style = MaterialTheme.typography.titleMedium) }
-                IconButton({ actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
-                IconButton(onMore) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools)) }
+                IconButton({ onInteraction(); actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
+                IconButton({ onInteraction(); onMore() }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools)) }
             },
         )
     }
@@ -1025,6 +1087,7 @@ private fun ReaderBottomBar(
     onFractionChange: (Float) -> Unit,
     onFractionCommit: () -> Unit,
     onReturnSkim: () -> Unit,
+    onInteraction: () -> Unit,
 ) {
     val progressDescription = stringResource(R.string.reading_progress)
     var scrubberExpanded by rememberSaveable { mutableStateOf(false) }
@@ -1034,12 +1097,30 @@ private fun ReaderBottomBar(
             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 5.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            AnimatedVisibility(visible = canLocationBack || canLocationForward) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 3.dp, shadowElevation = 1.dp) {
+                        Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (canLocationBack) TextButton({ onInteraction(); onLocationBack() }) {
+                                Icon(Icons.AutoMirrored.Outlined.Undo, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.reader_location_back))
+                            }
+                            if (canLocationForward) TextButton({ onInteraction(); onLocationForward() }) {
+                                Icon(Icons.AutoMirrored.Outlined.Redo, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.reader_location_forward))
+                            }
+                        }
+                    }
+                }
+            }
             if (skimDragging || (showSkimReturn && skimPreview != null)) {
-                ReaderSkimPreviewCard(skimPreview, showSkimReturn, onReturnSkim)
+                ReaderSkimPreviewCard(skimPreview, showSkimReturn) { onInteraction(); onReturnSkim() }
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     TextButton(
-                        onClick = { scrubberExpanded = !scrubberExpanded },
+                        onClick = { onInteraction(); scrubberExpanded = !scrubberExpanded },
                         modifier = Modifier.semantics { contentDescription = "$progressDescription $percent%" },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     ) {
@@ -1057,18 +1138,16 @@ private fun ReaderBottomBar(
                     ReaderChapterTicks(chapters, length, fraction)
                     Slider(
                         fraction,
-                        onFractionChange,
-                        onValueChangeFinished = onFractionCommit,
+                        { value -> onInteraction(); onFractionChange(value) },
+                        onValueChangeFinished = { onInteraction(); onFractionCommit() },
                         modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressDescription },
                     )
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
-                if (canLocationBack) IconButton(onLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
-                IconButton(onBookmarks) { Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks)) }
-                IconButton(onTts) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud)) }
-                IconButton(onAutoPage) { Icon(if (autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (autoPaging) R.string.stop_auto_page else R.string.start_auto_page)) }
-                if (canLocationForward) IconButton(onLocationForward) { Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.reader_location_forward)) }
+                IconButton({ onInteraction(); onBookmarks() }) { Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks)) }
+                IconButton({ onInteraction(); onTts() }) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud)) }
+                IconButton({ onInteraction(); onAutoPage() }) { Icon(if (autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (autoPaging) R.string.stop_auto_page else R.string.start_auto_page)) }
             }
         }
     }
@@ -1223,6 +1302,15 @@ private fun highlightColor(style: ReaderHighlightStyle): Color = when (style) {
     ReaderHighlightStyle.PINK -> Color(0x55EC407A)
 }
 
+internal fun readerChromeCanAutoHide(
+    readerReady: Boolean,
+    controlsVisible: Boolean,
+    panelOpen: Boolean,
+    menuOpen: Boolean,
+    selectionActive: Boolean,
+    skimDragging: Boolean,
+): Boolean = readerReady && controlsVisible && !panelOpen && !menuOpen && !selectionActive && !skimDragging
+
 private fun utf16Index(text: String, codePoints: Long): Int = if (text.isEmpty()) 0 else text.offsetByCodePoints(0, codePoints.coerceIn(0, text.codePointCount(0, text.length).toLong()).toInt())
-private fun readerBackground(palette: ReaderPalette): Color = when (palette) { ReaderPalette.PAPER -> Color(0xFFF7F0DE); ReaderPalette.LIGHT -> Color(0xFFFFFBFF); ReaderPalette.SEPIA -> Color(0xFFF3E5C8); ReaderPalette.NIGHT -> Color(0xFF151713); ReaderPalette.OLED -> Color.Black }
-private fun readerTextColor(palette: ReaderPalette): Color = when (palette) { ReaderPalette.NIGHT -> Color(0xFFE8E5DA); ReaderPalette.OLED -> Color(0xFFE8E8E8); else -> Color(0xFF24241F) }
+internal fun readerBackground(palette: ReaderPalette): Color = when (palette) { ReaderPalette.PAPER -> Color(0xFFF7F0DE); ReaderPalette.LIGHT -> Color(0xFFFFFBFF); ReaderPalette.SEPIA -> Color(0xFFF3E5C8); ReaderPalette.NIGHT -> Color(0xFF151713); ReaderPalette.OLED -> Color.Black }
+internal fun readerTextColor(palette: ReaderPalette): Color = when (palette) { ReaderPalette.NIGHT -> Color(0xFFE8E5DA); ReaderPalette.OLED -> Color(0xFFE8E8E8); else -> Color(0xFF24241F) }

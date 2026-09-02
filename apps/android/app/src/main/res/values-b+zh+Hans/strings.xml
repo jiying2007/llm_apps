@@ -21,8 +21,10 @@
     <string name="reader_more_gesture_options">更多手势选项</string>
     <string name="reader_paging_path_required">点按翻页和滑动翻页至少保留一种，避免失去触摸翻页。</string>
     <string name="reader_typography_preview">实时预览</string>
-    <string name="reader_typography_preview_sample">第十二章 夜雨\n灯下翻过一页，继续读下去。</string>
+    <string name="reader_typography_preview_sample">第十二章 夜雨\n\n灯下翻过一页，继续读下去。</string>
     <string name="reader_text_tools">文本工具</string>
     <string name="reader_more_tools">更多工具</string>
     <string name="reader_more_menu_back">返回</string>
+    <string name="reader_toc_edit">编辑目录</string>
+    <string name="reader_toc_done">完成</string>
 </resources>
