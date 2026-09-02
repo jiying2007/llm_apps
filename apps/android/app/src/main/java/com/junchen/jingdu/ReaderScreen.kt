@@ -115,6 +115,9 @@ internal fun ReaderScreen(
     val skim = remember(book.id) { ReaderSkimController(context, book.id) }
     val controlsVisibility = rememberSaveable(book.id) { mutableStateOf(true) }
     var controlsVisible by controlsVisibility
+    var readerContentReady by remember(book.id, settings.readingMode) {
+        mutableStateOf(settings.readingMode != ReaderMode.PAGED)
+    }
     SideEffect { ReaderInteractionRuntime.controlsVisible = controlsVisible }
     var more by remember { mutableStateOf(false) }
     var selection by remember(book.id) { mutableStateOf<SelectionPayload?>(null) }
@@ -182,9 +185,9 @@ internal fun ReaderScreen(
             else controller.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
-    LaunchedEffect(state.panel, settings.controlsAutoHideMs) {
+    LaunchedEffect(readerContentReady, state.panel, settings.controlsAutoHideMs) {
         snapshotFlow { controlsVisible }.distinctUntilChanged().collectLatest { visible ->
-            if (visible && state.panel == null) {
+            if (readerChromeCanAutoHide(readerContentReady, visible, state.panel != null)) {
                 delay(settings.controlsAutoHideMs)
                 controlsVisible = false
             }
@@ -204,6 +207,10 @@ internal fun ReaderScreen(
         }.getOrNull()
     }
 
+    fun publishVisibleChars(chars: Long) {
+        if (!readerContentReady) readerContentReady = true
+        actions.onVisibleCharsChanged(chars)
+    }
     fun tick() { if (settings.hapticEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
     fun previous() {
         selection?.clearNative?.invoke(); selection = null; tick()
@@ -269,7 +276,7 @@ internal fun ReaderScreen(
                     ) {
                         PagedReaderPage(
                             state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
-                            actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
+                            ::publishVisibleChars, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
                             ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                         )
                     }
@@ -277,7 +284,7 @@ internal fun ReaderScreen(
             } else {
                 PagedReaderPage(
                     state.position, state.pageText, settings, state.annotations, state.tts, adaptiveLayout, fontFamily, textColor, touchExploration,
-                    actions.onVisibleCharsChanged, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
+                    ::publishVisibleChars, ::previous, ::next, { controlsVisibility.value = !controlsVisibility.value },
                     ::updateBrightness, ::resizeFont, { tick(); actions.onAddBookmark() }, ::acceptSelection,
                 )
             }
@@ -1164,6 +1171,12 @@ private fun ReaderHud(text: String, modifier: Modifier = Modifier) {
         Text(text, Modifier.padding(horizontal = 18.dp, vertical = 12.dp), style = MaterialTheme.typography.titleMedium)
     }
 }
+
+internal fun readerChromeCanAutoHide(
+    readerReady: Boolean,
+    controlsVisible: Boolean,
+    panelOpen: Boolean,
+): Boolean = readerReady && controlsVisible && !panelOpen
 
 private const val MAX_CHAPTER_TICKS = 96
 private const val AUTO_SCROLL_COMMIT_CHARS = 512L

@@ -11,6 +11,13 @@ import java.util.Locale
 import kotlin.random.Random
 
 class ReaderFoundationsTest {
+    @Test fun readerChromeAutoHideWaitsForFirstRenderedPage() {
+        assertEquals(false, readerChromeCanAutoHide(false, true, false))
+        assertEquals(true, readerChromeCanAutoHide(true, true, false))
+        assertEquals(false, readerChromeCanAutoHide(true, false, false))
+        assertEquals(false, readerChromeCanAutoHide(true, true, true))
+    }
+
     @Test fun equalLengthProjectionIsExactOneToOne() {
         val map = SourceDisplayMap.between("汉语龙门", "漢語龍門")
         for (offset in 0L..4L) {
