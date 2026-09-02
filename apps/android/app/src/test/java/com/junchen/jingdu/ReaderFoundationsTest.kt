@@ -11,6 +11,12 @@ import java.util.Locale
 import kotlin.random.Random
 
 class ReaderFoundationsTest {
+    @Test fun lastEnabledTouchPagingPathCannotBeDisabledInSettings() {
+        assertEquals(false, canDisablePagingPath(currentEnabled = true, otherEnabled = false))
+        assertEquals(true, canDisablePagingPath(currentEnabled = true, otherEnabled = true))
+        assertEquals(true, canDisablePagingPath(currentEnabled = false, otherEnabled = false))
+    }
+
     @Test fun equalLengthProjectionIsExactOneToOne() {
         val map = SourceDisplayMap.between("汉语龙门", "漢語龍門")
         for (offset in 0L..4L) {

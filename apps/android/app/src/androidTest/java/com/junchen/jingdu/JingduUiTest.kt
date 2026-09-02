@@ -101,6 +101,45 @@ class JingduUiTest {
     assertEquals(1, nextCount)
 }
 
+    @Test fun readerChromePrioritizesAaAndContextualTools() {
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 500, length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
+                    settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
+            )
+        }
+        composeRule.onNodeWithText("Aa").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_location_back)).assertIsNotDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_location_forward)).assertIsNotDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.more_reading_tools)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_text_tools)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_more_tools)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reading_settings)).assertIsNotDisplayed()
+    }
+
+    @Test fun readerSettingsUseFourGroupsPreviewAndProgressiveGestures() {
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", length = 10_000,
+                    panel = ReaderPanel.SETTINGS, settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
+            )
+        }
+        composeRule.onNodeWithText(context.getString(R.string.reader_settings_group_appearance)).assertIsDisplayed().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_typography_preview)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_settings_back)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_settings_group_navigation)).assertIsDisplayed().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_paging_path_required)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_more_gesture_options)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_brightness_gesture)).assertIsNotDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_more_gesture_options)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_brightness_gesture)).assertIsDisplayed()
+    }
+
     @Test fun quickReadingSettingsStayTouchableAcrossRepeatedStateChanges() {
         var latest = ReaderSettings(gestureCoachDismissed = true)
         composeRule.setContent {
@@ -114,6 +153,8 @@ class JingduUiTest {
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_brightness)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_all_settings)).assertIsDisplayed()
         composeRule.onNodeWithText("+").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("+").performClick()

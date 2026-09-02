@@ -18,41 +18,88 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.util.UUID
 import kotlin.math.roundToInt
 
-private enum class ReaderSettingsCategory { TYPOGRAPHY, GESTURES, DISPLAY, AUTO_READ, LANGUAGE, SPEECH, DATA }
+private enum class ReaderSettingsPage {
+    HOME, APPEARANCE, NAVIGATION, ASSISTANCE, ADVANCED, DISPLAY, AUTO_READ, SPEECH, LANGUAGE, DATA,
+}
+
+private fun readerSettingsParent(page: ReaderSettingsPage): ReaderSettingsPage? = when (page) {
+    ReaderSettingsPage.HOME -> null
+    ReaderSettingsPage.APPEARANCE, ReaderSettingsPage.NAVIGATION, ReaderSettingsPage.ASSISTANCE, ReaderSettingsPage.ADVANCED -> ReaderSettingsPage.HOME
+    ReaderSettingsPage.DISPLAY, ReaderSettingsPage.AUTO_READ, ReaderSettingsPage.SPEECH -> ReaderSettingsPage.ASSISTANCE
+    ReaderSettingsPage.LANGUAGE, ReaderSettingsPage.DATA -> ReaderSettingsPage.ADVANCED
+}
 
 @Composable
 internal fun ReaderSettingsScreen(state: AppUiState, actions: JingduActions) {
-    var category by rememberSaveable { mutableStateOf(ReaderSettingsCategory.TYPOGRAPHY) }
-    val s = state.settings
+    var pageName by rememberSaveable { mutableStateOf(ReaderSettingsPage.HOME.name) }
+    val page = runCatching { ReaderSettingsPage.valueOf(pageName) }.getOrDefault(ReaderSettingsPage.HOME)
+    fun open(next: ReaderSettingsPage) { pageName = next.name }
+    fun back() {
+        val parent = readerSettingsParent(page)
+        if (parent == null) actions.onClosePanel() else pageName = parent.name
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.reader_settings)) },
-                navigationIcon = { IconButton(actions.onClosePanel) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library)) } },
+                title = { Text(readerSettingsPageTitle(page)) },
+                navigationIcon = { IconButton(::back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.reader_settings_back)) } },
                 actions = { TextButton(actions.onClosePanel) { Text(stringResource(R.string.reader_settings_done)) } },
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(ReaderSettingsCategory.entries) { value ->
-                    FilterChip(category == value, { category = value }, label = { Text(categoryLabel(value)) })
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when (page) {
+                ReaderSettingsPage.HOME -> SettingsHub {
+                    SettingsHubCard(stringResource(R.string.reader_settings_group_appearance), stringResource(R.string.reader_settings_group_appearance_hint)) { open(ReaderSettingsPage.APPEARANCE) }
+                    SettingsHubCard(stringResource(R.string.reader_settings_group_navigation), stringResource(R.string.reader_settings_group_navigation_hint)) { open(ReaderSettingsPage.NAVIGATION) }
+                    SettingsHubCard(stringResource(R.string.reader_settings_group_assistance), stringResource(R.string.reader_settings_group_assistance_hint)) { open(ReaderSettingsPage.ASSISTANCE) }
+                    SettingsHubCard(stringResource(R.string.reader_settings_group_advanced), stringResource(R.string.reader_settings_group_advanced_hint)) { open(ReaderSettingsPage.ADVANCED) }
                 }
+                ReaderSettingsPage.APPEARANCE -> TypographySettings(state, actions)
+                ReaderSettingsPage.NAVIGATION -> GestureSettings(state, actions)
+                ReaderSettingsPage.ASSISTANCE -> SettingsHub {
+                    SettingsHubCard(stringResource(R.string.reader_display), null) { open(ReaderSettingsPage.DISPLAY) }
+                    SettingsHubCard(stringResource(R.string.reader_auto_read), null) { open(ReaderSettingsPage.AUTO_READ) }
+                    SettingsHubCard(stringResource(R.string.reader_speech), null) { open(ReaderSettingsPage.SPEECH) }
+                }
+                ReaderSettingsPage.ADVANCED -> SettingsHub {
+                    SettingsHubCard(stringResource(R.string.reader_language), null) { open(ReaderSettingsPage.LANGUAGE) }
+                    SettingsHubCard(stringResource(R.string.reader_data), null) { open(ReaderSettingsPage.DATA) }
+                }
+                ReaderSettingsPage.DISPLAY -> DisplaySettings(state, actions)
+                ReaderSettingsPage.AUTO_READ -> AutoReadSettings(state, actions)
+                ReaderSettingsPage.SPEECH -> SpeechSettings(state, actions)
+                ReaderSettingsPage.LANGUAGE -> LanguageSettings(state, actions)
+                ReaderSettingsPage.DATA -> DataSettings(state, actions)
             }
-            HorizontalDivider()
-            when (category) {
-                ReaderSettingsCategory.TYPOGRAPHY -> TypographySettings(state, actions)
-                ReaderSettingsCategory.GESTURES -> GestureSettings(state, actions)
-                ReaderSettingsCategory.DISPLAY -> DisplaySettings(state, actions)
-                ReaderSettingsCategory.AUTO_READ -> AutoReadSettings(state, actions)
-                ReaderSettingsCategory.LANGUAGE -> LanguageSettings(state, actions)
-                ReaderSettingsCategory.SPEECH -> SpeechSettings(state, actions)
-                ReaderSettingsCategory.DATA -> DataSettings(state, actions)
+        }
+    }
+}
+
+@Composable
+private fun SettingsHub(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun SettingsHubCard(title: String, subtitle: String?, onClick: () -> Unit) {
+    ElevatedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
+            Text("›", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -70,6 +117,7 @@ private fun SettingsList(content: @Composable ColumnScope.() -> Unit) {
 private fun TypographySettings(state: AppUiState, actions: JingduActions) = SettingsList {
     val s = state.settings
     fun visual(value: ReaderSettings) = actions.onSettingsChanged(value.copy(preset = ReaderPreset.CUSTOM, activeThemeId = ""))
+    TypographyPreview(s)
     Section(stringResource(R.string.reader_preset)) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(ReaderPreset.entries.filter { it != ReaderPreset.CUSTOM }) { preset ->
@@ -94,6 +142,28 @@ private fun TypographySettings(state: AppUiState, actions: JingduActions) = Sett
     SettingSwitch(stringResource(R.string.reader_compress_blank_lines), s.compressBlankLines) { visual(s.copy(compressBlankLines = it)) }
     SettingSwitch(stringResource(R.string.reader_emphasize_headings), s.emphasizeHeadings) { visual(s.copy(emphasizeHeadings = it)) }
     NamedThemes(s, actions)
+}
+
+@Composable
+private fun TypographyPreview(s: ReaderSettings) {
+    Section(stringResource(R.string.reader_typography_preview)) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        ) {
+            Text(
+                stringResource(R.string.reader_typography_preview_sample),
+                modifier = Modifier.fillMaxWidth().padding(
+                    horizontal = s.horizontalPaddingDp.coerceIn(8f, 56f).dp,
+                    vertical = 18.dp,
+                ),
+                fontSize = s.fontSizeSp.sp,
+                lineHeight = (s.fontSizeSp * s.lineHeightMultiplier).sp,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
 }
 
 @Composable
@@ -130,38 +200,69 @@ private fun NamedThemes(s: ReaderSettings, actions: JingduActions) {
 @Composable
 private fun GestureSettings(state: AppUiState, actions: JingduActions) = SettingsList {
     val s = state.settings
-    Section(stringResource(R.string.reader_tap_zone_template)) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(ReaderTapZonePreset.entries.filter { it != ReaderTapZonePreset.CUSTOM }) { value -> FilterChip(s.tapZonePreset == value, { actions.onSettingsChanged(s.copy(tapZonePreset = value)) }, label = { Text(tapZoneLabel(value)) }) } }
-        SettingSlider(stringResource(R.string.reader_tap_zone), s.tapZoneEdgeFraction, 0.18f..0.38f, stringResource(R.string.reader_tap_zone_value, (s.tapZoneEdgeFraction * 100).roundToInt())) { actions.onSettingsChanged(s.copy(tapZonePreset = ReaderTapZonePreset.CUSTOM, tapZoneEdgeFraction = it)) }
-    }
-    SettingSwitch(stringResource(R.string.reader_tap_paging), s.tapPagingEnabled) { actions.onSettingsChanged(s.copy(tapPagingEnabled = it)) }
-    SettingSwitch(stringResource(R.string.reader_swipe_paging), s.swipePagingEnabled) { actions.onSettingsChanged(s.copy(swipePagingEnabled = it)) }
+    var showMore by rememberSaveable { mutableStateOf(false) }
+
+    SettingSwitch(
+        stringResource(R.string.reader_tap_paging),
+        s.tapPagingEnabled,
+        enabled = canDisablePagingPath(s.tapPagingEnabled, s.swipePagingEnabled),
+    ) { actions.onSettingsChanged(s.copy(tapPagingEnabled = it)) }
+    SettingSwitch(
+        stringResource(R.string.reader_swipe_paging),
+        s.swipePagingEnabled,
+        enabled = canDisablePagingPath(s.swipePagingEnabled, s.tapPagingEnabled),
+    ) { actions.onSettingsChanged(s.copy(swipePagingEnabled = it)) }
+    Text(stringResource(R.string.reader_paging_path_required), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     SettingSwitch(stringResource(R.string.reader_reverse_gestures), s.reversePagingGestures) { actions.onSettingsChanged(s.copy(reversePagingGestures = it)) }
-    SettingSwitch(stringResource(R.string.reader_brightness_gesture), s.brightnessGestureEnabled) { actions.onSettingsChanged(s.copy(brightnessGestureEnabled = it)) }
-    SettingSwitch(stringResource(R.string.reader_pinch_font), s.pinchFontEnabled) { actions.onSettingsChanged(s.copy(pinchFontEnabled = it)) }
-    SettingSwitch(stringResource(R.string.reader_double_tap_bookmark), s.doubleTapBookmarkEnabled) { actions.onSettingsChanged(s.copy(doubleTapBookmarkEnabled = it)) }
-    SettingSwitch(stringResource(R.string.reader_two_stage_selection), s.twoStageSelectionEnabled) { actions.onSettingsChanged(s.copy(twoStageSelectionEnabled = it)) }
-    SettingSwitch(stringResource(R.string.reader_advanced_gestures), s.advancedGestureCustomizationEnabled) { actions.onSettingsChanged(s.copy(advancedGestureCustomizationEnabled = it)) }
-    if (s.advancedGestureCustomizationEnabled) {
-        Section(stringResource(R.string.reader_gesture_center_action)) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(ReaderGestureAction.entries) { value -> FilterChip(s.centerTapAction == value, { actions.onSettingsChanged(s.copy(centerTapAction = value)) }, label = { Text(gestureActionLabel(value)) }) }
-            }
-        }
-        Section(stringResource(R.string.reader_gesture_double_action)) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(ReaderGestureAction.entries) { value -> FilterChip(s.doubleTapAction == value, { actions.onSettingsChanged(s.copy(doubleTapAction = value)) }, label = { Text(gestureActionLabel(value)) }) }
-            }
-        }
-    }
-    SettingSwitch(stringResource(R.string.reader_dictionary_actions), s.dictionaryProcessTextEnabled) { actions.onSettingsChanged(s.copy(dictionaryProcessTextEnabled = it)) }
-    SettingSwitch(stringResource(R.string.reader_haptics), s.hapticEnabled) { actions.onSettingsChanged(s.copy(hapticEnabled = it)) }
-    SettingSlider(stringResource(R.string.reader_controls_auto_hide), s.controlsAutoHideMs.toFloat(), 1_500f..12_000f, stringResource(R.string.seconds_value, s.controlsAutoHideMs / 1000f)) { actions.onSettingsChanged(s.copy(controlsAutoHideMs = it.toLong())) }
+
     Section(stringResource(R.string.reader_volume_keys)) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(ReaderVolumeKeyMode.entries) { value -> FilterChip(s.volumeKeyMode == value, { actions.onSettingsChanged(s.copy(volumeKeyMode = value)) }, label = { Text(volumeLabel(value)) }) } }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(ReaderVolumeKeyMode.entries) { value ->
+                FilterChip(s.volumeKeyMode == value, { actions.onSettingsChanged(s.copy(volumeKeyMode = value)) }, label = { Text(volumeLabel(value)) })
+            }
+        }
         SettingSwitch(stringResource(R.string.reader_reverse_volume), s.reverseVolumeKeys) { actions.onSettingsChanged(s.copy(reverseVolumeKeys = it)) }
     }
+
+    OutlinedButton(onClick = { showMore = !showMore }, modifier = Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.reader_more_gesture_options))
+    }
+
+    if (showMore) {
+        Section(stringResource(R.string.reader_tap_zone_template)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(ReaderTapZonePreset.entries.filter { it != ReaderTapZonePreset.CUSTOM }) { value ->
+                    FilterChip(s.tapZonePreset == value, { actions.onSettingsChanged(s.copy(tapZonePreset = value)) }, label = { Text(tapZoneLabel(value)) })
+                }
+            }
+            SettingSlider(stringResource(R.string.reader_tap_zone), s.tapZoneEdgeFraction, 0.18f..0.38f, stringResource(R.string.reader_tap_zone_value, (s.tapZoneEdgeFraction * 100).roundToInt())) {
+                actions.onSettingsChanged(s.copy(tapZonePreset = ReaderTapZonePreset.CUSTOM, tapZoneEdgeFraction = it))
+            }
+        }
+        SettingSwitch(stringResource(R.string.reader_brightness_gesture), s.brightnessGestureEnabled) { actions.onSettingsChanged(s.copy(brightnessGestureEnabled = it)) }
+        SettingSwitch(stringResource(R.string.reader_pinch_font), s.pinchFontEnabled) { actions.onSettingsChanged(s.copy(pinchFontEnabled = it)) }
+        SettingSwitch(stringResource(R.string.reader_double_tap_bookmark), s.doubleTapBookmarkEnabled) { actions.onSettingsChanged(s.copy(doubleTapBookmarkEnabled = it)) }
+        SettingSwitch(stringResource(R.string.reader_two_stage_selection), s.twoStageSelectionEnabled) { actions.onSettingsChanged(s.copy(twoStageSelectionEnabled = it)) }
+        SettingSwitch(stringResource(R.string.reader_advanced_gestures), s.advancedGestureCustomizationEnabled) { actions.onSettingsChanged(s.copy(advancedGestureCustomizationEnabled = it)) }
+        if (s.advancedGestureCustomizationEnabled) {
+            Section(stringResource(R.string.reader_gesture_center_action)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(ReaderGestureAction.entries) { value -> FilterChip(s.centerTapAction == value, { actions.onSettingsChanged(s.copy(centerTapAction = value)) }, label = { Text(gestureActionLabel(value)) }) }
+                }
+            }
+            Section(stringResource(R.string.reader_gesture_double_action)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(ReaderGestureAction.entries) { value -> FilterChip(s.doubleTapAction == value, { actions.onSettingsChanged(s.copy(doubleTapAction = value)) }, label = { Text(gestureActionLabel(value)) }) }
+                }
+            }
+        }
+        SettingSwitch(stringResource(R.string.reader_dictionary_actions), s.dictionaryProcessTextEnabled) { actions.onSettingsChanged(s.copy(dictionaryProcessTextEnabled = it)) }
+        SettingSwitch(stringResource(R.string.reader_haptics), s.hapticEnabled) { actions.onSettingsChanged(s.copy(hapticEnabled = it)) }
+        SettingSlider(stringResource(R.string.reader_controls_auto_hide), s.controlsAutoHideMs.toFloat(), 1_500f..12_000f, stringResource(R.string.seconds_value, s.controlsAutoHideMs / 1000f)) { actions.onSettingsChanged(s.copy(controlsAutoHideMs = it.toLong())) }
+    }
 }
+
+internal fun canDisablePagingPath(currentEnabled: Boolean, otherEnabled: Boolean): Boolean = !currentEnabled || otherEnabled
 
 @Composable
 private fun DisplaySettings(state: AppUiState, actions: JingduActions) = SettingsList {
@@ -226,10 +327,22 @@ private fun DataSettings(state: AppUiState, actions: JingduActions) = SettingsLi
 }
 
 @Composable private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); content() } }
-@Composable private fun SettingSwitch(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(label, Modifier.weight(1f)); Switch(checked, onChecked) } }
+@Composable private fun SettingSwitch(label: String, checked: Boolean, enabled: Boolean = true, onChecked: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(label, Modifier.weight(1f), color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)); Switch(checked, onChecked, enabled = enabled) } }
 @Composable private fun SettingSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, valueText: String, onChange: (Float) -> Unit) { Column { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label); Text(valueText, style = MaterialTheme.typography.labelMedium) }; Slider(value, onChange, valueRange = range) } }
 
-@Composable private fun categoryLabel(value: ReaderSettingsCategory): String = stringResource(when (value) { ReaderSettingsCategory.TYPOGRAPHY -> R.string.reader_typography; ReaderSettingsCategory.GESTURES -> R.string.reader_gestures; ReaderSettingsCategory.DISPLAY -> R.string.reader_display; ReaderSettingsCategory.AUTO_READ -> R.string.reader_auto_read; ReaderSettingsCategory.LANGUAGE -> R.string.reader_language; ReaderSettingsCategory.SPEECH -> R.string.reader_speech; ReaderSettingsCategory.DATA -> R.string.reader_data })
+@Composable private fun readerSettingsPageTitle(page: ReaderSettingsPage): String = stringResource(when (page) {
+    ReaderSettingsPage.HOME -> R.string.reader_settings
+    ReaderSettingsPage.APPEARANCE -> R.string.reader_settings_group_appearance
+    ReaderSettingsPage.NAVIGATION -> R.string.reader_settings_group_navigation
+    ReaderSettingsPage.ASSISTANCE -> R.string.reader_settings_group_assistance
+    ReaderSettingsPage.ADVANCED -> R.string.reader_settings_group_advanced
+    ReaderSettingsPage.DISPLAY -> R.string.reader_display
+    ReaderSettingsPage.AUTO_READ -> R.string.reader_auto_read
+    ReaderSettingsPage.SPEECH -> R.string.reader_speech
+    ReaderSettingsPage.LANGUAGE -> R.string.reader_language
+    ReaderSettingsPage.DATA -> R.string.reader_data
+})
+
 @Composable private fun presetLabel(value: ReaderPreset): String = stringResource(when (value) { ReaderPreset.STANDARD -> R.string.reader_preset_standard; ReaderPreset.COMFORT -> R.string.reader_preset_comfort; ReaderPreset.LARGE -> R.string.reader_preset_large; ReaderPreset.NIGHT -> R.string.reader_preset_night; ReaderPreset.LOW_VISION -> R.string.reader_preset_low_vision; ReaderPreset.CUSTOM -> R.string.reader_preset_custom })
 @Composable private fun paletteLabel(value: ReaderPalette): String = stringResource(when (value) { ReaderPalette.PAPER -> R.string.paper; ReaderPalette.LIGHT -> R.string.light; ReaderPalette.SEPIA -> R.string.reader_theme_sepia; ReaderPalette.NIGHT -> R.string.night; ReaderPalette.OLED -> R.string.reader_oled })
 @Composable private fun typefaceLabel(value: ReaderTypeface): String = stringResource(when (value) { ReaderTypeface.SYSTEM -> R.string.system_font; ReaderTypeface.SERIF -> R.string.serif; ReaderTypeface.MONOSPACE -> R.string.reader_font_monospace; ReaderTypeface.CUSTOM -> R.string.reader_font_custom })

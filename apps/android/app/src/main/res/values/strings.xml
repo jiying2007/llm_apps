@@ -201,4 +201,21 @@
     <string name="noise_reason_repeated">Repeated line</string>
     <string name="noise_reason_promo_repeated">Promotion + repeated</string>
     <string name="library_more_actions">More library actions</string>
+    <string name="reader_all_settings">All reading settings</string>
+    <string name="reader_settings_back">Back</string>
+    <string name="reader_settings_group_appearance">Appearance</string>
+    <string name="reader_settings_group_appearance_hint">Themes, typography, spacing and page layout</string>
+    <string name="reader_settings_group_navigation">Paging &amp; controls</string>
+    <string name="reader_settings_group_navigation_hint">Tap, swipe, hardware keys and gesture behavior</string>
+    <string name="reader_settings_group_assistance">Reading assistance</string>
+    <string name="reader_settings_group_assistance_hint">Brightness, reading status, auto-read and read-aloud</string>
+    <string name="reader_settings_group_advanced">Advanced</string>
+    <string name="reader_settings_group_advanced_hint">Language conversion and local Reader data</string>
+    <string name="reader_more_gesture_options">More gesture options</string>
+    <string name="reader_paging_path_required">Keep tap or swipe paging enabled so touch page turns always remain reachable.</string>
+    <string name="reader_typography_preview">Live preview</string>
+    <string name="reader_typography_preview_sample">Chapter 12 — Night Rain\nThe lamp is quiet. Turn a page and keep reading.</string>
+    <string name="reader_text_tools">Text tools</string>
+    <string name="reader_more_tools">More tools</string>
+    <string name="reader_more_menu_back">Back</string>
 </resources>

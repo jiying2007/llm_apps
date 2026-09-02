@@ -133,9 +133,7 @@ internal fun ReaderScreen(
     val currentChapterIndex = remember(state.chapters, state.position) { state.chapters.indexOfLast { it.offset <= state.position } }
     val currentChapter = state.chapters.getOrNull(currentChapterIndex)?.title?.let { ReaderTextPresentation.chapterTitle(it, settings) }
     val latestStatusState = rememberUpdatedState(state)
-    val latestStatusChapterIndex = rememberUpdatedState(currentChapterIndex)
     val statusStateProvider = remember { { latestStatusState.value } }
-    val statusChapterIndexProvider = remember { { latestStatusChapterIndex.value } }
 
     DisposableEffect(book.id) {
         onDispose { skim.close() }
@@ -300,7 +298,7 @@ internal fun ReaderScreen(
             }
             if (more) Box(
                 Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 8.dp),
-            ) { ReaderMoreMenu(state.cleanMode, actions) { more = false } }
+            ) { ReaderMoreMenu(actions) { more = false } }
             Box(
                 Modifier.align(Alignment.BottomCenter),
             ) {
@@ -309,7 +307,6 @@ internal fun ReaderScreen(
                     length = state.length,
                     autoPaging = state.autoPaging,
                     ttsPlaying = state.ttsPlaying,
-                    chapter = currentChapter,
                     fraction = skimFraction,
                     skimPreview = skimPreview,
                     skimDragging = skimDragging,
@@ -341,7 +338,6 @@ internal fun ReaderScreen(
         if (settings.showReadingStatus) ReaderReadingStatusHost(
             controlsVisibility = controlsVisibility,
             stateProvider = statusStateProvider,
-            chapterIndexProvider = statusChapterIndexProvider,
             color = textColor,
             background = background,
             stats = stats,
@@ -947,18 +943,31 @@ private fun Modifier.readerAccessibilityActions(
 
 @Composable
 private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit) {
+    val cleanBookName = bookName.removeSuffix(".txt").removeSuffix(".TXT")
+    val primaryTitle = chapter ?: cleanBookName
+    val settingsDescription = stringResource(R.string.reading_settings)
     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))) {
         CenterAlignedTopAppBar(
             modifier = Modifier.statusBarsPadding(),
             navigationIcon = { IconButton(actions.onBackToLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library)) } },
-            title = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(bookName.removeSuffix(".txt").removeSuffix(".TXT"), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                chapter?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall) }
-            } },
-            actions = {
-                IconButton({ actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }) {
-                    Icon(Icons.Outlined.TextFields, stringResource(R.string.reading_settings))
+            title = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(primaryTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                    if (chapter != null && cleanBookName != chapter) Text(
+                        cleanBookName,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+            },
+            actions = {
+                TextButton(
+                    onClick = { actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) },
+                    modifier = Modifier.semantics { contentDescription = settingsDescription },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) { Text("Aa", style = MaterialTheme.typography.titleMedium) }
                 IconButton({ actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
                 IconButton(onMore) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools)) }
             },
@@ -966,20 +975,33 @@ private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActi
     }
 }
 
+private enum class ReaderMoreMenuPage { MAIN, TEXT_TOOLS, MORE_TOOLS }
+
 @Composable
-private fun ReaderMoreMenu(cleanMode: Boolean, actions: JingduActions, onDismiss: () -> Unit) {
+private fun ReaderMoreMenu(actions: JingduActions, onDismiss: () -> Unit) {
+    var page by remember { mutableStateOf(ReaderMoreMenuPage.MAIN) }
     DropdownMenu(true, onDismissRequest = onDismiss) {
         fun close(action: () -> Unit) { onDismiss(); action() }
-        DropdownMenuItem({ Text(stringResource(R.string.full_text_search)) }, { close { actions.onOpenPanel(ReaderPanel.SEARCH) } }, leadingIcon = { Icon(Icons.Default.Search, null) })
-        DropdownMenuItem({ Text(stringResource(R.string.bookmarks)) }, { close { actions.onOpenPanel(ReaderPanel.BOOKMARKS) } }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) })
-        DropdownMenuItem({ Text(stringResource(R.string.reader_annotations)) }, { close { actions.onOpenPanel(ReaderPanel.ANNOTATIONS) } }, leadingIcon = { Icon(Icons.Outlined.EditNote, null) })
-        DropdownMenuItem({ Text(stringResource(R.string.reader_reading_map)) }, { close { actions.onOpenPanel(ReaderPanel.READING_MAP); actions.onEnsureChapters() } }, leadingIcon = { Icon(Icons.Outlined.Map, null) })
-        DropdownMenuItem({ Text(stringResource(R.string.reader_reading_history)) }, { close { actions.onOpenPanel(ReaderPanel.READING_HISTORY) } }, leadingIcon = { Icon(Icons.Outlined.CalendarMonth, null) })
-        DropdownMenuItem({ Text(stringResource(R.string.txt_doctor)) }, { close { actions.onOpenPanel(ReaderPanel.DOCTOR) } }, leadingIcon = { Icon(Icons.Outlined.HealthAndSafety, null) })
-        DropdownMenuItem({ Text(stringResource(R.string.smart_clean4)) }, { close { actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) } }, leadingIcon = { Icon(Icons.Outlined.Psychology, null) })
-        DropdownMenuItem({ Text(stringResource(R.string.clean)) }, { close { actions.onOpenPanel(ReaderPanel.CLEAN) } }, leadingIcon = { Icon(Icons.Outlined.AutoFixHigh, null) })
-        DropdownMenuItem({ Text(stringResource(R.string.reading_settings)) }, { close { actions.onOpenPanel(ReaderPanel.SETTINGS) } }, leadingIcon = { Icon(Icons.Default.Settings, null) })
-        if (!cleanMode) DropdownMenuItem({ Text(stringResource(R.string.reader_access_bookmark)) }, { close(actions.onAddBookmark) }, leadingIcon = { Icon(Icons.Outlined.BookmarkAdd, null) })
+        when (page) {
+            ReaderMoreMenuPage.MAIN -> {
+                DropdownMenuItem({ Text(stringResource(R.string.full_text_search)) }, { close { actions.onOpenPanel(ReaderPanel.SEARCH) } }, leadingIcon = { Icon(Icons.Default.Search, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.reader_annotations)) }, { close { actions.onOpenPanel(ReaderPanel.ANNOTATIONS) } }, leadingIcon = { Icon(Icons.Outlined.EditNote, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.reader_reading_history)) }, { close { actions.onOpenPanel(ReaderPanel.READING_HISTORY) } }, leadingIcon = { Icon(Icons.Outlined.CalendarMonth, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.reader_text_tools)) }, { page = ReaderMoreMenuPage.TEXT_TOOLS }, leadingIcon = { Icon(Icons.Outlined.AutoFixHigh, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.reader_more_tools)) }, { page = ReaderMoreMenuPage.MORE_TOOLS }, leadingIcon = { Icon(Icons.Default.MoreHoriz, null) })
+            }
+            ReaderMoreMenuPage.TEXT_TOOLS -> {
+                DropdownMenuItem({ Text(stringResource(R.string.reader_more_menu_back)) }, { page = ReaderMoreMenuPage.MAIN }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.txt_doctor)) }, { close { actions.onOpenPanel(ReaderPanel.DOCTOR) } }, leadingIcon = { Icon(Icons.Outlined.HealthAndSafety, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.smart_clean4)) }, { close { actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) } }, leadingIcon = { Icon(Icons.Outlined.Psychology, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.clean)) }, { close { actions.onOpenPanel(ReaderPanel.CLEAN) } }, leadingIcon = { Icon(Icons.Outlined.AutoFixHigh, null) })
+            }
+            ReaderMoreMenuPage.MORE_TOOLS -> {
+                DropdownMenuItem({ Text(stringResource(R.string.reader_more_menu_back)) }, { page = ReaderMoreMenuPage.MAIN }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.bookmarks)) }, { close { actions.onOpenPanel(ReaderPanel.BOOKMARKS) } }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) })
+                DropdownMenuItem({ Text(stringResource(R.string.reader_reading_map)) }, { close { actions.onOpenPanel(ReaderPanel.READING_MAP); actions.onEnsureChapters() } }, leadingIcon = { Icon(Icons.Outlined.Map, null) })
+            }
+        }
     }
 }
 
@@ -989,7 +1011,6 @@ private fun ReaderBottomBar(
     length: Long,
     autoPaging: Boolean,
     ttsPlaying: Boolean,
-    chapter: String?,
     fraction: Float,
     skimPreview: ReaderSkimPreview?,
     skimDragging: Boolean,
@@ -1016,14 +1037,7 @@ private fun ReaderBottomBar(
             if (skimDragging || (showSkimReturn && skimPreview != null)) {
                 ReaderSkimPreviewCard(skimPreview, showSkimReturn, onReturnSkim)
             } else {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        chapter ?: "",
-                        Modifier.weight(1f).padding(start = 6.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     TextButton(
                         onClick = { scrubberExpanded = !scrubberExpanded },
                         modifier = Modifier.semantics { contentDescription = "$progressDescription $percent%" },
@@ -1050,11 +1064,11 @@ private fun ReaderBottomBar(
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
-                IconButton(onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
+                if (canLocationBack) IconButton(onLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
                 IconButton(onBookmarks) { Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks)) }
-                IconButton(onAutoPage) { Icon(if (autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (autoPaging) R.string.stop_auto_page else R.string.start_auto_page)) }
                 IconButton(onTts) { Icon(if (ttsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (ttsPlaying) R.string.pause_read_aloud else R.string.start_read_aloud)) }
-                IconButton(onLocationForward, enabled = canLocationForward) { Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.reader_location_forward)) }
+                IconButton(onAutoPage) { Icon(if (autoPaging) Icons.Default.Pause else Icons.Outlined.Timer, stringResource(if (autoPaging) R.string.stop_auto_page else R.string.start_auto_page)) }
+                if (canLocationForward) IconButton(onLocationForward) { Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.reader_location_forward)) }
             }
         }
     }
@@ -1103,19 +1117,18 @@ private fun ReaderSkimPreviewCard(preview: ReaderSkimPreview?, showReturn: Boole
 private fun ReaderReadingStatusHost(
     controlsVisibility: State<Boolean>,
     stateProvider: () -> AppUiState,
-    chapterIndexProvider: () -> Int,
     color: Color,
     background: Color,
     stats: ReaderStatsStore,
     modifier: Modifier = Modifier,
 ) {
     if (!controlsVisibility.value) {
-        ReaderReadingStatus(stateProvider(), chapterIndexProvider(), color, background, stats, modifier)
+        ReaderReadingStatus(stateProvider(), color, background, stats, modifier)
     }
 }
 
 @Composable
-private fun ReaderReadingStatus(state: AppUiState, chapterIndex: Int, color: Color, background: Color, stats: ReaderStatsStore, modifier: Modifier = Modifier) {
+private fun ReaderReadingStatus(state: AppUiState, color: Color, background: Color, stats: ReaderStatsStore, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val resources = LocalResources.current
     var now by remember { mutableStateOf(Date()) }
@@ -1123,17 +1136,13 @@ private fun ReaderReadingStatus(state: AppUiState, chapterIndex: Int, color: Col
     val locale = LocalConfiguration.current.locales[0]
     val clock = if (state.settings.showClock) SimpleDateFormat("HH:mm", locale).format(now) else null
     val battery = if (state.settings.showBattery) (context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 }?.let { "$it%" } else null
-    val chapter = state.chapters.getOrNull(chapterIndex)
-    val chapterEnd = state.chapters.getOrNull(chapterIndex + 1)?.offset ?: state.length
-    val chapterProgress = chapter?.let { (((state.position - it.offset).coerceAtLeast(0).toDouble() / (chapterEnd - it.offset).coerceAtLeast(1).toDouble()) * 100).roundToInt().coerceIn(0, 100) }
     val bookProgress = if (state.length <= 0) 0 else ((state.position.toDouble() / state.length.toDouble()) * 100).roundToInt().coerceIn(0, 100)
     val remaining = stats.remainingMinutes(state.position, state.length)
     val pieces = buildList {
-        chapter?.title?.let { ReaderTextPresentation.chapterTitle(it, state.settings).take(18) }?.let(::add)
-        chapterProgress?.let { add(resources.getString(R.string.reader_chapter_progress_value, it)) }
         add(resources.getString(R.string.reader_book_progress_value, bookProgress))
         remaining?.let { add(resources.getString(R.string.reader_book_remaining, it)) }
-        clock?.let(::add); battery?.let(::add)
+        clock?.let(::add)
+        battery?.let(::add)
     }
     Surface(modifier.navigationBarsPadding().padding(bottom = 6.dp), color = background.copy(alpha = 0.80f), shape = MaterialTheme.shapes.small) {
         Text(pieces.joinToString(" · "), Modifier.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = color.copy(alpha = 0.75f), maxLines = 1)

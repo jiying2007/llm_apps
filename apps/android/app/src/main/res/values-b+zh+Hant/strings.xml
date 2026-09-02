@@ -8,4 +8,21 @@
 <string name="tts_audio_focus">朗讀已停止：其他應用程式正在使用音訊。</string><string name="tts_engine_error">系統朗讀引擎發生錯誤，請稍後再試。</string><string name="tts_engine_not_ready">系統朗讀引擎尚未就緒，請稍後再試。</string><string name="tts_audio_focus_denied">目前無法取得音訊焦點。</string><string name="error_import">匯入失敗</string><string name="error_batch_import">批次匯入失敗</string><string name="error_clean">淨讀失敗</string><string name="error_open">開啟失敗</string><string name="error_read">讀取失敗</string><string name="error_search">搜尋失敗</string><string name="error_chapters">目錄產生失敗</string><string name="error_smart_clean">智慧淨讀掃描失敗</string><string name="error_rule_export">規則匯出失敗</string><string name="error_rule_import">規則匯入失敗</string><string name="error_backup_export">備份匯出失敗</string><string name="error_backup_restore">備份還原失敗</string><string name="error_prepare_export">準備匯出失敗</string><string name="error_export">匯出失敗</string><string name="error_redecode">重新解碼失敗</string>
 <string name="billing_already_unlocked">淨讀 Pro 已解鎖。</string><string name="billing_unavailable">目前無法連線 Google Play 購買服務，請稍後再試。</string><string name="billing_launch_failed">暫時無法發起購買：%1$s</string><string name="billing_restoring">正在連線 Google Play 並還原購買…</string><string name="billing_incomplete">購買未完成：%1$s</string><string name="billing_restored">已還原淨讀 Pro。</string><string name="billing_not_owned">目前 Google Play 帳號沒有淨讀 Pro 購買紀錄。</string><string name="billing_restore_failed">還原購買失敗：%1$s</string><string name="billing_ack_pending">Pro 已解鎖，但購買確認尚未完成，請保持連線後重新開啟淨讀。</string><string name="noise_reason_url">網址</string><string name="noise_reason_promo">推廣</string><string name="noise_reason_repeated">高頻重複</string><string name="noise_reason_promo_repeated">推廣 + 高頻</string>
     <string name="library_more_actions">更多書庫操作</string>
+    <string name="reader_all_settings">全部閱讀設定</string>
+    <string name="reader_settings_back">返回</string>
+    <string name="reader_settings_group_appearance">外觀</string>
+    <string name="reader_settings_group_appearance_hint">主題、字體、字級、間距與頁面版式</string>
+    <string name="reader_settings_group_navigation">翻頁與操作</string>
+    <string name="reader_settings_group_navigation_hint">點按、滑動、實體按鍵與手勢行為</string>
+    <string name="reader_settings_group_assistance">閱讀輔助</string>
+    <string name="reader_settings_group_assistance_hint">亮度、閱讀狀態、自動閱讀與朗讀</string>
+    <string name="reader_settings_group_advanced">進階</string>
+    <string name="reader_settings_group_advanced_hint">語言轉換與本地閱讀資料</string>
+    <string name="reader_more_gesture_options">更多手勢選項</string>
+    <string name="reader_paging_path_required">點按翻頁和滑動翻頁至少保留一種，避免失去觸控翻頁。</string>
+    <string name="reader_typography_preview">即時預覽</string>
+    <string name="reader_typography_preview_sample">第十二章 夜雨\n燈下翻過一頁，繼續讀下去。</string>
+    <string name="reader_text_tools">文字工具</string>
+    <string name="reader_more_tools">更多工具</string>
+    <string name="reader_more_menu_back">返回</string>
 </resources>

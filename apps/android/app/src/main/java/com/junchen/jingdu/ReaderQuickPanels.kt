@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -117,6 +116,27 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                 )
             }
 
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.reader_brightness), style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        if (s.useSystemBrightness) stringResource(R.string.system_default) else "${(s.readerBrightness * 100).roundToInt()}%",
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                ReaderLinearSlider(
+                    value = s.readerBrightness,
+                    valueRange = 0.03f..1f,
+                    onValueChange = { actions.onSettingsChanged(s.copy(useSystemBrightness = false, readerBrightness = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentDescription = stringResource(R.string.reader_brightness),
+                )
+                if (!s.useSystemBrightness) TextButton(
+                    onClick = { actions.onSettingsChanged(s.copy(useSystemBrightness = true)) },
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text(stringResource(R.string.reader_system_brightness)) }
+            }
+
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = s.readingMode == ReaderMode.PAGED,
@@ -130,22 +150,6 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                     label = { Text(stringResource(R.string.reader_mode_continuous)) },
                     modifier = Modifier.weight(1f),
                 )
-            }
-
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(actions.onAddBookmark, Modifier.weight(1f)) {
-                    Icon(Icons.Outlined.BookmarkAdd, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.reader_access_bookmark))
-                }
-                OutlinedButton(
-                    onClick = { actions.onClosePanel(); actions.onOpenPanel(ReaderPanel.SETTINGS) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Outlined.Settings, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.reader_advanced_settings))
-                }
             }
 
             if (s.readingMode == ReaderMode.CONTINUOUS) {
@@ -169,6 +173,14 @@ internal fun ReaderQuickSettingsSheet(state: AppUiState, actions: JingduActions)
                         Text(stringResource(if (state.autoScrolling) R.string.reader_stop_auto_scroll else R.string.reader_start_auto_scroll))
                     }
                 }
+            }
+            OutlinedButton(
+                onClick = { actions.onClosePanel(); actions.onOpenPanel(ReaderPanel.SETTINGS) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Outlined.Settings, null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.reader_all_settings))
             }
             Spacer(Modifier.height(2.dp))
         }
