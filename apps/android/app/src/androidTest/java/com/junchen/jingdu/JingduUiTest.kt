@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -28,6 +29,35 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.empty_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.select_txt)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
+    }
+
+
+    @Test fun libraryPrioritizesContinueReadingAndConsolidatesManagementTools() {
+        val reading = sampleBook().copy(name = "Reading Now.txt", progress = 4_000, charCount = 10_000, touchedAt = 20)
+        val unread = sampleBook().copy(id = "c".repeat(64), name = "Later.txt", progress = 0, touchedAt = 10, normalizedSha256 = "d".repeat(64))
+        composeRule.setContent { JingduApp(AppUiState(books = listOf(unread, reading)), noOpActions()) }
+        composeRule.onNodeWithText(context.getString(R.string.continue_reading)).assertIsDisplayed()
+        composeRule.onNodeWithText("Reading Now").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.library_more_actions)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.add_folder_library)).assertIsNotDisplayed()
+    }
+
+    @Test fun librarySearchMatchesBookTitles() {
+        val first = sampleBook().copy(name = "Moon Reader.txt", touchedAt = 20)
+        val second = sampleBook().copy(id = "c".repeat(64), name = "River Story.txt", touchedAt = 10, normalizedSha256 = "d".repeat(64))
+        composeRule.setContent { JingduApp(AppUiState(books = listOf(first, second)), noOpActions()) }
+        composeRule.onNodeWithText(context.getString(R.string.search_hint)).performTextInput("Moon")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Moon Reader").assertIsDisplayed()
+        composeRule.onNodeWithText("River Story").assertIsNotDisplayed()
+    }
+
+    @Test fun libraryImportExplainsSingleAndBatchModesBeforeSystemPicker() {
+        composeRule.setContent { JingduApp(AppUiState(), noOpActions()) }
+        composeRule.onNodeWithText(context.getString(R.string.import_txt)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.select_txt)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.batch_import_picker_hint)).assertIsDisplayed()
     }
 
     @Test fun readerKeepsPrimaryReadingChromeDiscoverable() {

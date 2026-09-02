@@ -201,4 +201,7 @@
     <string name="noise_reason_repeated">Repeated line</string>
     <string name="noise_reason_promo_repeated">Promotion + repeated</string>
     <string name="library_more_actions">More library actions</string>
+    <string name="import_mode_hint">Choose how you want to add books to your library.</string>
+    <string name="single_import_hint">Choose one TXT and preview its text and encoding before opening.</string>
+    <string name="batch_import_picker_hint">Choose several TXT files at once. If your system picker shows no checkboxes, long-press one file to start multi-select.</string>
 </resources>
