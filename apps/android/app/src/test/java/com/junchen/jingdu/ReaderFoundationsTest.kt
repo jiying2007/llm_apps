@@ -140,6 +140,24 @@ class ReaderFoundationsTest {
         assertNotEquals(readerDayEpoch(instant.toEpochMilli(), singapore), readerDayEpoch(instant.toEpochMilli(), utc))
     }
 
+    @Test fun pagedModeCannotDisableEveryTouchPagingPath() {
+    val repaired = ReaderSettings(
+        readingMode = ReaderMode.PAGED,
+        tapPagingEnabled = false,
+        swipePagingEnabled = false,
+    ).withReachablePagedNavigation()
+    assertTrue(repaired.tapPagingEnabled)
+    assertTrue(!repaired.swipePagingEnabled)
+
+    val continuous = ReaderSettings(
+        readingMode = ReaderMode.CONTINUOUS,
+        tapPagingEnabled = false,
+        swipePagingEnabled = false,
+    ).withReachablePagedNavigation()
+    assertTrue(!continuous.tapPagingEnabled)
+    assertTrue(!continuous.swipePagingEnabled)
+}
+
     @Test fun lowVisionPresetIsLegibleAndFocused() {
         val lowVision = ReaderSettings().applyPreset(ReaderPreset.LOW_VISION)
         assertTrue(lowVision.fontSizeSp >= 30f)

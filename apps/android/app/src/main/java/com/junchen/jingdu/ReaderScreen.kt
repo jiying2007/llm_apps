@@ -1006,12 +1006,49 @@ private fun ReaderBottomBar(
     onReturnSkim: () -> Unit,
 ) {
     val progressDescription = stringResource(R.string.reading_progress)
+    var scrubberExpanded by rememberSaveable { mutableStateOf(false) }
+    val percent = (fraction.coerceIn(0f, 1f) * 100f).roundToInt()
     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp)) {
-            if (skimDragging || (showSkimReturn && skimPreview != null)) ReaderSkimPreviewCard(skimPreview, showSkimReturn, onReturnSkim)
-            else Text(chapter ?: "", Modifier.align(Alignment.CenterHorizontally), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
-            ReaderChapterTicks(chapters, length, fraction)
-            Slider(fraction, onFractionChange, onValueChangeFinished = onFractionCommit, modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressDescription })
+        Column(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            if (skimDragging || (showSkimReturn && skimPreview != null)) {
+                ReaderSkimPreviewCard(skimPreview, showSkimReturn, onReturnSkim)
+            } else {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        chapter ?: "",
+                        Modifier.weight(1f).padding(start = 6.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    TextButton(
+                        onClick = { scrubberExpanded = !scrubberExpanded },
+                        modifier = Modifier.semantics { contentDescription = "$progressDescription $percent%" },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text("$percent%", style = MaterialTheme.typography.labelMedium)
+                        Icon(
+                            if (scrubberExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
+            AnimatedVisibility(visible = scrubberExpanded || skimDragging) {
+                Column {
+                    ReaderChapterTicks(chapters, length, fraction)
+                    Slider(
+                        fraction,
+                        onFractionChange,
+                        onValueChangeFinished = onFractionCommit,
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressDescription },
+                    )
+                }
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onLocationBack, enabled = canLocationBack) { Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.reader_location_back)) }
                 IconButton(onBookmarks) { Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks)) }
@@ -1034,14 +1071,14 @@ private fun ReaderChapterTicks(chapters: List<ChapterModel>, length: Long, fract
             chapters.filterIndexed { index, _ -> index % stride == 0 }.map { it.offset }.take(MAX_CHAPTER_TICKS)
         }
     }
-    Canvas(Modifier.fillMaxWidth().height(12.dp)) {
+    Canvas(Modifier.fillMaxWidth().height(8.dp)) {
         drawLine(outline, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), strokeWidth = 1.dp.toPx())
         if (length > 0) tickOffsets.forEach { offset ->
             val x = (offset.toDouble() / length.toDouble()).toFloat().coerceIn(0f, 1f) * size.width
             drawLine(primary.copy(alpha = 0.55f), Offset(x, 1f), Offset(x, size.height - 1f), strokeWidth = 1.dp.toPx())
         }
         val x = fraction.coerceIn(0f, 1f) * size.width
-        drawCircle(primary, radius = 3.dp.toPx(), center = Offset(x, size.height / 2))
+        drawCircle(primary, radius = 2.dp.toPx(), center = Offset(x, size.height / 2))
     }
 }
 

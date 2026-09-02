@@ -71,6 +71,36 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
     }
 
+    @Test fun pagedReaderRightTapAlwaysHasAReachableNextPath() {
+    var nextCount = 0
+    composeRule.setContent {
+        JingduApp(
+            AppUiState(
+                screen = AppScreen.READER,
+                currentBook = sampleBook(),
+                pageText = "Chapter 1\nA stable body used for real edge-tap paging verification.",
+                position = 500,
+                length = 10_000,
+                chapters = listOf(ChapterModel(0, "Chapter 1")),
+                chaptersLoaded = true,
+                settings = ReaderSettings(
+                    gestureCoachDismissed = true,
+                    tapPagingEnabled = false,
+                    swipePagingEnabled = false,
+                ).withReachablePagedNavigation(),
+            ),
+            noOpActions().copy(onNavigateNext = { nextCount++ }),
+        )
+    }
+    val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
+    val bounds = surface.fetchSemanticsNode().boundsInRoot
+    surface.performTouchInput {
+        click(androidx.compose.ui.geometry.Offset(bounds.width * 0.88f, bounds.height * 0.50f))
+    }
+    composeRule.waitForIdle()
+    assertEquals(1, nextCount)
+}
+
     @Test fun quickReadingSettingsStayTouchableAcrossRepeatedStateChanges() {
         var latest = ReaderSettings(gestureCoachDismissed = true)
         composeRule.setContent {
