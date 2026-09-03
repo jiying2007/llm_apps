@@ -10,7 +10,21 @@ import kotlin.math.roundToInt
 /** Runtime-only coordination for controls that are owned by Android rather than Compose. */
 internal object ReaderInteractionRuntime {
     @Volatile var backgroundTtsPlaying: Boolean = false
-    @Volatile var foregroundPosition: Long = -1L
+    @Volatile private var renderedForegroundPosition: Long = -1L
+    @Volatile private var pendingForegroundPosition: Long = -1L
+    var foregroundPosition: Long
+        get() = renderedForegroundPosition
+        set(value) {
+            if (value < 0L) {
+                pendingForegroundPosition = value
+                renderedForegroundPosition = value
+            } else {
+                // MainActivity publishes source position before Compose has finished preparing the
+                // corresponding paged layout. Keep that value staged until the page-ready callback
+                // confirms the rendered page. Continuous mode explicitly commits at the UDF boundary.
+                pendingForegroundPosition = value
+            }
+        }
     @Volatile var continuousReady: Boolean = false
     @Volatile var volumeEligibilityChecks: Long = 0L
     @Volatile var lastVolumeForegroundTtsPlaying: Boolean = false
@@ -22,6 +36,16 @@ internal object ReaderInteractionRuntime {
     @Volatile var lastPagedGestureDurationMs: Long = -1L
     @Volatile var lastPagedGestureDistancePx: Float = -1f
     @Volatile var lastPagedGestureConsumedByChild: Boolean = false
+
+    fun commitForegroundPosition(position: Long) {
+        pendingForegroundPosition = position
+        renderedForegroundPosition = position
+    }
+
+    fun commitPendingForegroundPosition() {
+        val pending = pendingForegroundPosition
+        if (pending >= 0L) renderedForegroundPosition = pending
+    }
 
     fun resetPagedGestureDiagnostics() {
         controlsVisible = true
