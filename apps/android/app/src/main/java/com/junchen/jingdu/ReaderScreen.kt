@@ -272,11 +272,11 @@ internal fun ReaderScreen(
     }
     fun tick() { if (settings.hapticEnabled) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
     fun previous() {
-        selection?.clearNative?.invoke(); selection = null; tick()
+        selection?.clearNative?.invoke(); selection = null
         actions.onNavigatePrevious()
     }
     fun next() {
-        selection?.clearNative?.invoke(); selection = null; tick()
+        selection?.clearNative?.invoke(); selection = null
         actions.onNavigateNext()
     }
     fun updateBrightness(delta: Float) {
@@ -328,7 +328,7 @@ internal fun ReaderScreen(
                     val pageVisible = remember { MutableTransitionState(false).apply { targetState = true } }
                     AnimatedVisibility(
                         visibleState = pageVisible,
-                        enter = slideInHorizontally { direction * it } + fadeIn(),
+                        enter = slideInHorizontally { direction * (it / 12) } + fadeIn(),
                         exit = fadeOut(),
                         label = "reader-page-in",
                         modifier = Modifier.fillMaxSize(),
@@ -583,7 +583,7 @@ private fun PagedReaderPage(
         if (columns == 2 && annotated.isNotEmpty()) {
             val firstEnd = ready.snapshot.firstColumnEndUtf16.coerceIn(0, annotated.length)
             Row(
-                Modifier.widthIn(max = 1200.dp).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                Modifier.widthIn(max = readerAdaptiveTwoColumnWidth(settings.fontSizeSp)).fillMaxHeight().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
                 horizontalArrangement = Arrangement.spacedBy(28.dp),
             ) {
                 Text(
@@ -600,7 +600,7 @@ private fun PagedReaderPage(
         } else if (annotated.isNotEmpty()) {
             Text(
                 annotated,
-                Modifier.fillMaxHeight().widthIn(max = 760.dp).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
+                Modifier.fillMaxHeight().widthIn(max = readerAdaptiveTextWidth(settings.fontSizeSp)).padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp),
                 style = style,
                 overflow = TextOverflow.Clip,
                 selectionMode = fastSelectionMode,
@@ -775,7 +775,7 @@ private fun ContinuousReaderPage(
         Box(Modifier.fillMaxSize().onSizeChanged { widthPx = it.width; viewportHeight = it.height }.then(semantics), contentAlignment = Alignment.TopCenter) {
             Text(
                 annotated,
-                Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = 760.dp),
+                Modifier.fillMaxSize().padding(horizontal = settings.horizontalPaddingDp.dp, vertical = settings.verticalPaddingDp.dp).widthIn(max = readerAdaptiveTextWidth(settings.fontSizeSp)),
                 style = style,
                 overflow = TextOverflow.Clip,
                 scrollModel = scrollModel,
@@ -854,6 +854,7 @@ private fun Modifier.readerGestures(
     coroutineScope {
         val swipe = 52.dp.toPx()
         val tapSlop = 14.dp.toPx()
+        val intentSlop = 12.dp.toPx()
         var lastCenterTapAt = 0L
         var pendingCenterTap: Job? = null
 
@@ -879,6 +880,7 @@ private fun Modifier.readerGestures(
             var last = down
             var consumedByChild = down.isConsumed
             var maxPointers = 1
+            var gestureIntent = 0 // 0 undecided, 1 horizontal paging, 2 vertical gesture.
             var initialPinchDistance: Float? = null
             var latestPinchDistance: Float? = null
             do {
@@ -898,6 +900,16 @@ private fun Modifier.readerGestures(
                 }
                 if (event.changes.any { it.isConsumed }) consumedByChild = true
                 event.changes.firstOrNull { it.id == down.id }?.let { last = it }
+                if (gestureIntent == 0 && maxPointers == 1) {
+                    val travel = last.position - down.position
+                    if (travel.getDistance() >= intentSlop) {
+                        gestureIntent = when {
+                            abs(travel.x) > abs(travel.y) * 1.15f -> 1
+                            abs(travel.y) > abs(travel.x) * 1.15f -> 2
+                            else -> 0
+                        }
+                    }
+                }
             } while (last.pressed)
             if (maxPointers > 1) {
                 cancelPendingCenterTap()
@@ -918,7 +930,7 @@ private fun Modifier.readerGestures(
             ReaderInteractionRuntime.lastPagedGestureDistancePx = delta.getDistance()
             ReaderInteractionRuntime.lastPagedGestureConsumedByChild = consumedByChild
             val edgeGuard = 8.dp.toPx()
-            if (!consumedByChild && settings.brightnessGestureEnabled && widthPx > 0 &&
+            if (gestureIntent != 1 && !consumedByChild && settings.brightnessGestureEnabled && widthPx > 0 &&
                 down.position.x >= systemLeftInsetPx + edgeGuard &&
                 down.position.x <= systemLeftInsetPx + widthPx * 0.14f &&
                 abs(delta.y) > abs(delta.x) * 1.35f && abs(delta.y) >= swipe
@@ -928,7 +940,7 @@ private fun Modifier.readerGestures(
                 return@awaitEachGesture
             }
 
-            if (settings.swipePagingEnabled && widthPx > 0 &&
+            if (gestureIntent != 2 && settings.swipePagingEnabled && widthPx > 0 &&
                 down.position.x > systemLeftInsetPx + edgeGuard &&
                 down.position.x < widthPx - systemRightInsetPx - edgeGuard &&
                 ReaderGesturePolicy.allowsPageSwipe(consumedByChild, selectionActive, duration, delta.x, delta.y, swipe)
@@ -1007,36 +1019,7 @@ private fun Modifier.readerAccessibilityActions(
 
 @Composable
 private fun ReaderTopBar(bookName: String, chapter: String?, actions: JingduActions, onMore: () -> Unit, onInteraction: () -> Unit) {
-    val cleanBookName = bookName.removeSuffix(".txt").removeSuffix(".TXT")
-    val primaryTitle = chapter ?: cleanBookName
-    val settingsDescription = stringResource(R.string.reading_settings)
-    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))) {
-        CenterAlignedTopAppBar(
-            modifier = Modifier.statusBarsPadding(),
-            navigationIcon = { IconButton(actions.onBackToLibrary) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library)) } },
-            title = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(primaryTitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
-                    if (chapter != null && cleanBookName != chapter) Text(
-                        cleanBookName,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            actions = {
-                TextButton(
-                    onClick = { onInteraction(); actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) },
-                    modifier = Modifier.semantics { contentDescription = settingsDescription },
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                ) { Text("Aa", style = MaterialTheme.typography.titleMedium) }
-                IconButton({ onInteraction(); actions.onOpenPanel(ReaderPanel.CHAPTERS) }) { Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters)) }
-                IconButton({ onInteraction(); onMore() }) { Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools)) }
-            },
-        )
-    }
+    ReaderImmersiveTopBar(bookName, chapter, actions, onMore, onInteraction)
 }
 
 private enum class ReaderMoreMenuPage { MAIN, TEXT_TOOLS, MORE_TOOLS }
@@ -1091,91 +1074,27 @@ private fun ReaderBottomBar(
     onReturnSkim: () -> Unit,
     onInteraction: () -> Unit,
 ) {
-    val progressDescription = stringResource(R.string.reading_progress)
-    val percent = (fraction.coerceIn(0f, 1f) * 100f).roundToInt()
-    Box(
-        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Surface(
-            Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-            tonalElevation = 4.dp,
-            shadowElevation = 2.dp,
-        ) {
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                AnimatedVisibility(visible = canLocationBack || canLocationForward) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 2.dp) {
-                            Row(Modifier.padding(horizontal = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (canLocationBack) TextButton({ onInteraction(); onLocationBack() }) {
-                                    Icon(Icons.AutoMirrored.Outlined.Undo, null, Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(stringResource(R.string.reader_location_back))
-                                }
-                                if (canLocationForward) TextButton({ onInteraction(); onLocationForward() }) {
-                                    Icon(Icons.AutoMirrored.Outlined.Redo, null, Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(stringResource(R.string.reader_location_forward))
-                                }
-                            }
-                        }
-                    }
-                }
-                if (skimDragging || (showSkimReturn && skimPreview != null)) {
-                    ReaderSkimPreviewCard(skimPreview, showSkimReturn) { onInteraction(); onReturnSkim() }
-                }
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 42.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "$percent%",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    IconButton(
-                        { onInteraction(); onBookmarks() },
-                        modifier = Modifier.size(40.dp),
-                    ) { Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks), Modifier.size(21.dp)) }
-                    if (ttsPlaying) {
-                        FilledTonalIconButton(
-                            { onInteraction(); onTts() },
-                            modifier = Modifier.size(40.dp),
-                        ) { Icon(Icons.Default.Pause, stringResource(R.string.pause_read_aloud), Modifier.size(21.dp)) }
-                    } else {
-                        IconButton(
-                            { onInteraction(); onTts() },
-                            modifier = Modifier.size(40.dp),
-                        ) { Icon(Icons.Default.PlayArrow, stringResource(R.string.start_read_aloud), Modifier.size(21.dp)) }
-                    }
-                    if (autoPaging) {
-                        FilledTonalIconButton(
-                            { onInteraction(); onAutoPage() },
-                            modifier = Modifier.size(40.dp),
-                        ) { Icon(Icons.Default.Pause, stringResource(R.string.stop_auto_page), Modifier.size(21.dp)) }
-                    } else {
-                        IconButton(
-                            { onInteraction(); onAutoPage() },
-                            modifier = Modifier.size(40.dp),
-                        ) { Icon(Icons.Outlined.Timer, stringResource(R.string.start_auto_page), Modifier.size(21.dp)) }
-                    }
-                }
-                ReaderProgressRail(
-                    chapters = chapters,
-                    length = length,
-                    fraction = fraction,
-                    contentDescription = "$progressDescription $percent%",
-                    onFractionChange = { value -> onInteraction(); onFractionChange(value) },
-                    onFractionCommit = { onInteraction(); onFractionCommit() },
-                )
-            }
-        }
-    }
+    ReaderImmersiveBottomDock(
+        chapters = chapters,
+        length = length,
+        autoPaging = autoPaging,
+        ttsPlaying = ttsPlaying,
+        fraction = fraction,
+        skimPreview = skimPreview,
+        skimDragging = skimDragging,
+        showSkimReturn = showSkimReturn,
+        canLocationBack = canLocationBack,
+        canLocationForward = canLocationForward,
+        onLocationBack = onLocationBack,
+        onLocationForward = onLocationForward,
+        onBookmarks = onBookmarks,
+        onTts = onTts,
+        onAutoPage = onAutoPage,
+        onFractionChange = onFractionChange,
+        onFractionCommit = onFractionCommit,
+        onReturnSkim = onReturnSkim,
+        onInteraction = onInteraction,
+    )
 }
 
 @Composable
