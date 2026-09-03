@@ -11,6 +11,49 @@ import java.util.Locale
 import kotlin.random.Random
 
 class ReaderFoundationsTest {
+    @Test
+    fun tocCurrentIndexUsesNearestChapterAtOrBeforePosition() {
+        val chapters = listOf(
+            SmartChapter(0L, "One", "core", 100),
+            SmartChapter(100L, "Two", "core", 100),
+            SmartChapter(250L, "Three", "core", 100),
+        )
+        assertEquals(0, readerTocCurrentIndex(emptyList(), 999L))
+        assertEquals(0, readerTocCurrentIndex(chapters, 99L))
+        assertEquals(1, readerTocCurrentIndex(chapters, 100L))
+        assertEquals(1, readerTocCurrentIndex(chapters, 249L))
+        assertEquals(2, readerTocCurrentIndex(chapters, 999L))
+    }
+
+    @Test fun readerChromeAutoHideWaitsForRenderedContentAndPausesDuringActiveChromeWork() {
+        assertEquals(false, readerChromeCanAutoHide(false, true, false, false, false, false))
+        assertEquals(true, readerChromeCanAutoHide(true, true, false, false, false, false))
+        assertEquals(false, readerChromeCanAutoHide(true, true, true, false, false, false))
+        assertEquals(false, readerChromeCanAutoHide(true, true, false, true, false, false))
+        assertEquals(false, readerChromeCanAutoHide(true, true, false, false, true, false))
+        assertEquals(false, readerChromeCanAutoHide(true, true, false, false, false, true))
+        assertEquals(false, readerChromeCanAutoHide(true, false, false, false, false, false))
+    }
+
+    @Test fun readerChromeRuntimeBlocksPanelsAndWakesOnCloseWithoutHotPanelSubscription() {
+        var wakes = 0
+        val wake = { wakes++; Unit }
+        ReaderChromeRuntime.bindWakeRequest(wake)
+        ReaderChromeRuntime.markPanelOpen()
+        assertEquals(true, ReaderChromeRuntime.panelOpen)
+        assertEquals(false, readerChromeCanAutoHide(true, true, ReaderChromeRuntime.panelOpen, false, false, false))
+        ReaderChromeRuntime.markPanelClosedAndWake()
+        assertEquals(false, ReaderChromeRuntime.panelOpen)
+        assertEquals(1, wakes)
+        ReaderChromeRuntime.unbindWakeRequest(wake)
+    }
+
+    @Test fun lastEnabledTouchPagingPathCannotBeDisabledInSettings() {
+        assertEquals(false, canDisablePagingPath(currentEnabled = true, otherEnabled = false))
+        assertEquals(true, canDisablePagingPath(currentEnabled = true, otherEnabled = true))
+        assertEquals(true, canDisablePagingPath(currentEnabled = false, otherEnabled = false))
+    }
+
     @Test fun equalLengthProjectionIsExactOneToOne() {
         val map = SourceDisplayMap.between("汉语龙门", "漢語龍門")
         for (offset in 0L..4L) {
@@ -139,6 +182,24 @@ class ReaderFoundationsTest {
         assertEquals(LocalDate.of(2026, 8, 30).toEpochDay(), readerDayEpoch(instant.toEpochMilli(), utc))
         assertNotEquals(readerDayEpoch(instant.toEpochMilli(), singapore), readerDayEpoch(instant.toEpochMilli(), utc))
     }
+
+    @Test fun pagedModeCannotDisableEveryTouchPagingPath() {
+    val repaired = ReaderSettings(
+        readingMode = ReaderMode.PAGED,
+        tapPagingEnabled = false,
+        swipePagingEnabled = false,
+    ).withReachablePagedNavigation()
+    assertTrue(repaired.tapPagingEnabled)
+    assertTrue(!repaired.swipePagingEnabled)
+
+    val continuous = ReaderSettings(
+        readingMode = ReaderMode.CONTINUOUS,
+        tapPagingEnabled = false,
+        swipePagingEnabled = false,
+    ).withReachablePagedNavigation()
+    assertTrue(!continuous.tapPagingEnabled)
+    assertTrue(!continuous.swipePagingEnabled)
+}
 
     @Test fun lowVisionPresetIsLegibleAndFocused() {
         val lowVision = ReaderSettings().applyPreset(ReaderPreset.LOW_VISION)

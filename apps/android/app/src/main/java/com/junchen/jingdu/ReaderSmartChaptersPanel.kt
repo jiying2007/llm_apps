@@ -11,7 +11,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +36,23 @@ import kotlin.math.roundToInt
 
 private data class TocPanelKey(val bookId: String, val revision: String, val length: Long, val chaptersHash: Int)
 private data class TocPanelEntry(val base: TocQualityReport, val report: TocQualityReport)
+
+internal fun readerTocCurrentIndex(chapters: List<SmartChapter>, activePosition: Long): Int {
+    if (chapters.isEmpty()) return 0
+    var low = 0
+    var high = chapters.lastIndex
+    var result = 0
+    while (low <= high) {
+        val mid = (low + high) ushr 1
+        if (chapters[mid].offset <= activePosition) {
+            result = mid
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return result
+}
 
 private object TocPanelCache {
     private val entries = object : LinkedHashMap<TocPanelKey, TocPanelEntry>(5, 0.75f, true) {
@@ -91,8 +110,14 @@ internal fun ReaderSmartChaptersPanel(
     }
     var addDialog by rememberSaveable(book?.id) { mutableStateOf(false) }
     var title by rememberSaveable(book?.id) { mutableStateOf("") }
-    var positioned by remember(book?.id) { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    var editing by rememberSaveable(book?.id) { mutableStateOf(false) }
+    val activePosition = currentPosition()
+    val initialChapters = initial?.report?.chapters.orEmpty()
+    val initialIndex = remember(initialChapters, activePosition) {
+        readerTocCurrentIndex(initialChapters, activePosition)
+    }
+    var positioned by remember(book?.id) { mutableStateOf(initialChapters.isNotEmpty()) }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
 
     LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {
         if (book == null) {
@@ -155,25 +180,8 @@ internal fun ReaderSmartChaptersPanel(
     }
 
     val chapters = report?.chapters.orEmpty()
-    val activePosition = currentPosition()
     val currentIndex = remember(chapters, activePosition) {
-        if (chapters.isEmpty()) {
-            0
-        } else {
-            var low = 0
-            var high = chapters.lastIndex
-            var result = 0
-            while (low <= high) {
-                val mid = (low + high) ushr 1
-                if (chapters[mid].offset <= activePosition) {
-                    result = mid
-                    low = mid + 1
-                } else {
-                    high = mid - 1
-                }
-            }
-            result
-        }
+        readerTocCurrentIndex(chapters, activePosition)
     }
 
     LaunchedEffect(book?.id, chapters.size, currentIndex) {
@@ -225,17 +233,26 @@ internal fun ReaderSmartChaptersPanel(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.smart_toc), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    if (quality.isNotBlank()) Text(
+                    if (editing && quality.isNotBlank()) Text(
                         quality,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton({ addDialog = true }, enabled = book != null) {
-                    Icon(Icons.Default.Add, stringResource(R.string.toc_add_here))
-                }
-                IconButton(::reset, enabled = base != null) {
-                    Icon(Icons.Outlined.Restore, stringResource(R.string.toc_reset_repairs))
+                if (editing) {
+                    IconButton({ addDialog = true }, enabled = book != null) {
+                        Icon(Icons.Default.Add, stringResource(R.string.toc_add_here))
+                    }
+                    IconButton(::reset, enabled = base != null) {
+                        Icon(Icons.Outlined.Restore, stringResource(R.string.toc_reset_repairs))
+                    }
+                    IconButton({ editing = false }) {
+                        Icon(Icons.Default.Done, stringResource(R.string.reader_toc_done))
+                    }
+                } else {
+                    IconButton({ editing = true }) {
+                        Icon(Icons.Outlined.Edit, stringResource(R.string.reader_toc_edit))
+                    }
                 }
                 IconButton(actions.onClosePanel) {
                     Icon(Icons.Default.Close, stringResource(R.string.cancel))
@@ -262,10 +279,6 @@ internal fun ReaderSmartChaptersPanel(
                     itemsIndexed(chapters, key = { _, item -> item.offset }) { index, chapter ->
                         val displayTitle = ReaderTextPresentation.chapterTitle(chapter.title, state.settings)
                         val selected = index == currentIndex
-                        val percent = if (state.length <= 0L) 0 else {
-                            ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
-                        }
-                        val hideActionLabel = "${stringResource(R.string.toc_hide_heading)}: $displayTitle"
                         val rowModifier = if (selected) {
                             Modifier.fillMaxWidth().background(
                                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
@@ -274,41 +287,61 @@ internal fun ReaderSmartChaptersPanel(
                         } else {
                             Modifier.fillMaxWidth()
                         }
+                        val editSemantics = if (editing) {
+                            val hideActionLabel = "${stringResource(R.string.toc_hide_heading)}: $displayTitle"
+                            Modifier.semantics(mergeDescendants = true) {
+                                customActions = listOf(
+                                    CustomAccessibilityAction(hideActionLabel) {
+                                        hide(index)
+                                        true
+                                    },
+                                )
+                            }
+                        } else Modifier
                         Row(
                             rowModifier
                                 .clickable { actions.onJump(chapter.offset) }
-                                .semantics(mergeDescendants = true) {
-                                    customActions = listOf(
-                                        CustomAccessibilityAction(hideActionLabel) {
-                                            hide(index)
-                                            true
-                                        },
-                                    )
-                                }
-                                .padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 4.dp),
+                                .then(editSemantics)
+                                .heightIn(min = 64.dp)
+                                .padding(start = 14.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    displayTitle,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                )
-                                Text(
-                                    "$percent%${if (chapter.source != "core") " · ${chapter.source}" else ""}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Box(Modifier.clearAndSetSemantics {}) {
-                                IconButton({ hide(index) }) {
-                                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                            if (editing) {
+                                val percent = if (state.length <= 0L) 0 else {
+                                    ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
                                 }
+                                val sourceLabel = if (chapter.source != "core") " · ${chapter.source}" else ""
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        displayTitle,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    )
+                                    Text(
+                                        "$percent%$sourceLabel",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Box(Modifier.clearAndSetSemantics {}) {
+                                    IconButton({ hide(index) }) {
+                                        Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                                    }
+                                }
+                            } else {
+                                ReaderPanelText(
+                                    text = displayTitle,
+                                    modifier = Modifier.weight(1f).height(52.dp).padding(end = 12.dp),
+                                    fontSizeSp = 16f,
+                                    bold = selected,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                )
                             }
                         }
+
                     }
                 }
             }

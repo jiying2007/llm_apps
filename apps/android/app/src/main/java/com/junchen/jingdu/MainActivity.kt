@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
     private var pendingExport: File? = null
     private var lastProgressPersistAt = 0L
     private var lastProgressPersistPosition = -1L
-    private var consumedReaderVolumeKey = KeyEvent.KEYCODE_UNKNOWN
+    private var consumedReaderPageKey = KeyEvent.KEYCODE_UNKNOWN
     private var uiState: AppUiState
         get() = readerViewModel.state.value
         set(value) { readerViewModel.replace(value) }
@@ -987,7 +987,7 @@ class MainActivity : ComponentActivity() {
     private fun updateSettings(settings: ReaderSettings) {
         if (settings.ttsVoiceName != uiState.settings.ttsVoiceName && !proUnlocked) { billing.purchase(); return }
         val previousReadingMode = uiState.settings.readingMode
-        var normalized = settings.copy(
+        var normalized = settings.withReachablePagedNavigation().copy(
             fontSizeSp = settings.fontSizeSp.coerceIn(14f, 40f),
             lineHeightMultiplier = settings.lineHeightMultiplier.coerceIn(1.15f, 2.2f),
             letterSpacingEm = settings.letterSpacingEm.coerceIn(-0.02f, 0.12f),
@@ -1187,41 +1187,52 @@ class MainActivity : ComponentActivity() {
         else -> reason
     }
 
-    private fun handleReaderVolumeKey(keyCode: Int): Boolean {
-        if (uiState.screen != AppScreen.READER || uiState.busyLabel != null ||
-            motionController.state != ReaderMotionState.IDLE ||
-            !ReaderInteractionRuntime.shouldUseVolumeKeysForPaging(uiState.settings, uiState.tts.active)
-        ) return false
-        val nextKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
-        val previousKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_DOWN else KeyEvent.KEYCODE_VOLUME_UP
-        return when (keyCode) {
-            nextKey -> { navigateNext(userInitiated = true); true }
-            previousKey -> { navigatePrevious(userInitiated = true); true }
-            else -> false
-        }
-    }
+    private fun handleReaderPageKey(keyCode: Int): Boolean {
+    if (uiState.screen != AppScreen.READER || uiState.busyLabel != null || currentBook == null ||
+        uiState.panel != null || readerViewModel.hotPanel.value != null
+    ) return false
 
-    @SuppressLint("RestrictedApi") // ComponentActivity narrows the public Activity key-dispatch hook; required to intercept volume paging before system handling.
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val keyCode = event.keyCode
-        val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
-        if (isVolumeKey) {
-            when (event.action) {
-                KeyEvent.ACTION_DOWN -> {
-                    if (consumedReaderVolumeKey == keyCode) return true
-                    if (event.repeatCount == 0 && handleReaderVolumeKey(keyCode)) {
-                        consumedReaderVolumeKey = keyCode
-                        return true
-                    }
-                }
-                KeyEvent.ACTION_UP -> if (consumedReaderVolumeKey == keyCode) {
-                    consumedReaderVolumeKey = KeyEvent.KEYCODE_UNKNOWN
+    val forward = when (keyCode) {
+        KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP -> {
+            if (!ReaderInteractionRuntime.shouldUseVolumeKeysForPaging(uiState.settings, uiState.tts.active)) return false
+            val nextKey = if (uiState.settings.reverseVolumeKeys) KeyEvent.KEYCODE_VOLUME_UP else KeyEvent.KEYCODE_VOLUME_DOWN
+            keyCode == nextKey
+        }
+        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_SPACE -> true
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_PAGE_UP -> false
+        else -> return false
+    }
+    if (forward) navigateNext(userInitiated = true) else navigatePrevious(userInitiated = true)
+    return true
+}
+
+@SuppressLint("RestrictedApi") // Intercept Reader paging keys before system/focused-view handling.
+override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    val keyCode = event.keyCode
+    val isReaderPageKey = when (keyCode) {
+        KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN,
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_PAGE_DOWN,
+        KeyEvent.KEYCODE_SPACE -> true
+        else -> false
+    }
+    if (isReaderPageKey) {
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (consumedReaderPageKey == keyCode) return true
+                if (event.repeatCount == 0 && handleReaderPageKey(keyCode)) {
+                    consumedReaderPageKey = keyCode
                     return true
                 }
             }
+            KeyEvent.ACTION_UP -> if (consumedReaderPageKey == keyCode) {
+                consumedReaderPageKey = KeyEvent.KEYCODE_UNKNOWN
+                return true
+            }
         }
-        return super.dispatchKeyEvent(event)
     }
+    return super.dispatchKeyEvent(event)
+}
 
     override fun onPause() {
         super.onPause()

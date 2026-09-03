@@ -3,6 +3,7 @@ package com.junchen.jingdu
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 
 enum class ReaderAdaptiveWidth { COMPACT, MEDIUM, EXPANDED, LARGE, EXTRA_LARGE }
 
@@ -20,6 +21,7 @@ internal fun ReaderRoute(
     state: AppUiState,
     actions: JingduActions,
     snackbar: SnackbarHostState,
+    panelState: State<ReaderPanel?>,
     canLocationBack: Boolean,
     canLocationForward: Boolean,
     onLocationBack: () -> Unit,
@@ -44,6 +46,7 @@ internal fun ReaderRoute(
         actions = actions,
         snackbar = snackbar,
         adaptiveLayout = layout,
+        panelState = panelState,
         canLocationBack = canLocationBack,
         canLocationForward = canLocationForward,
         onLocationBack = onLocationBack,
