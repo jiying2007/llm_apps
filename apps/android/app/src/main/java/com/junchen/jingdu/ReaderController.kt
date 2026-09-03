@@ -14,7 +14,14 @@ internal class ReaderController(
     data class Chapter(val offset: Long, val title: String)
     data class NoiseCandidate(val score: Int, val count: Int, val reason: String, val text: String)
     data class Speech(val nextOffset: Long, val text: String, val projection: TextProjection)
-    private data class PageWindow(val file: File, val start: Long, val text: String, val codePoints: Long)
+    private data class PageWindow(
+        val file: File,
+        val start: Long,
+        val text: String,
+        val index: ReaderCodePointIndex,
+    ) {
+        val codePoints: Long get() = index.codePointCount.toLong()
+    }
 
     private val pageCacheGeneration = AtomicLong()
     private var handle = 0L
@@ -157,19 +164,15 @@ internal class ReaderController(
     private fun primePageWindow(nativeHandle: Long, file: File, length: Long, target: Long) {
         val start = pageWindowStart(target, length)
         val text = NativeCore.read(nativeHandle, start, PAGE_CACHE_CHARS)
-        pageWindow = PageWindow(file, start, text, text.codePointCount(0, text.length).toLong())
+        pageWindow = pageWindow(file, start, text)
     }
 
     private fun pageFromWindow(window: PageWindow?, target: Long): String? {
         val file = documentFile
         if (!pageCacheEnabled || window == null || file == null || file != window.file) return null
         val relative = target - window.start
-        if (relative < 0 || relative >= window.codePoints) return null
-        val available = window.codePoints - relative
-        val startUtf16 = window.text.offsetByCodePoints(0, relative.toInt())
-        val count = minOf(WINDOW_CHARS, available).toInt()
-        val endUtf16 = window.text.offsetByCodePoints(startUtf16, count)
-        return window.text.substring(startUtf16, endUtf16)
+        if (relative < 0 || relative >= window.codePoints || relative > Int.MAX_VALUE) return null
+        return window.index.slice(relative.toInt(), WINDOW_CHARS.toInt())
     }
 
     private fun schedulePagePrefetchIfNeeded() {
@@ -193,7 +196,7 @@ internal class ReaderController(
                 temporary = NativeCore.open(file)
                 val start = pageWindowStart(target, length)
                 val text = NativeCore.read(temporary, start, PAGE_CACHE_CHARS)
-                val next = PageWindow(file, start, text, text.codePointCount(0, text.length).toLong())
+                val next = pageWindow(file, start, text)
                 if (generation == pageCacheGeneration.get() && file == documentFile && documentLength == length) {
                     pageWindow = next
                 }
@@ -204,6 +207,9 @@ internal class ReaderController(
             }
         }
     }
+
+    private fun pageWindow(file: File, start: Long, text: String): PageWindow =
+        PageWindow(file, start, text, ReaderCodePointIndex.build(text))
 
     @Throws(IOException::class)
     private fun ensureOpen() {
