@@ -12,27 +12,25 @@ import kotlin.math.abs
  * visibly on-screen Reader chrome as proof. Performance optimizations must never make paging/taps unreachable.
  */
 internal object ReaderGesturePolicy {
-    private const val CONSUMED_SWIPE_MAX_MS = 450L
     private const val DOUBLE_TAP_MIN_MS = 40L
     private const val DOUBLE_TAP_MAX_MS = 320L
 
     /**
-     * SelectionContainer is allowed to consume slow/ambiguous drags. A short, strongly horizontal
-     * swipe still counts as paging even when the selection layer observed it first.
+     * A paged Reader owns an intentional horizontal drag until native text selection is explicitly
+     * active. Text/layout nodes can report Final-pass consumption for ordinary drags, so neither
+     * consumption nor swipe duration is allowed to make horizontal paging unreachable.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun allowsPageSwipe(
         consumedByChild: Boolean,
+        selectionActive: Boolean,
         durationMs: Long,
         deltaX: Float,
         deltaY: Float,
         thresholdPx: Float,
     ): Boolean {
-        val horizontal = abs(deltaX) >= thresholdPx && abs(deltaX) > abs(deltaY) * 1.25f
-        if (!horizontal) return false
-        if (!consumedByChild) return true
-        return durationMs <= CONSUMED_SWIPE_MAX_MS &&
-            abs(deltaX) >= thresholdPx * 1.25f &&
-            abs(deltaX) > abs(deltaY) * 1.75f
+        if (selectionActive) return false
+        return abs(deltaX) >= thresholdPx && abs(deltaX) > abs(deltaY) * 1.20f
     }
 
     fun isDoubleTap(previousTapAt: Long, tapAt: Long): Boolean =
