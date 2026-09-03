@@ -1,9 +1,11 @@
 package com.junchen.jingdu
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -36,10 +38,12 @@ class ReaderPagingRegressionTest {
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).performTouchInput {
+        val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
+        val bounds = surface.fetchSemanticsNode().boundsInRoot
+        surface.performTouchInput {
             swipe(
-                start = Offset(size.width * 0.80f, size.height * 0.50f),
-                end = Offset(size.width * 0.20f, size.height * 0.50f),
+                start = Offset(bounds.width * 0.80f, bounds.height * 0.50f),
+                end = Offset(bounds.width * 0.20f, bounds.height * 0.50f),
                 durationMillis = 700L,
             )
         }
@@ -65,10 +69,12 @@ class ReaderPagingRegressionTest {
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(
+        val rail = composeRule.onNodeWithContentDescription(
             "${context.getString(R.string.reading_progress)} 5%",
-        ).performTouchInput {
-            click(Offset(size.width * 0.50f, size.height * 0.50f))
+        )
+        val bounds = rail.fetchSemanticsNode().boundsInRoot
+        rail.performTouchInput {
+            click(Offset(bounds.width * 0.50f, bounds.height * 0.50f))
         }
         composeRule.waitForIdle()
         assertTrue("direct progress scrub should seek near the middle, got $seekFraction", seekFraction in 0.45f..0.55f)
