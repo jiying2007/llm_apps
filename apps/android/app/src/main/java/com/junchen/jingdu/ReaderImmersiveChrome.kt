@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Bookmarks
@@ -87,10 +89,10 @@ internal fun ReaderImmersiveTopBar(
                     contentPadding = PaddingValues(horizontal = 8.dp),
                 ) { Text("Aa", style = MaterialTheme.typography.titleMedium) }
                 IconButton({ onInteraction(); actions.onOpenPanel(ReaderPanel.CHAPTERS) }, Modifier.size(48.dp)) {
-                    Icon(androidx.compose.material.icons.automirrored.filled.MenuBook, stringResource(R.string.chapters))
+                    Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters))
                 }
                 IconButton({ onInteraction(); onMore() }, Modifier.size(48.dp)) {
-                    Icon(androidx.compose.material.icons.filled.MoreVert, stringResource(R.string.more_reading_tools))
+                    Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools))
                 }
             }
         }
