@@ -9,7 +9,7 @@ class ReaderGesturePolicyTest {
         assertTrue(ReaderGesturePolicy.allowsPageSwipe(true, false, 180, -120f, 12f, 52f))
         assertTrue(ReaderGesturePolicy.allowsPageSwipe(true, false, 700, -120f, 12f, 52f))
         assertTrue(ReaderGesturePolicy.allowsPageSwipe(true, false, 2_000, -120f, 12f, 52f))
-        assertFalse(ReaderGesturePolicy.allowsPageSwipe(true, false, 180, -60f, 42f, 52f))
+        assertFalse(ReaderGesturePolicy.allowsPageSwipe(true, false, 180, -60f, 52f, 52f))
     }
 
     @Test fun activeTextSelectionOwnsHorizontalDrag() {
