@@ -83,19 +83,19 @@ internal class ProductErrorLog(context: Context) {
 internal object ProductErrorClassifier {
     fun importFailure(error: Throwable): ProductErrorCode = when (error) {
         is FileNotFoundException -> ProductErrorCode.IMPORT_SOURCE_UNAVAILABLE
-        is IOException -> if (error.message?.startsWith("unsupported encoding:") == true) {
-            ProductErrorCode.UNSUPPORTED_ENCODING
-        } else {
-            ProductErrorCode.IMPORT_IO
+        is IOException -> when {
+            error.message == "private publish failed" -> ProductErrorCode.PRIVATE_PUBLISH_FAILED
+            error.message?.startsWith("unsupported encoding:") == true -> ProductErrorCode.UNSUPPORTED_ENCODING
+            else -> ProductErrorCode.IMPORT_IO
         }
         else -> ProductErrorCode.INTERNAL_OPERATION_FAILED
     }
 
     fun redecodeFailure(error: Throwable): ProductErrorCode = when (error) {
-        is IOException -> if (error.message?.startsWith("unsupported encoding:") == true) {
-            ProductErrorCode.UNSUPPORTED_ENCODING
-        } else {
-            ProductErrorCode.REDECODE_IO
+        is IOException -> when {
+            error.message == "private publish failed" -> ProductErrorCode.PRIVATE_PUBLISH_FAILED
+            error.message?.startsWith("unsupported encoding:") == true -> ProductErrorCode.UNSUPPORTED_ENCODING
+            else -> ProductErrorCode.REDECODE_IO
         }
         else -> ProductErrorCode.INTERNAL_OPERATION_FAILED
     }
