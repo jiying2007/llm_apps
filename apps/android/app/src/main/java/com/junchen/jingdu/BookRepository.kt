@@ -38,6 +38,7 @@ internal class BookRepository(context: Context) {
 
     private val context = context.applicationContext
     private val root = File(context.filesDir, "books")
+    private val errorLog = ProductErrorLog(context)
 
     init {
         if (!root.isDirectory && !root.mkdirs()) error("cannot create books directory")
@@ -112,6 +113,9 @@ internal class BookRepository(context: Context) {
             upsert(book)
             prewarmChapterIndex(book)
             return book
+        } catch (error: Throwable) {
+            errorLog.record(ProductErrorClassifier.importFailure(error), "book.import")
+            throw error
         } finally {
             deleteTemporary(sourceTemporary)
             deleteTemporary(normalizedTemporary)
@@ -153,6 +157,9 @@ internal class BookRepository(context: Context) {
                 ReaderAnnotationStore(context).remapBookForRedecode(book.id, oldLength, newLength)
             }
             return updated
+        } catch (error: Throwable) {
+            errorLog.record(ProductErrorClassifier.redecodeFailure(error), "book.redecode")
+            throw error
         } finally {
             deleteTemporary(temporary)
         }
@@ -357,6 +364,8 @@ internal class BookRepository(context: Context) {
             }
         } catch (_: FileAlreadyExistsException) {
             deleteTemporary(source)
+        } catch (error: IOException) {
+            throw IOException("private publish failed", error)
         }
     }
 
