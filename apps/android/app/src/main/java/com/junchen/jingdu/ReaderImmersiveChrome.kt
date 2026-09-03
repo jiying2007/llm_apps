@@ -5,11 +5,13 @@ package com.junchen.jingdu
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -23,26 +25,35 @@ import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.isActive
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 @Composable
@@ -63,12 +74,15 @@ internal fun ReaderImmersiveTopBar(
         tonalElevation = 2.dp,
         shadowElevation = 1.dp,
     ) {
-        Box(Modifier.fillMaxWidth().height(50.dp), contentAlignment = Alignment.Center) {
-            IconButton(actions.onBackToLibrary, Modifier.align(Alignment.CenterStart).size(48.dp)) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 50.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(actions.onBackToLibrary, Modifier.size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_to_library))
             }
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 144.dp),
+                Modifier.weight(1f).padding(horizontal = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
@@ -82,7 +96,7 @@ internal fun ReaderImmersiveTopBar(
                     )
                 }
             }
-            Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(
                     onClick = { onInteraction(); actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) },
                     modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = settingsDescription },
@@ -123,7 +137,6 @@ internal fun ReaderImmersiveBottomDock(
 ) {
     val progressDescription = stringResource(R.string.reading_progress)
     val percent = (fraction.coerceIn(0f, 1f) * 100f).roundToInt()
-    var moreOpen by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Surface(
@@ -163,51 +176,77 @@ internal fun ReaderImmersiveBottomDock(
                     Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        "$percent%",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
+                    ReaderProgressPercent(fraction)
                     Spacer(Modifier.weight(1f))
-                    IconButton({ onInteraction(); onBookmarks() }, Modifier.size(48.dp)) {
-                        Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks), Modifier.size(21.dp))
-                    }
-                    if (ttsPlaying) {
-                        FilledTonalIconButton({ onInteraction(); onTts() }, Modifier.size(48.dp)) {
-                            Icon(Icons.Default.Pause, stringResource(R.string.pause_read_aloud), Modifier.size(21.dp))
-                        }
-                    } else {
-                        IconButton({ onInteraction(); onTts() }, Modifier.size(48.dp)) {
-                            Icon(Icons.Default.PlayArrow, stringResource(R.string.start_read_aloud), Modifier.size(21.dp))
-                        }
-                    }
-                    if (autoPaging) {
-                        FilledTonalIconButton({ onInteraction(); onAutoPage() }, Modifier.size(48.dp)) {
-                            Icon(Icons.Default.Pause, stringResource(R.string.stop_auto_page), Modifier.size(21.dp))
-                        }
-                    } else {
-                        Box {
-                            IconButton({ onInteraction(); moreOpen = true }, Modifier.size(48.dp)) {
-                                Icon(Icons.Default.MoreHoriz, stringResource(R.string.more_reading_tools), Modifier.size(21.dp))
-                            }
-                            DropdownMenu(moreOpen, onDismissRequest = { moreOpen = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.start_auto_page)) },
-                                    onClick = { moreOpen = false; onInteraction(); onAutoPage() },
-                                    leadingIcon = { Icon(Icons.Outlined.Timer, null) },
-                                )
-                            }
-                        }
-                    }
+                    ReaderDockActions(
+                        autoPaging = autoPaging,
+                        ttsPlaying = ttsPlaying,
+                        onBookmarks = onBookmarks,
+                        onTts = onTts,
+                        onAutoPage = onAutoPage,
+                        onInteraction = onInteraction,
+                    )
                 }
 
                 ReaderImmersiveProgressRail(
                     chapters = chapters,
                     length = length,
                     fraction = fraction,
-                    contentDescription = "$progressDescription $percent%",
-                    onFractionChange = { value -> onInteraction(); onFractionChange(value) },
-                    onFractionCommit = { onInteraction(); onFractionCommit() },
+                    contentDescription = progressDescription,
+                    onFractionChange = onFractionChange,
+                    onFractionCommit = onFractionCommit,
+                    onInteraction = onInteraction,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReaderProgressPercent(fraction: Float) {
+    Text(
+        "${(fraction.coerceIn(0f, 1f) * 100f).roundToInt()}%",
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+}
+
+@Composable
+private fun ReaderDockActions(
+    autoPaging: Boolean,
+    ttsPlaying: Boolean,
+    onBookmarks: () -> Unit,
+    onTts: () -> Unit,
+    onAutoPage: () -> Unit,
+    onInteraction: () -> Unit,
+) {
+    var moreOpen by remember { mutableStateOf(false) }
+    IconButton({ onInteraction(); onBookmarks() }, Modifier.size(48.dp)) {
+        Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks), Modifier.size(21.dp))
+    }
+    if (ttsPlaying) {
+        FilledTonalIconButton({ onInteraction(); onTts() }, Modifier.size(48.dp)) {
+            Icon(Icons.Default.Pause, stringResource(R.string.pause_read_aloud), Modifier.size(21.dp))
+        }
+    } else {
+        IconButton({ onInteraction(); onTts() }, Modifier.size(48.dp)) {
+            Icon(Icons.Default.PlayArrow, stringResource(R.string.start_read_aloud), Modifier.size(21.dp))
+        }
+    }
+    if (autoPaging) {
+        FilledTonalIconButton({ onInteraction(); onAutoPage() }, Modifier.size(48.dp)) {
+            Icon(Icons.Default.Pause, stringResource(R.string.stop_auto_page), Modifier.size(21.dp))
+        }
+    } else {
+        Box {
+            IconButton({ onInteraction(); moreOpen = true }, Modifier.size(48.dp)) {
+                Icon(Icons.Default.MoreHoriz, stringResource(R.string.more_reading_tools), Modifier.size(21.dp))
+            }
+            DropdownMenu(moreOpen, onDismissRequest = { moreOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.start_auto_page)) },
+                    onClick = { moreOpen = false; onInteraction(); onAutoPage() },
+                    leadingIcon = { Icon(Icons.Outlined.Timer, null) },
                 )
             }
         }
@@ -269,24 +308,53 @@ internal fun ReaderImmersiveProgressRail(
     contentDescription: String,
     onFractionChange: (Float) -> Unit,
     onFractionCommit: () -> Unit,
+    onInteraction: () -> Unit = {},
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val track = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.20f)
     val surface = MaterialTheme.colorScheme.surface
     val latestChange = rememberUpdatedState(onFractionChange)
     val latestCommit = rememberUpdatedState(onFractionCommit)
+    val latestInteraction = rememberUpdatedState(onInteraction)
     val safeFraction = fraction.coerceIn(0f, 1f)
-    val activeChapter = remember(chapters, length, safeFraction) {
-        if (length <= 0) -1 else {
-            val offset = (length.toDouble() * safeFraction).toLong()
-            chapters.indexOfLast { it.offset <= offset }
+    var visualFraction by remember { mutableFloatStateOf(safeFraction) }
+    var dragging by remember { mutableStateOf(false) }
+    val publishRequests = remember { Channel<Float>(Channel.CONFLATED) }
+
+    LaunchedEffect(safeFraction, dragging) {
+        if (!dragging) visualFraction = safeFraction
+    }
+    LaunchedEffect(publishRequests) {
+        while (isActive) {
+            var latest = publishRequests.receive()
+            withFrameNanos { }
+            while (true) {
+                val next = publishRequests.tryReceive().getOrNull() ?: break
+                latest = next
+            }
+            latestChange.value(latest)
         }
     }
 
-    val scrubber = Modifier.pointerInput(length) {
+    val activeChapter = remember(chapters, length, visualFraction) {
+        if (length <= 0) -1 else readerFindActiveChapterIndex(chapters, (length.toDouble() * visualFraction).toLong())
+    }
+    val progressPercent = (visualFraction * 100f).roundToInt()
+    val progressState = chapters.getOrNull(activeChapter)?.title
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "$progressPercent% · $it" }
+        ?: "$progressPercent%"
+
+    val scrubber = Modifier.pointerInput(length, publishRequests) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            fun publish(x: Float) = latestChange.value((x / size.width.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f))
+            latestInteraction.value()
+            dragging = true
+            fun publish(x: Float) {
+                val value = (x / size.width.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+                visualFraction = value
+                publishRequests.trySend(value)
+            }
             publish(down.position.x)
             var active = down
             do {
@@ -296,6 +364,8 @@ internal fun ReaderImmersiveProgressRail(
                 publish(change.position.x)
                 change.consume()
             } while (active.pressed)
+            latestChange.value(visualFraction)
+            dragging = false
             latestCommit.value()
         }
     }
@@ -307,16 +377,19 @@ internal fun ReaderImmersiveProgressRail(
             .then(scrubber)
             .semantics {
                 this.contentDescription = contentDescription
-                progressBarRangeInfo = ProgressBarRangeInfo(safeFraction, 0f..1f)
+                stateDescription = progressState
+                progressBarRangeInfo = ProgressBarRangeInfo(visualFraction, 0f..1f)
                 setProgress { target ->
-                    latestChange.value(target.coerceIn(0f, 1f))
+                    latestInteraction.value()
+                    visualFraction = target.coerceIn(0f, 1f)
+                    latestChange.value(visualFraction)
                     latestCommit.value()
                     true
                 }
             },
     ) {
         val y = size.height / 2f
-        val progressX = safeFraction * size.width
+        val progressX = visualFraction * size.width
         val trackStroke = 3.dp.toPx()
         drawLine(track, Offset(0f, y), Offset(size.width, y), strokeWidth = trackStroke, cap = StrokeCap.Round)
         drawLine(primary, Offset(0f, y), Offset(progressX, y), strokeWidth = trackStroke, cap = StrokeCap.Round)
@@ -325,8 +398,9 @@ internal fun ReaderImmersiveProgressRail(
             val minSpacing = 13.dp.toPx().coerceAtLeast(1f)
             val maxTicks = (size.width / minSpacing).toInt().coerceAtLeast(1)
             val stride = ((chapters.size + maxTicks - 1) / maxTicks).coerceAtLeast(1)
-            chapters.forEachIndexed { index, chapter ->
-                if (index % stride != 0 && index != activeChapter) return@forEachIndexed
+
+            fun drawTick(index: Int) {
+                val chapter = chapters[index]
                 val x = (chapter.offset.toDouble() / length.toDouble()).toFloat().coerceIn(0f, 1f) * size.width
                 val current = index == activeChapter
                 drawLine(
@@ -337,6 +411,13 @@ internal fun ReaderImmersiveProgressRail(
                     cap = StrokeCap.Round,
                 )
             }
+
+            var index = 0
+            while (index < chapters.size) {
+                drawTick(index)
+                index += stride
+            }
+            if (activeChapter >= 0 && activeChapter % stride != 0) drawTick(activeChapter)
         }
 
         drawCircle(surface, radius = 7.dp.toPx(), center = Offset(progressX, y))
@@ -344,9 +425,29 @@ internal fun ReaderImmersiveProgressRail(
     }
 }
 
+internal fun readerFindActiveChapterIndex(chapters: List<ChapterModel>, offset: Long): Int {
+    var low = 0
+    var high = chapters.lastIndex
+    var answer = -1
+    while (low <= high) {
+        val middle = (low + high) ushr 1
+        if (chapters[middle].offset <= offset) {
+            answer = middle
+            low = middle + 1
+        } else {
+            high = middle - 1
+        }
+    }
+    return answer
+}
+
 @Composable
 internal fun ReaderCompactQuickSettingsSheet(state: AppUiState, actions: JingduActions) {
     val s = state.settings
+    val configuration = LocalConfiguration.current
+    val maxSheetHeight = (configuration.screenHeightDp * 0.72f).coerceIn(280f, 560f).dp
+    val scrollState = rememberScrollState()
+    val fontSizeLabel = stringResource(R.string.font_size)
     fun visual(value: ReaderSettings) = actions.onSettingsChanged(value.copy(preset = ReaderPreset.CUSTOM, activeThemeId = ""))
     fun setMode(mode: ReaderMode) = actions.onSettingsChanged(
         s.copy(readingMode = mode, autoScrollEnabled = if (mode == ReaderMode.PAGED) false else s.autoScrollEnabled),
@@ -354,70 +455,97 @@ internal fun ReaderCompactQuickSettingsSheet(state: AppUiState, actions: JingduA
 
     ReaderPanelSurface(onDismiss = actions.onClosePanel) {
         Column(
-            Modifier.fillMaxWidth().heightIn(max = 500.dp).padding(horizontal = 18.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            Modifier.fillMaxWidth().heightIn(max = maxSheetHeight).padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.reader_quick_settings), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 TextButton(actions.onClosePanel) { Text(stringResource(R.string.reader_settings_done)) }
             }
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                ReaderPalette.entries.forEach { palette ->
-                    val selected = s.palette == palette
-                    val label = immersivePaletteLabel(palette)
-                    Box(
-                        Modifier
-                            .size(44.dp)
-                            .background(immersivePaletteSwatch(palette), CircleShape)
-                            .border(
-                                if (selected) 3.dp else 1.dp,
-                                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                                CircleShape,
-                            )
-                            .clickable { visual(s.copy(palette = palette)) }
-                            .semantics { contentDescription = label },
-                    )
-                }
-            }
-
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.font_size), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                FilledTonalButton({ visual(s.copy(fontSizeSp = (s.fontSizeSp - 1f).coerceAtLeast(14f))) }) { Text("−") }
-                Text("${s.fontSizeSp.roundToInt()}sp", Modifier.padding(horizontal = 10.dp), style = MaterialTheme.typography.titleMedium)
-                FilledTonalButton({ visual(s.copy(fontSizeSp = (s.fontSizeSp + 1f).coerceAtMost(40f))) }) { Text("+") }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(
+                Modifier.fillMaxWidth().weight(1f).verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(stringResource(R.string.reader_brightness), style = MaterialTheme.typography.labelLarge)
+                    ReaderPalette.entries.forEach { palette ->
+                        val selected = s.palette == palette
+                        val label = immersivePaletteLabel(palette)
+                        Box(
+                            Modifier
+                                .size(48.dp)
+                                .selectable(
+                                    selected = selected,
+                                    role = Role.RadioButton,
+                                    onClick = { visual(s.copy(palette = palette)) },
+                                )
+                                .semantics { contentDescription = label },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(38.dp)
+                                    .background(immersivePaletteSwatch(palette), CircleShape)
+                                    .border(
+                                        if (selected) 3.dp else 1.dp,
+                                        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                        CircleShape,
+                                    ),
+                            )
+                        }
+                    }
+                }
+
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(fontSizeLabel, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                    FilledTonalButton(
+                        onClick = { visual(s.copy(fontSizeSp = (s.fontSizeSp - 1f).coerceAtLeast(14f))) },
+                        modifier = Modifier.semantics { contentDescription = "$fontSizeLabel −" },
+                    ) { Text("−") }
                     Text(
-                        if (s.useSystemBrightness) stringResource(R.string.system_default) else "${(s.readerBrightness * 100).roundToInt()}%",
-                        color = MaterialTheme.colorScheme.primary,
+                        "${s.fontSizeSp.roundToInt()}sp",
+                        Modifier.padding(horizontal = 10.dp).semantics {
+                            contentDescription = "$fontSizeLabel ${s.fontSizeSp.roundToInt()}sp"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    FilledTonalButton(
+                        onClick = { visual(s.copy(fontSizeSp = (s.fontSizeSp + 1f).coerceAtMost(40f))) },
+                        modifier = Modifier.semantics { contentDescription = "$fontSizeLabel +" },
+                    ) { Text("+") }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(stringResource(R.string.reader_brightness), style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            if (s.useSystemBrightness) stringResource(R.string.system_default) else "${(s.readerBrightness * 100).roundToInt()}%",
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    ReaderLinearSlider(
+                        value = s.readerBrightness,
+                        valueRange = 0.03f..1f,
+                        onValueChange = { actions.onSettingsChanged(s.copy(useSystemBrightness = false, readerBrightness = it)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentDescription = stringResource(R.string.reader_brightness),
                     )
                 }
-                ReaderLinearSlider(
-                    value = s.readerBrightness,
-                    valueRange = 0.03f..1f,
-                    onValueChange = { actions.onSettingsChanged(s.copy(useSystemBrightness = false, readerBrightness = it)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    contentDescription = stringResource(R.string.reader_brightness),
-                )
-            }
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = s.readingMode == ReaderMode.PAGED,
-                    onClick = { setMode(ReaderMode.PAGED) },
-                    label = { Text(stringResource(R.string.reader_mode_paged)) },
-                    modifier = Modifier.weight(1f),
-                )
-                FilterChip(
-                    selected = s.readingMode == ReaderMode.CONTINUOUS,
-                    onClick = { setMode(ReaderMode.CONTINUOUS) },
-                    label = { Text(stringResource(R.string.reader_mode_continuous)) },
-                    modifier = Modifier.weight(1f),
-                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = s.readingMode == ReaderMode.PAGED,
+                        onClick = { setMode(ReaderMode.PAGED) },
+                        label = { Text(stringResource(R.string.reader_mode_paged)) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    FilterChip(
+                        selected = s.readingMode == ReaderMode.CONTINUOUS,
+                        onClick = { setMode(ReaderMode.CONTINUOUS) },
+                        label = { Text(stringResource(R.string.reader_mode_continuous)) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
 
             OutlinedButton(
@@ -428,8 +556,25 @@ internal fun ReaderCompactQuickSettingsSheet(state: AppUiState, actions: JingduA
     }
 }
 
-internal fun readerAdaptiveTextWidth(fontSizeSp: Float): Dp = (fontSizeSp * 32f).coerceIn(520f, 760f).dp
-internal fun readerAdaptiveTwoColumnWidth(fontSizeSp: Float): Dp = (fontSizeSp * 60f + 28f).coerceIn(920f, 1200f).dp
+@Composable
+internal fun readerAdaptiveTextWidth(fontSizeSp: Float): Dp =
+    readerAdaptiveTextWidthDp(fontSizeSp, LocalConfiguration.current.screenWidthDp.toFloat()).dp
+
+@Composable
+internal fun readerAdaptiveTwoColumnWidth(fontSizeSp: Float): Dp =
+    readerAdaptiveTwoColumnWidthDp(fontSizeSp, LocalConfiguration.current.screenWidthDp.toFloat()).dp
+
+internal fun readerAdaptiveTextWidthDp(fontSizeSp: Float, windowWidthDp: Float): Float {
+    val typographyWidth = (fontSizeSp * 32f).coerceIn(520f, 760f)
+    val windowCap = (windowWidthDp * if (windowWidthDp < 600f) 0.94f else 0.82f).coerceAtLeast(1f)
+    return min(typographyWidth, windowCap)
+}
+
+internal fun readerAdaptiveTwoColumnWidthDp(fontSizeSp: Float, windowWidthDp: Float): Float {
+    val typographyWidth = (fontSizeSp * 60f + 28f).coerceIn(920f, 1200f)
+    val windowCap = (windowWidthDp * 0.96f).coerceAtLeast(1f)
+    return min(typographyWidth, windowCap)
+}
 
 @Composable
 private fun immersivePaletteLabel(palette: ReaderPalette): String = when (palette) {
