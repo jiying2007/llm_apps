@@ -14,6 +14,12 @@ internal class ReaderSession {
     var cleanMode: Boolean = false
         internal set
     var visiblePageChars: Long = ReaderController.DEFAULT_PAGE_CHARS
+        set(value) {
+            field = value
+            // PagedReaderPage updates visible chars only after presentation + page measurement have
+            // produced the ready page. Publish the staged source position at exactly that boundary.
+            ReaderInteractionRuntime.commitPendingForegroundPosition()
+        }
     internal val pageHistory = ArrayDeque<Long>()
 
     fun replace(nextReader: ReaderController, nextBook: BookRepository.Book, clean: Boolean): ReaderController {
