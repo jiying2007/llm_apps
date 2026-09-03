@@ -1,0 +1,104 @@
+package com.junchen.jingdu
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTouchInput
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+
+class ReaderPagingRegressionTest {
+    @get:Rule val composeRule = createComposeRule()
+    private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun pagedReaderNaturalHorizontalSwipeAdvances() {
+        var nextCount = 0
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER,
+                    currentBook = sampleBook(),
+                    pageText = "Chapter 1\nA stable body used for natural horizontal swipe paging verification.",
+                    position = 500,
+                    length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")),
+                    chaptersLoaded = true,
+                    settings = ReaderSettings(
+                        gestureCoachDismissed = true,
+                        tapPagingEnabled = false,
+                        swipePagingEnabled = true,
+                    ),
+                ),
+                noOpActions().copy(onNavigateNext = { nextCount++ }),
+            )
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).performTouchInput {
+            swipe(
+                start = Offset(size.width * 0.80f, size.height * 0.50f),
+                end = Offset(size.width * 0.20f, size.height * 0.50f),
+                durationMillis = 700L,
+            )
+        }
+        composeRule.waitForIdle()
+        assertEquals(1, nextCount)
+    }
+
+    @Test fun readerProgressRailIsDirectlyScrubbableWithoutExpansion() {
+        var seekFraction = -1f
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER,
+                    currentBook = sampleBook(),
+                    pageText = "Chapter 1\nA stable body used for direct progress rail verification.",
+                    position = 500,
+                    length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1"), ChapterModel(5_000, "Chapter 2")),
+                    chaptersLoaded = true,
+                    settings = ReaderSettings(gestureCoachDismissed = true),
+                ),
+                noOpActions().copy(onSeekFraction = { seekFraction = it }),
+            )
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription(
+            "${context.getString(R.string.reading_progress)} 5%",
+        ).performTouchInput {
+            click(Offset(size.width * 0.50f, size.height * 0.50f))
+        }
+        composeRule.waitForIdle()
+        assertTrue("direct progress scrub should seek near the middle, got $seekFraction", seekFraction in 0.45f..0.55f)
+    }
+
+    private fun sampleBook() = BookCardModel(
+        id = "a".repeat(64),
+        name = "Long Novel.txt",
+        encoding = "UTF-8",
+        sizeBytes = 1024,
+        progress = 500,
+        charCount = 10_000,
+        touchedAt = 1,
+        normalizedSha256 = "b".repeat(64),
+    )
+
+    private fun noOpActions() = JingduActions(
+        onImport = {}, onBatchImport = {}, onOpenBook = {}, onDeleteLibraryBook = {},
+        onToggleFavorite = {}, onSetBookTags = { _, _ -> }, onBackToLibrary = {},
+        onNavigatePrevious = {}, onNavigateNext = {}, onSeekFraction = {}, onVisibleCharsChanged = {},
+        onOpenPanel = {}, onClosePanel = {}, onSearchQueryChanged = {}, onSearch = {}, onJump = {},
+        onSyncTtsPosition = {}, onEnsureChapters = {}, onAddBookmark = {}, onDeleteBookmark = {},
+        onAddAnnotation = { _, _, _, _, _, _ -> }, onDeleteAnnotation = {}, onImportFont = {},
+        onAddRule = { _, _, _ -> }, onDeleteRule = {}, onClearRules = {}, onAnalyzeSmartClean = {},
+        onToggleNoiseCandidate = {}, onApplySmartClean = {}, onUndoSmartClean = {},
+        onAddGlobalRule = { _, _, _ -> }, onDeleteGlobalRule = {}, onClearGlobalRules = {},
+        onInstallRecommendedRules = {}, onExportGlobalRules = {}, onImportGlobalRules = {},
+        onUpgradePro = {}, onRestorePro = {}, onExportBackup = {}, onImportBackup = {},
+        onToggleCleanPreview = {}, onExportClean = {}, onEncodingSelected = {}, onSettingsChanged = {},
+        onToggleTts = {}, onToggleAutoPaging = {}, onSleepTimer = {}, onRequestDeleteCurrent = {},
+        onDismissDelete = {}, onConfirmDeleteCurrent = {}, onMessageConsumed = {},
+    )
+}
