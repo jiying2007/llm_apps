@@ -44,7 +44,13 @@ internal class ReaderViewModel : ViewModel() {
         // backward-compatible, but publish page changes as immediate content swaps so the heavy
         // AnimatedVisibility branch is never entered. A future lightweight cue can consume a
         // separate signal without putting the text layout back on the animation hot path.
-        mutableState.value = if (value.pageTurnDirection == 0) value else value.copy(pageTurnDirection = 0)
+        val published = if (value.pageTurnDirection == 0) value else value.copy(pageTurnDirection = 0)
+        mutableState.value = published
+        // Continuous owns a separate layout-ready signal and does not use the paged visible-char
+        // callback. Its source position can therefore become authoritative at the UDF state boundary.
+        if (published.screen == AppScreen.READER && published.settings.readingMode == ReaderMode.CONTINUOUS) {
+            ReaderInteractionRuntime.commitForegroundPosition(published.position)
+        }
     }
 
     fun reduce(block: (AppUiState) -> AppUiState) { replace(block(mutableState.value)) }
