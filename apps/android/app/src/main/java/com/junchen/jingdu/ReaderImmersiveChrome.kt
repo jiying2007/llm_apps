@@ -32,7 +32,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -51,7 +50,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -319,20 +317,20 @@ internal fun ReaderImmersiveProgressRail(
     val safeFraction = fraction.coerceIn(0f, 1f)
     var visualFraction by remember { mutableFloatStateOf(safeFraction) }
     var dragging by remember { mutableStateOf(false) }
-    val publishRequests = remember { Channel<Float>(Channel.CONFLATED) }
+    var pendingFraction by remember { mutableStateOf<Float?>(null) }
 
     LaunchedEffect(safeFraction, dragging) {
         if (!dragging) visualFraction = safeFraction
     }
-    LaunchedEffect(publishRequests) {
+    LaunchedEffect(dragging) {
+        if (!dragging) return@LaunchedEffect
         while (isActive) {
-            var latest = publishRequests.receive()
             withFrameNanos { }
-            while (true) {
-                val next = publishRequests.tryReceive().getOrNull() ?: break
-                latest = next
+            val pending = pendingFraction
+            if (pending != null) {
+                pendingFraction = null
+                latestChange.value(pending)
             }
-            latestChange.value(latest)
         }
     }
 
@@ -345,7 +343,7 @@ internal fun ReaderImmersiveProgressRail(
         ?.let { "$progressPercent% · $it" }
         ?: "$progressPercent%"
 
-    val scrubber = Modifier.pointerInput(length, publishRequests) {
+    val scrubber = Modifier.pointerInput(length) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             latestInteraction.value()
@@ -353,7 +351,7 @@ internal fun ReaderImmersiveProgressRail(
             fun publish(x: Float) {
                 val value = (x / size.width.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
                 visualFraction = value
-                publishRequests.trySend(value)
+                pendingFraction = value
             }
             publish(down.position.x)
             var active = down
@@ -364,6 +362,7 @@ internal fun ReaderImmersiveProgressRail(
                 publish(change.position.x)
                 change.consume()
             } while (active.pressed)
+            pendingFraction = null
             latestChange.value(visualFraction)
             dragging = false
             latestCommit.value()
@@ -381,6 +380,7 @@ internal fun ReaderImmersiveProgressRail(
                 progressBarRangeInfo = ProgressBarRangeInfo(visualFraction, 0f..1f)
                 setProgress { target ->
                     latestInteraction.value()
+                    pendingFraction = null
                     visualFraction = target.coerceIn(0f, 1f)
                     latestChange.value(visualFraction)
                     latestCommit.value()
