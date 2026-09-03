@@ -20,7 +20,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-TEMP_PREFIXES = ("feat/", "fix/", "chore/", "ci/", "refactor/", "docs/", "test/", "perf/", "tmp/")
+TEMP_PREFIXES = ("feat/", "fix/", "chore/", "ci/", "refactor/", "docs/", "test/", "perf/", "tmp/", "dependabot/")
 RELEASE_PREFIX = "release/source-v"
 CURRENT_STAGE_MARKER = "## Current Android release stage"
 OLD_SOURCE_ONLY_TEXT = (
@@ -289,7 +289,7 @@ def cleanup_closed_temporary_branches() -> None:
         if pr.get("head", {}).get("repo", {}).get("full_name") == REPO
     }
 
-    closed_pulls = paged("/pulls?state=closed&base=main&sort=updated&direction=desc")
+    closed_pulls = paged("/pulls?state=closed&sort=updated&direction=desc")
     candidates: list[str] = []
     for pr in closed_pulls:
         head = pr.get("head") or {}
