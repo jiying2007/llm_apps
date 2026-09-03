@@ -65,12 +65,23 @@ internal fun ReaderImmersiveTopBar(
     val cleanBookName = bookName.removeSuffix(".txt").removeSuffix(".TXT")
     val title = chapter ?: cleanBookName
     val settingsDescription = stringResource(R.string.reading_settings)
+    val latestMore = rememberUpdatedState(onMore)
+    val latestInteraction = rememberUpdatedState(onInteraction)
+    val openSettings = remember(actions) {
+        { latestInteraction.value(); actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) }
+    }
+    val openChapters = remember(actions) {
+        { latestInteraction.value(); actions.onOpenPanel(ReaderPanel.CHAPTERS) }
+    }
+    val openMore = remember {
+        { latestInteraction.value(); latestMore.value() }
+    }
     Surface(
         Modifier.statusBarsPadding().padding(horizontal = 10.dp, vertical = 6.dp).fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-        tonalElevation = 2.dp,
-        shadowElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 50.dp),
@@ -96,14 +107,14 @@ internal fun ReaderImmersiveTopBar(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(
-                    onClick = { onInteraction(); actions.onOpenPanel(ReaderPanel.QUICK_SETTINGS) },
+                    onClick = openSettings,
                     modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = settingsDescription },
                     contentPadding = PaddingValues(horizontal = 8.dp),
                 ) { Text("Aa", style = MaterialTheme.typography.titleMedium) }
-                IconButton({ onInteraction(); actions.onOpenPanel(ReaderPanel.CHAPTERS) }, Modifier.size(48.dp)) {
+                IconButton(openChapters, Modifier.size(48.dp)) {
                     Icon(Icons.AutoMirrored.Filled.MenuBook, stringResource(R.string.chapters))
                 }
-                IconButton({ onInteraction(); onMore() }, Modifier.size(48.dp)) {
+                IconButton(openMore, Modifier.size(48.dp)) {
                     Icon(Icons.Default.MoreVert, stringResource(R.string.more_reading_tools))
                 }
             }
@@ -134,15 +145,24 @@ internal fun ReaderImmersiveBottomDock(
     onInteraction: () -> Unit,
 ) {
     val progressDescription = stringResource(R.string.reading_progress)
-    val percent = (fraction.coerceIn(0f, 1f) * 100f).roundToInt()
+    val displayFraction = if (skimDragging) fraction.coerceIn(0f, 1f) else readerPassiveProgressFraction(fraction)
+    val percent = (displayFraction * 100f).roundToInt()
+
+    val latestInteraction = rememberUpdatedState(onInteraction)
+    val latestBookmarks = rememberUpdatedState(onBookmarks)
+    val latestTts = rememberUpdatedState(onTts)
+    val latestAutoPage = rememberUpdatedState(onAutoPage)
+    val bookmarkAction = remember { { latestInteraction.value(); latestBookmarks.value() } }
+    val ttsAction = remember { { latestInteraction.value(); latestTts.value() } }
+    val autoPageAction = remember { { latestInteraction.value(); latestAutoPage.value() } }
 
     Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Surface(
             Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-            tonalElevation = 4.dp,
-            shadowElevation = 2.dp,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
         ) {
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
@@ -165,7 +185,7 @@ internal fun ReaderImmersiveBottomDock(
                 }
 
                 if (skimDragging) {
-                    ReaderSkimBubble(skimPreview, percent, fraction)
+                    ReaderSkimBubble(skimPreview, percent, displayFraction)
                 } else if (showSkimReturn && skimPreview != null) {
                     ReaderSkimReturnRow(skimPreview, onReturn = { onInteraction(); onReturnSkim() })
                 }
@@ -174,22 +194,21 @@ internal fun ReaderImmersiveBottomDock(
                     Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ReaderProgressPercent(fraction)
+                    ReaderProgressPercent(displayFraction)
                     Spacer(Modifier.weight(1f))
                     ReaderDockActions(
                         autoPaging = autoPaging,
                         ttsPlaying = ttsPlaying,
-                        onBookmarks = onBookmarks,
-                        onTts = onTts,
-                        onAutoPage = onAutoPage,
-                        onInteraction = onInteraction,
+                        onBookmarks = bookmarkAction,
+                        onTts = ttsAction,
+                        onAutoPage = autoPageAction,
                     )
                 }
 
                 ReaderImmersiveProgressRail(
                     chapters = chapters,
                     length = length,
-                    fraction = fraction,
+                    fraction = displayFraction,
                     contentDescription = progressDescription,
                     onFractionChange = onFractionChange,
                     onFractionCommit = onFractionCommit,
@@ -216,34 +235,33 @@ private fun ReaderDockActions(
     onBookmarks: () -> Unit,
     onTts: () -> Unit,
     onAutoPage: () -> Unit,
-    onInteraction: () -> Unit,
 ) {
     var moreOpen by remember { mutableStateOf(false) }
-    IconButton({ onInteraction(); onBookmarks() }, Modifier.size(48.dp)) {
+    IconButton(onBookmarks, Modifier.size(48.dp)) {
         Icon(Icons.Outlined.Bookmarks, stringResource(R.string.bookmarks), Modifier.size(21.dp))
     }
     if (ttsPlaying) {
-        FilledTonalIconButton({ onInteraction(); onTts() }, Modifier.size(48.dp)) {
+        FilledTonalIconButton(onTts, Modifier.size(48.dp)) {
             Icon(Icons.Default.Pause, stringResource(R.string.pause_read_aloud), Modifier.size(21.dp))
         }
     } else {
-        IconButton({ onInteraction(); onTts() }, Modifier.size(48.dp)) {
+        IconButton(onTts, Modifier.size(48.dp)) {
             Icon(Icons.Default.PlayArrow, stringResource(R.string.start_read_aloud), Modifier.size(21.dp))
         }
     }
     if (autoPaging) {
-        FilledTonalIconButton({ onInteraction(); onAutoPage() }, Modifier.size(48.dp)) {
+        FilledTonalIconButton(onAutoPage, Modifier.size(48.dp)) {
             Icon(Icons.Default.Pause, stringResource(R.string.stop_auto_page), Modifier.size(21.dp))
         }
     } else {
         Box {
-            IconButton({ onInteraction(); moreOpen = true }, Modifier.size(48.dp)) {
+            IconButton({ moreOpen = true }, Modifier.size(48.dp)) {
                 Icon(Icons.Default.MoreHoriz, stringResource(R.string.more_reading_tools), Modifier.size(21.dp))
             }
             DropdownMenu(moreOpen, onDismissRequest = { moreOpen = false }) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.start_auto_page)) },
-                    onClick = { moreOpen = false; onInteraction(); onAutoPage() },
+                    onClick = { moreOpen = false; onAutoPage() },
                     leadingIcon = { Icon(Icons.Outlined.Timer, null) },
                 )
             }
@@ -314,7 +332,7 @@ internal fun ReaderImmersiveProgressRail(
     val latestChange = rememberUpdatedState(onFractionChange)
     val latestCommit = rememberUpdatedState(onFractionCommit)
     val latestInteraction = rememberUpdatedState(onInteraction)
-    val safeFraction = fraction.coerceIn(0f, 1f)
+    val safeFraction = readerPassiveProgressFraction(fraction)
     var visualFraction by remember { mutableFloatStateOf(safeFraction) }
     var dragging by remember { mutableStateOf(false) }
     var pendingFraction by remember { mutableStateOf<Float?>(null) }
@@ -440,6 +458,14 @@ internal fun readerFindActiveChapterIndex(chapters: List<ChapterModel>, offset: 
     }
     return answer
 }
+
+/**
+ * Passive progress is intentionally displayed at 0.1% precision. A normal page turn in a long book
+ * usually moves less than that, so the always-visible chrome stays composition/draw-stable while the
+ * rail remains fully continuous during an actual drag via its local visualFraction.
+ */
+internal fun readerPassiveProgressFraction(fraction: Float): Float =
+    ((fraction.coerceIn(0f, 1f) * 1000f).roundToInt() / 1000f).coerceIn(0f, 1f)
 
 @Composable
 internal fun ReaderCompactQuickSettingsSheet(state: AppUiState, actions: JingduActions) {
