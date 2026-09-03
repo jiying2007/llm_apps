@@ -28,6 +28,7 @@ internal class BillingManager(
 ) : PurchasesUpdatedListener, BillingClientStateListener {
 
     private val preferences = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val errorLog = ProductErrorLog(activity)
     private var unlocked = preferences.getBoolean(KEY_CACHED_PRO, false)
     private var connected = false
     private var productDetails: ProductDetails? = null
@@ -59,12 +60,14 @@ internal class BillingManager(
         val details = productDetails
         val token = offerToken
         if (!billingClient.isReady || details == null || token.isNullOrEmpty()) {
+            errorLog.record(ProductErrorCode.BILLING_UNAVAILABLE, "billing.purchase")
             onMessage(activity.getString(R.string.billing_unavailable))
             return
         }
         val productParams = BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(details).setOfferToken(token).build()
         val result = billingClient.launchBillingFlow(activity, BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(productParams)).build())
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
+            errorLog.record(ProductErrorCode.BILLING_LAUNCH_FAILED, "billing.purchase")
             onMessage(activity.getString(R.string.billing_launch_failed, result.debugMessage))
         }
     }
@@ -80,6 +83,7 @@ internal class BillingManager(
 
     override fun onBillingSetupFinished(result: BillingResult) {
         connected = result.responseCode == BillingClient.BillingResponseCode.OK
+        if (!connected) errorLog.record(ProductErrorCode.BILLING_UNAVAILABLE, "billing.connect")
         publish()
         if (!connected) return
         queryOwned(showResult = false)
@@ -96,7 +100,10 @@ internal class BillingManager(
             BillingClient.BillingResponseCode.OK -> processPurchases(purchases.orEmpty(), authoritative = false)
             BillingClient.BillingResponseCode.USER_CANCELED -> Unit
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> queryOwned(showResult = true)
-            else -> onMessage(activity.getString(R.string.billing_incomplete, result.debugMessage))
+            else -> {
+                errorLog.record(ProductErrorCode.BILLING_UPDATE_FAILED, "billing.update")
+                onMessage(activity.getString(R.string.billing_incomplete, result.debugMessage))
+            }
         }
     }
 
@@ -112,6 +119,7 @@ internal class BillingManager(
                 offerToken = offer?.offerToken
                 formattedPrice = offer?.formattedPrice
             } else {
+                errorLog.record(ProductErrorCode.BILLING_PRODUCT_QUERY_FAILED, "billing.product")
                 productDetails = null
                 offerToken = null
                 formattedPrice = null
@@ -126,7 +134,10 @@ internal class BillingManager(
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 val restored = processPurchases(purchases, authoritative = true)
                 if (showResult) onMessage(activity.getString(if (restored) R.string.billing_restored else R.string.billing_not_owned))
-            } else if (showResult) onMessage(activity.getString(R.string.billing_restore_failed, result.debugMessage))
+            } else {
+                errorLog.record(ProductErrorCode.BILLING_OWNERSHIP_QUERY_FAILED, "billing.restore")
+                if (showResult) onMessage(activity.getString(R.string.billing_restore_failed, result.debugMessage))
+            }
         }
     }
 
@@ -139,7 +150,10 @@ internal class BillingManager(
             if (!purchase.isAcknowledged) {
                 val params = AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()
                 billingClient.acknowledgePurchase(params) { result ->
-                    if (result.responseCode != BillingClient.BillingResponseCode.OK) onMessage(activity.getString(R.string.billing_ack_pending))
+                    if (result.responseCode != BillingClient.BillingResponseCode.OK) {
+                        errorLog.record(ProductErrorCode.BILLING_ACK_FAILED, "billing.ack")
+                        onMessage(activity.getString(R.string.billing_ack_pending))
+                    }
                 }
             }
         }
