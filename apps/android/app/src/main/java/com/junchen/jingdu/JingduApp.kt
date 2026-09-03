@@ -176,7 +176,7 @@ fun JingduApp(
             }
             if (state.screen == AppScreen.READER) {
                 PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS, quickPanelState) {
-                    ReaderQuickSettingsSheet(quickPanelState, trackedActions)
+                    ReaderCompactQuickSettingsSheet(quickPanelState, trackedActions)
                 }
                 PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS, chaptersPanelState, keepDrawWarm = true) {
                     ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition)
