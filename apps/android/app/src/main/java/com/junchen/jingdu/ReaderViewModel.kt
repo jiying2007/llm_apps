@@ -38,7 +38,13 @@ internal class ReaderViewModel : ViewModel() {
             mutableHotPanel.value = null
             resetLocationHistory()
         }
-        mutableState.value = value
+        // Full-page SLIDE transitions force the whole paged text layout through animation on every
+        // navigation step. That path has repeatedly shown insufficient hosted P95/P99 headroom and
+        // also conflicts with the Reader's restrained-motion direction. Keep the persisted setting
+        // backward-compatible, but publish page changes as immediate content swaps so the heavy
+        // AnimatedVisibility branch is never entered. A future lightweight cue can consume a
+        // separate signal without putting the text layout back on the animation hot path.
+        mutableState.value = if (value.pageTurnDirection == 0) value else value.copy(pageTurnDirection = 0)
     }
 
     fun reduce(block: (AppUiState) -> AppUiState) { replace(block(mutableState.value)) }
