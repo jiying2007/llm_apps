@@ -1,5 +1,6 @@
 package com.junchen.jingdu
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.click
@@ -125,6 +126,7 @@ class ReaderPagingRegressionTest {
         assertTrue("accessible setProgress should seek to 75%, got $seekFraction", seekFraction in 0.74f..0.76f)
     }
 
+    @Composable
     private fun readerState(actions: JingduActions) = JingduApp(
         AppUiState(
             screen = AppScreen.READER,
