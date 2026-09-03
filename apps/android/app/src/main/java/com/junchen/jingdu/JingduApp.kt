@@ -25,10 +25,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -103,6 +105,14 @@ fun JingduApp(
                     latestTrackLocation.value(latestPosition.value, target, length)
                     actions.onSeekFraction(fraction)
                 },
+                onOpenPanel = { panel ->
+                    ReaderChromeRuntime.markPanelOpen()
+                    actions.onOpenPanel(panel)
+                },
+                onClosePanel = {
+                    actions.onClosePanel()
+                    ReaderChromeRuntime.markPanelClosedAndWake()
+                },
             )
         }
         val readerState = remember(
@@ -152,20 +162,23 @@ fun JingduApp(
                 settings = state.settings,
             )
         }
-        val fallbackPanelState = rememberUpdatedState(state.panel)
-        val hotPanelState: State<ReaderPanel?> = if (hotPanel != null) hotPanel.collectAsStateWithLifecycle() else fallbackPanelState
+        val panelState = rememberUpdatedState(state.panel)
+        val hotPanelState: State<ReaderPanel?> = if (hotPanel != null) hotPanel.collectAsStateWithLifecycle() else panelState
 
         ReaderHotPanelBackHandler(hotPanelState, state.panel, state.screen, location.canBack, trackedActions, stableLocationBack)
         Box(Modifier.fillMaxSize()) {
             when (state.screen) {
                 AppScreen.LIBRARY -> LibraryScreen(state, trackedActions, snackbar)
-                AppScreen.READER -> ReaderRoute(readerState, trackedActions, snackbar, location.canBack, location.canForward, stableLocationBack, stableLocationForward)
+                AppScreen.READER -> ReaderRoute(
+                    readerState, trackedActions, snackbar, panelState,
+                    location.canBack, location.canForward, stableLocationBack, stableLocationForward,
+                )
             }
             if (state.screen == AppScreen.READER) {
                 PersistentReaderPanelLayer(hotPanelState, ReaderPanel.QUICK_SETTINGS, quickPanelState) {
                     ReaderQuickSettingsSheet(quickPanelState, trackedActions)
                 }
-                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS, chaptersPanelState) {
+                PersistentReaderPanelLayer(hotPanelState, ReaderPanel.CHAPTERS, chaptersPanelState, keepDrawWarm = true) {
                     ReaderSmartChaptersPanel(chaptersPanelState, trackedActions, currentReaderPosition)
                 }
             }
@@ -217,26 +230,44 @@ private fun ReaderHotPanelBackHandler(
 }
 
 /**
- * Hot Quick/Chapters panels stay measured for the Reader session, but all visible content draws
- * live. Visibility is placement-phase only: hidden panels are physically outside the window, so
- * they cannot intercept pointer input or be reported as displayed, while local state stays warm.
+ * Hot panels remain physically offscreen whenever hidden. Chapters can opt into a bounded two-frame
+ * pre-record phase during Reader setup: those initial frames are placed behind the opaque Reader with
+ * semantics cleared, then the exact same retained nodes move back offscreen. This warms their draw
+ * content before the first user-visible open without a persistent layer or accessibility exposure.
  */
 @Composable
 private fun PersistentReaderPanelLayer(
     panelState: State<ReaderPanel?>,
     target: ReaderPanel,
-    @Suppress("UNUSED_PARAMETER") recordKey: Any?,
+    recordKey: Any?,
+    keepDrawWarm: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    var drawWarmReady by remember(recordKey, keepDrawWarm) { mutableStateOf(!keepDrawWarm) }
+    LaunchedEffect(recordKey, keepDrawWarm) {
+        if (keepDrawWarm && !drawWarmReady) {
+            withFrameNanos { _ -> Unit }
+            withFrameNanos { _ -> Unit }
+            drawWarmReady = true
+        }
+    }
+    val prewarmSemantics = if (keepDrawWarm && !drawWarmReady) Modifier.clearAndSetSemantics {} else Modifier
     Box(
         Modifier.fillMaxSize()
+            .then(prewarmSemantics)
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints)
                 layout(placeable.width, placeable.height) {
                     val visible = panelState.value == target
+                    val warming = keepDrawWarm && !drawWarmReady && !visible
                     placeable.place(
                         x = 0,
-                        y = if (visible) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
+                        y = if (visible || warming) 0 else READER_PANEL_HIDDEN_OFFSET_PX,
+                        zIndex = when {
+                            visible -> READER_PANEL_VISIBLE_Z
+                            warming -> READER_PANEL_PREWARM_Z
+                            else -> 0f
+                        },
                     )
                 }
             },
@@ -244,6 +275,8 @@ private fun PersistentReaderPanelLayer(
 }
 
 private const val READER_PANEL_HIDDEN_OFFSET_PX = 16_384
+private const val READER_PANEL_VISIBLE_Z = 10f
+private const val READER_PANEL_PREWARM_Z = -10f
 
 @Composable private fun BusyOverlay(label: String) {
     Box(Modifier.fillMaxSize().zIndex(20f).background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.24f)), contentAlignment = Alignment.Center) {

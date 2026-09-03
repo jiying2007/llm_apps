@@ -12,11 +12,11 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
+import androidx.compose.ui.test.performTextInput
 
 class JingduUiTest {
     @get:Rule val composeRule = createComposeRule()
@@ -29,35 +29,6 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.empty_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.select_txt)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
-    }
-
-
-    @Test fun libraryPrioritizesContinueReadingAndConsolidatesManagementTools() {
-        val reading = sampleBook().copy(name = "Reading Now.txt", progress = 4_000, charCount = 10_000, touchedAt = 20)
-        val unread = sampleBook().copy(id = "c".repeat(64), name = "Later.txt", progress = 0, touchedAt = 10, normalizedSha256 = "d".repeat(64))
-        composeRule.setContent { JingduApp(AppUiState(books = listOf(unread, reading)), noOpActions()) }
-        composeRule.onNodeWithText(context.getString(R.string.continue_reading)).assertIsDisplayed()
-        composeRule.onNodeWithText("Reading Now").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.library_more_actions)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.add_folder_library)).assertIsNotDisplayed()
-    }
-
-    @Test fun librarySearchMatchesBookTitles() {
-        val first = sampleBook().copy(name = "Moon Reader.txt", touchedAt = 20)
-        val second = sampleBook().copy(id = "c".repeat(64), name = "River Story.txt", touchedAt = 10, normalizedSha256 = "d".repeat(64))
-        composeRule.setContent { JingduApp(AppUiState(books = listOf(first, second)), noOpActions()) }
-        composeRule.onNodeWithText(context.getString(R.string.search_hint)).performTextInput("Moon")
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("Moon Reader").assertIsDisplayed()
-        composeRule.onNodeWithText("River Story").assertIsNotDisplayed()
-    }
-
-    @Test fun libraryImportExplainsSingleAndBatchModesBeforeSystemPicker() {
-        composeRule.setContent { JingduApp(AppUiState(), noOpActions()) }
-        composeRule.onNodeWithText(context.getString(R.string.import_txt)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.select_txt)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.batch_import_picker_hint)).assertIsDisplayed()
     }
 
     @Test fun readerKeepsPrimaryReadingChromeDiscoverable() {
@@ -101,6 +72,75 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
     }
 
+    @Test fun pagedReaderRightTapAlwaysHasAReachableNextPath() {
+    var nextCount = 0
+    composeRule.setContent {
+        JingduApp(
+            AppUiState(
+                screen = AppScreen.READER,
+                currentBook = sampleBook(),
+                pageText = "Chapter 1\nA stable body used for real edge-tap paging verification.",
+                position = 500,
+                length = 10_000,
+                chapters = listOf(ChapterModel(0, "Chapter 1")),
+                chaptersLoaded = true,
+                settings = ReaderSettings(
+                    gestureCoachDismissed = true,
+                    tapPagingEnabled = false,
+                    swipePagingEnabled = false,
+                ).withReachablePagedNavigation(),
+            ),
+            noOpActions().copy(onNavigateNext = { nextCount++ }),
+        )
+    }
+    val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
+    val bounds = surface.fetchSemanticsNode().boundsInRoot
+    surface.performTouchInput {
+        click(androidx.compose.ui.geometry.Offset(bounds.width * 0.88f, bounds.height * 0.50f))
+    }
+    composeRule.waitForIdle()
+    assertEquals(1, nextCount)
+}
+
+    @Test fun readerChromePrioritizesAaAndContextualTools() {
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 500, length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
+                    settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
+            )
+        }
+        composeRule.onNodeWithText("Aa").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_location_back)).assertIsNotDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_location_forward)).assertIsNotDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.more_reading_tools)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_text_tools)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_more_tools)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reading_settings)).assertIsNotDisplayed()
+    }
+
+    @Test fun readerSettingsUseFourGroupsPreviewAndProgressiveGestures() {
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", length = 10_000,
+                    panel = ReaderPanel.SETTINGS, settings = ReaderSettings(gestureCoachDismissed = true),
+                ), noOpActions(),
+            )
+        }
+        composeRule.onNodeWithText(context.getString(R.string.reader_settings_group_appearance)).assertIsDisplayed().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_typography_preview)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_settings_back)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_settings_group_navigation)).assertIsDisplayed().performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_paging_path_required)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_more_gesture_options)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_brightness_gesture)).assertIsNotDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_more_gesture_options)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.reader_brightness_gesture)).assertIsDisplayed()
+    }
+
     @Test fun quickReadingSettingsStayTouchableAcrossRepeatedStateChanges() {
         var latest = ReaderSettings(gestureCoachDismissed = true)
         composeRule.setContent {
@@ -114,6 +154,8 @@ class JingduUiTest {
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_brightness)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_all_settings)).assertIsDisplayed()
         composeRule.onNodeWithText("+").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("+").performClick()
@@ -191,6 +233,34 @@ class JingduUiTest {
         }
         composeRule.onNodeWithText(context.getString(R.string.smart_clean)).assertIsDisplayed()
         composeRule.onNodeWithText("www.example.com").assertIsDisplayed()
+    }
+
+    @Test fun libraryPrioritizesContinueReadingAndConsolidatesManagementTools() {
+        val reading = sampleBook().copy(name = "Reading Now.txt", progress = 4_000, charCount = 10_000, touchedAt = 20)
+        val unread = sampleBook().copy(id = "c".repeat(64), name = "Later.txt", progress = 0, touchedAt = 10, normalizedSha256 = "d".repeat(64))
+        composeRule.setContent { JingduApp(AppUiState(books = listOf(unread, reading)), noOpActions()) }
+        composeRule.onNodeWithText(context.getString(R.string.continue_reading)).assertIsDisplayed()
+        composeRule.onNodeWithText("Reading Now").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(context.getString(R.string.library_more_actions)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.add_folder_library)).assertIsNotDisplayed()
+    }
+
+    @Test fun librarySearchMatchesBookTitles() {
+        val first = sampleBook().copy(name = "Moon Reader.txt", touchedAt = 20)
+        val second = sampleBook().copy(id = "c".repeat(64), name = "River Story.txt", touchedAt = 10, normalizedSha256 = "d".repeat(64))
+        composeRule.setContent { JingduApp(AppUiState(books = listOf(first, second)), noOpActions()) }
+        composeRule.onNodeWithText(context.getString(R.string.search_hint)).performTextInput("Moon")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Moon Reader").assertIsDisplayed()
+        composeRule.onNodeWithText("River Story").assertIsNotDisplayed()
+    }
+
+    @Test fun libraryImportExplainsSingleAndBatchModesBeforeSystemPicker() {
+        composeRule.setContent { JingduApp(AppUiState(), noOpActions()) }
+        composeRule.onNodeWithText(context.getString(R.string.import_txt)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.select_txt)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.batch_import_picker_hint)).assertIsDisplayed()
     }
 
     private fun sampleBook() = BookCardModel(
