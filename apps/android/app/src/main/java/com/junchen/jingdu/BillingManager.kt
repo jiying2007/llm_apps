@@ -142,11 +142,19 @@ internal class BillingManager(
     }
 
     private fun processPurchases(purchases: List<Purchase>, authoritative: Boolean): Boolean {
-        var ownsPro = false
+        val snapshots = purchases.map { purchase ->
+            BillingPurchaseSnapshot(
+                productIds = purchase.products.toSet(),
+                state = when (purchase.purchaseState) {
+                    Purchase.PurchaseState.PURCHASED -> BillingPurchaseState.PURCHASED
+                    Purchase.PurchaseState.PENDING -> BillingPurchaseState.PENDING
+                    else -> BillingPurchaseState.OTHER
+                },
+            )
+        }
+        val ownsPro = BillingEntitlementPolicy.owns(PRODUCT_ID, snapshots)
         purchases.forEach { purchase ->
-            if (PRODUCT_ID !in purchase.products) return@forEach
-            if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return@forEach
-            ownsPro = true
+            if (PRODUCT_ID !in purchase.products || purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return@forEach
             if (!purchase.isAcknowledged) {
                 val params = AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()
                 billingClient.acknowledgePurchase(params) { result ->
@@ -157,7 +165,12 @@ internal class BillingManager(
                 }
             }
         }
-        if (authoritative || ownsPro) setUnlocked(ownsPro)
+        val reconciled = BillingEntitlementPolicy.reconcileCached(
+            previous = unlocked,
+            authoritativeQuerySucceeded = authoritative,
+            ownsNow = ownsPro,
+        )
+        if (authoritative || ownsPro) setUnlocked(if (authoritative) reconciled else true)
         return ownsPro
     }
 
