@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReaderGesturePolicyTest {
-    @Test fun ordinaryHorizontalSwipeSurvivesTextConsumption() {
+    @Test fun fastHorizontalSwipeCanPassSelectionConsumption() {
         assertTrue(ReaderGesturePolicy.allowsPageSwipe(true, false, 180, -120f, 12f, 52f))
         assertTrue(ReaderGesturePolicy.allowsPageSwipe(true, false, 700, -120f, 12f, 52f))
         assertFalse(ReaderGesturePolicy.allowsPageSwipe(true, false, 180, -60f, 42f, 52f))
