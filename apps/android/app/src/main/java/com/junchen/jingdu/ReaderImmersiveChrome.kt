@@ -152,7 +152,7 @@ internal fun ReaderImmersiveBottomDock(
                 }
 
                 if (skimDragging) {
-                    ReaderSkimBubble(skimPreview, percent)
+                    ReaderSkimBubble(skimPreview, percent, fraction)
                 } else if (showSkimReturn && skimPreview != null) {
                     ReaderSkimReturnRow(skimPreview, onReturn = { onInteraction(); onReturnSkim() })
                 }
@@ -213,22 +213,37 @@ internal fun ReaderImmersiveBottomDock(
 }
 
 @Composable
-private fun ReaderSkimBubble(preview: ReaderSkimPreview?, fallbackPercent: Int) {
-    Surface(
-        Modifier.align(Alignment.CenterHorizontally),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.94f),
-        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-        shadowElevation = 4.dp,
-    ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun ReaderSkimBubble(preview: ReaderSkimPreview?, fallbackPercent: Int, fraction: Float) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val bubbleWidth = 196.dp
+        val travel = (maxWidth - bubbleWidth).coerceAtLeast(0.dp)
+        val x = travel * fraction.coerceIn(0f, 1f)
+        Surface(
+            Modifier.offset(x = x).widthIn(max = bubbleWidth),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.94f),
+            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+            shadowElevation = 4.dp,
         ) {
-            Text(preview?.chapter ?: "${preview?.bookProgressPercent ?: fallbackPercent}%", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            preview?.chapterRemainingMinutes?.let { Text("· ${it} min", style = MaterialTheme.typography.labelSmall) }
-            preview?.let { Text("· ${it.bookProgressPercent}%", style = MaterialTheme.typography.labelSmall) }
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    preview?.chapter ?: stringResource(R.string.reader_book_progress_value, preview?.bookProgressPercent ?: fallbackPercent),
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                preview?.chapterRemainingMinutes?.let {
+                    Text(stringResource(R.string.reader_chapter_remaining, it), style = MaterialTheme.typography.labelSmall)
+                }
+                if (preview?.chapter != null) {
+                    Text(stringResource(R.string.reader_book_progress_value, preview.bookProgressPercent), style = MaterialTheme.typography.labelSmall)
+                }
+            }
         }
     }
 }
@@ -348,6 +363,7 @@ internal fun ReaderCompactQuickSettingsSheet(state: AppUiState, actions: JingduA
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 ReaderPalette.entries.forEach { palette ->
                     val selected = s.palette == palette
+                    val label = immersivePaletteLabel(palette)
                     Box(
                         Modifier
                             .size(44.dp)
@@ -358,7 +374,7 @@ internal fun ReaderCompactQuickSettingsSheet(state: AppUiState, actions: JingduA
                                 CircleShape,
                             )
                             .clickable { visual(s.copy(palette = palette)) }
-                            .semantics { contentDescription = palette.name },
+                            .semantics { contentDescription = label },
                     )
                 }
             }
@@ -412,6 +428,15 @@ internal fun ReaderCompactQuickSettingsSheet(state: AppUiState, actions: JingduA
 
 internal fun readerAdaptiveTextWidth(fontSizeSp: Float): Dp = (fontSizeSp * 32f).coerceIn(520f, 760f).dp
 internal fun readerAdaptiveTwoColumnWidth(fontSizeSp: Float): Dp = (fontSizeSp * 60f + 28f).coerceIn(920f, 1200f).dp
+
+@Composable
+private fun immersivePaletteLabel(palette: ReaderPalette): String = when (palette) {
+    ReaderPalette.PAPER -> stringResource(R.string.paper)
+    ReaderPalette.SEPIA -> stringResource(R.string.reader_theme_sepia)
+    ReaderPalette.LIGHT -> stringResource(R.string.light)
+    ReaderPalette.NIGHT -> stringResource(R.string.night)
+    ReaderPalette.OLED -> stringResource(R.string.reader_oled)
+}
 
 private fun immersivePaletteSwatch(palette: ReaderPalette) = when (palette) {
     ReaderPalette.PAPER -> androidx.compose.ui.graphics.Color(0xFFF7F0DE)
