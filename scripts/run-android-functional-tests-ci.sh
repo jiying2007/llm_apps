@@ -12,50 +12,92 @@ IMAGE="system-images;android-35;google_apis_ps16k;x86_64"
 AVD_HOME="${RUNNER_TEMP:-/tmp}/jingdu-functional-avd-home"
 AVD_NAME="jingdu-functional-16k-ci"
 LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-emulator.log"
+BOOT_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_BOOT_TIMEOUT_SECONDS:-300}"
+EMULATOR_PID=""
 
 cleanup() {
   "$ADB" emu kill >/dev/null 2>&1 || true
+  if [[ -n "$EMULATOR_PID" ]] && kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
+    kill "$EMULATOR_PID" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
+fail_emulator() {
+  echo "$1" >&2
+  echo "===== Android functional emulator log =====" >&2
+  tail -n 240 "$LOG" >&2 || true
+  exit 1
+}
+
 [[ -x "$SDKMANAGER" ]] || { echo "sdkmanager missing: $SDKMANAGER" >&2; exit 1; }
-if command -v apt-get >/dev/null 2>&1; then
+if command -v apt-get >/dev/null 2>&1 && ! dpkg-query -W libpulse0 >/dev/null 2>&1; then
   sudo apt-get update -qq
-  sudo apt-get install -y -qq libpulse0 >/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libpulse0 >/dev/null
 fi
 yes | "$SDKMANAGER" --licenses >/dev/null || true
 "$SDKMANAGER" "platform-tools" "emulator" "$IMAGE" >/dev/null
 
+[[ -x "$ADB" ]] || { echo "adb missing: $ADB" >&2; exit 1; }
+[[ -x "$EMULATOR" ]] || { echo "emulator missing: $EMULATOR" >&2; exit 1; }
+if [[ ! -e /dev/kvm ]]; then
+  echo "16 KiB x86_64 emulator requires KVM on hosted CI" >&2
+  exit 1
+fi
+sudo chmod 666 /dev/kvm
+[[ -r /dev/kvm && -w /dev/kvm ]] || { echo "hosted runner cannot access /dev/kvm" >&2; exit 1; }
+echo "KVM acceleration enabled for Android functional CI"
+
 rm -rf "$AVD_HOME"
 mkdir -p "$AVD_HOME"
 export ANDROID_AVD_HOME="$AVD_HOME"
-echo no | "$AVDMANAGER" create avd --force --name "$AVD_NAME" --package "$IMAGE" --device "pixel_6" >/dev/null
+echo no | "$AVDMANAGER" create avd \
+  --force \
+  --name "$AVD_NAME" \
+  --package "$IMAGE" \
+  --device "pixel_6" \
+  --path "$AVD_HOME/$AVD_NAME.avd" >/dev/null
 
+: >"$LOG"
 "$EMULATOR" -avd "$AVD_NAME" \
-  -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data \
-  -gpu swiftshader_indirect -accel auto -camera-back none -camera-front none \
+  -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -no-metrics \
+  -gpu swiftshader_indirect -accel on -camera-back none -camera-front none \
   >"$LOG" 2>&1 &
+EMULATOR_PID=$!
+echo "Android functional emulator PID: $EMULATOR_PID"
+"$ADB" start-server >/dev/null
 
-"$ADB" wait-for-device
-for attempt in $(seq 1 60); do
-  boot="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-  if [[ "$boot" == "1" ]]; then break; fi
-  if (( attempt == 60 )); then
-    echo "Android functional-test 16 KiB emulator failed to boot" >&2
-    cat "$LOG" >&2 || true
-    exit 1
+booted=0
+for ((second = 1; second <= BOOT_TIMEOUT_SECONDS; second++)); do
+  if ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
+    wait "$EMULATOR_PID" || true
+    fail_emulator "Android functional-test 16 KiB emulator exited before boot completed"
   fi
-  sleep 5
+  adb_state="$("$ADB" get-state 2>/dev/null || true)"
+  if [[ "$adb_state" == "device" ]]; then
+    boot="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+    if [[ "$boot" == "1" ]]; then
+      booted=1
+      echo "Android functional emulator boot completed in ${second}s"
+      break
+    fi
+  fi
+  if (( second % 15 == 0 )); then
+    echo "Waiting for Android functional emulator: ${second}s/${BOOT_TIMEOUT_SECONDS}s (adb=${adb_state:-unavailable})"
+  fi
+  sleep 1
 done
+if (( booted == 0 )); then
+  fail_emulator "Android functional-test 16 KiB emulator failed to boot within ${BOOT_TIMEOUT_SECONDS}s"
+fi
 
 PAGE_SIZE="$("$ADB" shell getconf PAGE_SIZE | tr -d '\r[:space:]')"
 if [[ "$PAGE_SIZE" != "16384" ]]; then
-  echo "Functional emulator is not a 16 KiB runtime: PAGE_SIZE=$PAGE_SIZE" >&2
-  cat "$LOG" >&2 || true
-  exit 1
+  fail_emulator "Functional emulator is not a 16 KiB runtime: PAGE_SIZE=$PAGE_SIZE"
 fi
 
 echo "Android functional runtime confirmed: PAGE_SIZE=$PAGE_SIZE image=$IMAGE"
+"$ADB" shell input keyevent 82 >/dev/null 2>&1 || true
 "$ADB" shell settings put global window_animation_scale 0
 "$ADB" shell settings put global transition_animation_scale 0
 "$ADB" shell settings put global animator_duration_scale 0
