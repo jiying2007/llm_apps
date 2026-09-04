@@ -41,59 +41,121 @@ import kotlin.math.roundToInt
 }
 
 @Composable internal fun CleanSheet(state: AppUiState, actions: JingduActions) {
-    var find by rememberSaveable { mutableStateOf("") }; var replacement by rememberSaveable { mutableStateOf("") }; var mode by rememberSaveable { mutableStateOf(RepairRuleMode.LITERAL) }
-    var globalFind by rememberSaveable { mutableStateOf("") }; var globalReplacement by rememberSaveable { mutableStateOf("") }; var globalMode by rememberSaveable { mutableStateOf(RepairRuleMode.LINE_GLOB) }
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel) { LazyColumn(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { SheetTitle(stringResource(R.string.clean), stringResource(R.string.clean_subtitle)) }
-        item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(selected = !state.cleanMode, onClick = { if (state.cleanMode) actions.onToggleCleanPreview() }, label = { Text(stringResource(R.string.original_text)) }); FilterChip(selected = state.cleanMode, onClick = { if (!state.cleanMode) actions.onToggleCleanPreview() }, label = { Text(stringResource(R.string.clean_preview)) }); AssistChip(onClick = actions.onExportClean, label = { Text(stringResource(R.string.export_txt)) }) } }
-        item { ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text(stringResource(R.string.smart_clean), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.smart_clean_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; if (state.proUnlocked) AssistChip(onClick = {}, label = { Text("Pro") }, leadingIcon = { Icon(Icons.Outlined.WorkspacePremium, null) }) }
-            Text(stringResource(R.string.smart_clean_pack, BuiltinCleanRules.PACK_VERSION), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(stringResource(R.string.smart_clean_refiner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free)) }
-            if (state.smartCleanAnalyzed && state.noiseCandidates.isEmpty()) Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    var find by rememberSaveable { mutableStateOf("") }
+    var replacement by rememberSaveable { mutableStateOf("") }
+    var mode by rememberSaveable { mutableStateOf(RepairRuleMode.LITERAL) }
+    var globalFind by rememberSaveable { mutableStateOf("") }
+    var globalReplacement by rememberSaveable { mutableStateOf("") }
+    var globalMode by rememberSaveable { mutableStateOf(RepairRuleMode.LINE_GLOB) }
+    val selectedCount = state.noiseCandidates.count { it.selected }
+    val selectedNoiseTotal = state.noiseCandidates.filter { it.selected }.sumOf { it.count }
+
+    ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { SheetTitle(stringResource(R.string.clean), stringResource(R.string.clean_subtitle)) }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !state.cleanMode, onClick = { if (state.cleanMode) actions.onToggleCleanPreview() }, label = { Text(stringResource(R.string.original_text)) })
+                    FilterChip(selected = state.cleanMode, onClick = { if (!state.cleanMode) actions.onToggleCleanPreview() }, label = { Text(stringResource(R.string.clean_preview)) })
+                    AssistChip(onClick = actions.onExportClean, label = { Text(stringResource(R.string.export_txt)) })
+                }
+            }
+
+            // Keep the Smart Clean value proposition in its own lazy item. Candidate rows and Pro
+            // actions can become taller than the viewport at large font scales; putting all of them
+            // inside one giant item prevents accessibility scroll-to from targeting the header.
+            item {
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(stringResource(R.string.smart_clean), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(stringResource(R.string.smart_clean_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (state.proUnlocked) AssistChip(onClick = {}, label = { Text("Pro") }, leadingIcon = { Icon(Icons.Outlined.WorkspacePremium, null) })
+                        }
+                        Text(stringResource(R.string.smart_clean_pack, BuiltinCleanRules.PACK_VERSION), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.smart_clean_refiner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free))
+                        }
+                        if (state.smartCleanAnalyzed && state.noiseCandidates.isEmpty()) {
+                            Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
             if (state.noiseCandidates.isNotEmpty()) {
-                val selectedCount = state.noiseCandidates.count { it.selected }
-                val total = state.noiseCandidates.filter { it.selected }.sumOf { it.count }
-                Text(stringResource(R.string.noise_summary, state.noiseCandidates.size, selectedCount, total), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                Text(stringResource(R.string.smart_clean_apply_warning), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.noiseCandidates.take(20).forEachIndexed { index, c ->
-                        ElevatedCard(Modifier.fillMaxWidth()) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.Top) {
-                                Checkbox(c.selected, { actions.onToggleNoiseCandidate(index) })
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text("${riskLabel(c.risk)} · ${localizeNoiseReason(c.reason)} · ${c.score}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                                    Text(stringResource(R.string.smart_clean_impact, c.count, c.impactChars), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(riskExplanation(c.risk), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(c.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            stringResource(R.string.noise_summary, state.noiseCandidates.size, selectedCount, selectedNoiseTotal),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(stringResource(R.string.smart_clean_apply_warning), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                items(state.noiseCandidates.take(20).indices.toList(), key = { it }) { index ->
+                    val c = state.noiseCandidates[index]
+                    ElevatedCard(Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.Top) {
+                            Checkbox(c.selected, { actions.onToggleNoiseCandidate(index) })
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("${riskLabel(c.risk)} · ${localizeNoiseReason(c.reason)} · ${c.score}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                Text(stringResource(R.string.smart_clean_impact, c.count, c.impactChars), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(riskExplanation(c.risk), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(c.text, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
                 }
-                val suffix = state.proPrice?.let { stringResource(R.string.price_suffix, it) } ?: ""
-                Button(onClick = if (state.proUnlocked) actions.onApplySmartClean else actions.onUpgradePro, modifier = Modifier.fillMaxWidth(), enabled = selectedCount > 0) {
-                    if (!state.proUnlocked) { Icon(Icons.Outlined.Lock, null); Spacer(Modifier.width(8.dp)) }
-                    Text(if (state.proUnlocked) stringResource(R.string.apply_selected_preview) else stringResource(R.string.unlock_pro_apply, suffix))
+                item {
+                    val suffix = state.proPrice?.let { stringResource(R.string.price_suffix, it) } ?: ""
+                    Button(
+                        onClick = if (state.proUnlocked) actions.onApplySmartClean else actions.onUpgradePro,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = selectedCount > 0,
+                    ) {
+                        if (!state.proUnlocked) {
+                            Icon(Icons.Outlined.Lock, null)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(if (state.proUnlocked) stringResource(R.string.apply_selected_preview) else stringResource(R.string.unlock_pro_apply, suffix))
+                    }
                 }
-                if (state.smartCleanUndoAvailable) OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) }
-                if (!state.proUnlocked) TextButton(onClick = actions.onRestorePro, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restore_pro_question)) }
+                if (state.smartCleanUndoAvailable) {
+                    item { OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) } }
+                }
+                if (!state.proUnlocked) {
+                    item { TextButton(onClick = actions.onRestorePro, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restore_pro_question)) } }
+                }
             } else if (state.smartCleanUndoAvailable) {
-                OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) }
+                item { OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) } }
             }
-        } } }
-        item { HorizontalDivider() }; item { Text(stringResource(R.string.book_manual_rules), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-        item { RuleModeChips(mode, state.proUnlocked) { mode = it } }
-        item { OutlinedTextField(find, { find = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(if (mode == RepairRuleMode.LITERAL) R.string.find_text else R.string.line_pattern_hint)) }, singleLine = true) }
-        item { OutlinedTextField(replacement, { replacement = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.replacement_hint)) }, singleLine = true) }
-        item { Button(onClick = { actions.onAddRule(mode, find, replacement); if (mode == RepairRuleMode.LITERAL || state.proUnlocked) { find = ""; replacement = "" } }, enabled = find.isNotBlank()) { Text(stringResource(if (mode == RepairRuleMode.LINE_GLOB && !state.proUnlocked) R.string.unlock_pro_add_wildcard else R.string.add_book_rule)) } }
-        if (state.repairRules.isNotEmpty()) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.book_rules_count, state.repairRules.size)); TextButton(onClick = actions.onClearRules) { Text(stringResource(R.string.clear)) } } }
-        items(state.repairRules.indices.toList()) { i -> RuleCard(state.repairRules[i]) { actions.onDeleteRule(i) } }
-        item { HorizontalDivider() }; item { Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.global_rule_library), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Spacer(Modifier.width(8.dp)); AssistChip(onClick = {}, label = { Text("Pro") }) } }; item { Text(stringResource(R.string.global_rule_body), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (!state.proUnlocked) item { ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(stringResource(R.string.pro_lifetime_title), fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.pro_lifetime_body), color = MaterialTheme.colorScheme.onSurfaceVariant); val suffix = state.proPrice?.let { stringResource(R.string.price_suffix, it) } ?: ""; Button(onClick = actions.onUpgradePro, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.WorkspacePremium, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.unlock_jingdu_pro, suffix)) }; TextButton(onClick = actions.onRestorePro, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restore_purchase)) } } } }
-        else { item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { AssistChip(onClick = actions.onInstallRecommendedRules, label = { Text(stringResource(R.string.install_recommended_rules)) }); AssistChip(onClick = actions.onImportGlobalRules, label = { Text(stringResource(R.string.import_action)) }); AssistChip(onClick = actions.onExportGlobalRules, label = { Text(stringResource(R.string.export_action)) }) } }; item { RuleModeChips(globalMode, true) { globalMode = it } }; item { OutlinedTextField(globalFind, { globalFind = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(if (globalMode == RepairRuleMode.LITERAL) R.string.global_find_text else R.string.global_line_pattern)) }, singleLine = true) }; item { OutlinedTextField(globalReplacement, { globalReplacement = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.replacement_hint)) }, singleLine = true) }; item { Button(onClick = { actions.onAddGlobalRule(globalMode, globalFind, globalReplacement); globalFind = ""; globalReplacement = "" }, enabled = globalFind.isNotBlank()) { Text(stringResource(R.string.add_global_rule)) } }; if (state.globalRules.isNotEmpty()) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.global_rules_count, state.globalRules.size)); TextButton(onClick = actions.onClearGlobalRules) { Text(stringResource(R.string.clear)) } } }; items(state.globalRules.indices.toList()) { i -> RuleCard(state.globalRules[i]) { actions.onDeleteGlobalRule(i) } } }
-    } }
+
+            item { HorizontalDivider() }
+            item { Text(stringResource(R.string.book_manual_rules), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+            item { RuleModeChips(mode, state.proUnlocked) { mode = it } }
+            item { OutlinedTextField(find, { find = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(if (mode == RepairRuleMode.LITERAL) R.string.find_text else R.string.line_pattern_hint)) }, singleLine = true) }
+            item { OutlinedTextField(replacement, { replacement = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.replacement_hint)) }, singleLine = true) }
+            item { Button(onClick = { actions.onAddRule(mode, find, replacement); if (mode == RepairRuleMode.LITERAL || state.proUnlocked) { find = ""; replacement = "" } }, enabled = find.isNotBlank()) { Text(stringResource(if (mode == RepairRuleMode.LINE_GLOB && !state.proUnlocked) R.string.unlock_pro_add_wildcard else R.string.add_book_rule)) } }
+            if (state.repairRules.isNotEmpty()) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.book_rules_count, state.repairRules.size)); TextButton(onClick = actions.onClearRules) { Text(stringResource(R.string.clear)) } } }
+            items(state.repairRules.indices.toList()) { i -> RuleCard(state.repairRules[i]) { actions.onDeleteRule(i) } }
+            item { HorizontalDivider() }
+            item { Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.global_rule_library), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Spacer(Modifier.width(8.dp)); AssistChip(onClick = {}, label = { Text("Pro") }) } }
+            item { Text(stringResource(R.string.global_rule_body), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (!state.proUnlocked) item { ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(stringResource(R.string.pro_lifetime_title), fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.pro_lifetime_body), color = MaterialTheme.colorScheme.onSurfaceVariant); val suffix = state.proPrice?.let { stringResource(R.string.price_suffix, it) } ?: ""; Button(onClick = actions.onUpgradePro, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.WorkspacePremium, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.unlock_jingdu_pro, suffix)) }; TextButton(onClick = actions.onRestorePro, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restore_purchase)) } } } }
+            else { item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { AssistChip(onClick = actions.onInstallRecommendedRules, label = { Text(stringResource(R.string.install_recommended_rules)) }); AssistChip(onClick = actions.onImportGlobalRules, label = { Text(stringResource(R.string.import_action)) }); AssistChip(onClick = actions.onExportGlobalRules, label = { Text(stringResource(R.string.export_action)) }) } }; item { RuleModeChips(globalMode, true) { globalMode = it } }; item { OutlinedTextField(globalFind, { globalFind = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(if (globalMode == RepairRuleMode.LITERAL) R.string.global_find_text else R.string.global_line_pattern)) }, singleLine = true) }; item { OutlinedTextField(globalReplacement, { globalReplacement = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.replacement_hint)) }, singleLine = true) }; item { Button(onClick = { actions.onAddGlobalRule(globalMode, globalFind, globalReplacement); globalFind = ""; globalReplacement = "" }, enabled = globalFind.isNotBlank()) { Text(stringResource(R.string.add_global_rule)) } }; if (state.globalRules.isNotEmpty()) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.global_rules_count, state.globalRules.size)); TextButton(onClick = actions.onClearGlobalRules) { Text(stringResource(R.string.clear)) } } }; items(state.globalRules.indices.toList()) { i -> RuleCard(state.globalRules[i]) { actions.onDeleteGlobalRule(i) } } }
+        }
+    }
 }
 
 @Composable private fun RuleModeChips(mode: RepairRuleMode, pro: Boolean, onMode: (RepairRuleMode) -> Unit) { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(mode == RepairRuleMode.LITERAL, { onMode(RepairRuleMode.LITERAL) }, label = { Text(stringResource(R.string.exact_text)) }); FilterChip(mode == RepairRuleMode.LINE_GLOB, { onMode(RepairRuleMode.LINE_GLOB) }, label = { Text(stringResource(if (pro) R.string.whole_line_glob else R.string.whole_line_glob_pro)) }) } }
