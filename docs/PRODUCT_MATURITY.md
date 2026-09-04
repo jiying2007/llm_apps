@@ -21,11 +21,14 @@ The following are source/CI evidence and may be enforced automatically:
 - Android uses pinned stable NDK `29.0.14206865`.
 - Release builds generate `FULL` native debug symbols for Play/native crash symbolication.
 - `verify-android-16k-page-size.sh` builds release APK/AAB and verifies 16 KiB ZIP alignment plus every packaged native ELF `LOAD` alignment.
-- Hosted CI executes the Android instrumentation suite on an emulator; AndroidTest compilation alone is no longer acceptance.
-- Existing hosted Macrobenchmark thresholds/baselines remain unchanged and are still an independent release gate.
+- Hosted `android-functional` installs the Android 15 `google_apis_ps16k` x86_64 system image, refuses to proceed unless `adb shell getconf PAGE_SIZE` is exactly `16384`, then executes the full Android instrumentation suite. `NativePageSizeSmokeTest` loads JNI/Core, hashes and opens/reads a UTF-8 file on that same 16 KiB runtime.
+- AndroidTest compilation alone is no longer acceptance; Compose UI, paging regression, portable-user-assets and diagnostics tests execute in hosted CI.
+- Existing hosted Macrobenchmark thresholds/baselines remain unchanged and are still an independent release gate on its pinned standard emulator environment.
+- Reader hardware-key routing supports previous/next via arrows/PageUp/PageDown and search via Ctrl+F while an active panel keeps normal text input and only intercepts Escape.
 - Physical performance workflow requires an explicit source tag/SHA and records checked-out SHA plus OEM/model/API/fingerprint in the evidence artifact.
 - Billing purchase-state and authoritative/offline entitlement behavior is isolated in a pure tested policy.
 - Immutable private-file publication is isolated and tested for existing-target and failed-publication recovery.
+- Bounded TTS sentence/paragraph navigation has host tests for Unicode/code-point and paragraph-boundary behavior; real TTS engines/routes remain physical evidence.
 - The existing user-triggered privacy-audit export contains bounded support diagnostics (device/build/storage class + stable error codes) without paths, URIs, search queries, purchase tokens or book text.
 - Smart Clean held-out evaluation combines the manually curated v1 corpus with a checked-in v2 adversarial matrix and must stay above the minimum production-scale row counts while retaining zero auto-AD hard-negative false positives.
 
@@ -47,6 +50,7 @@ These rows remain fail-closed until actual device/Play evidence exists for the e
 - [ ] process death / reopen / background-foreground recovery.
 - [ ] low-storage/write-failure recovery without replacing the last valid private source/revision.
 - [ ] wired and Bluetooth TTS route + transient/permanent audio-focus behavior.
+- [ ] hardware keyboard navigation on a suitable large-screen/desktop-class Android target.
 - [ ] real volume-key paging advances authoritative source position.
 - [ ] physical Reader performance meets the release SLO (`P95 <= 40 ms`, `P99 <= 80 ms`).
 
@@ -76,6 +80,7 @@ The current no-backend lifetime model intentionally accepts some piracy risk in 
 - [ ] upload/production signing certificate fingerprint recorded.
 - [ ] R8 `mapping.txt` archived.
 - [ ] native debug symbols archived/included for Play.
+- [ ] successful 16 KiB package/ELF compatibility evidence attached to the exact source candidate.
 - [ ] Play app-bundle/pre-launch validation succeeds for the exact AAB.
 - [ ] each staged rollout expansion records tag/commit/AAB checksum and timestamp.
 
