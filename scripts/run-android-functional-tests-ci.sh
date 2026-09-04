@@ -14,6 +14,7 @@ AVD_NAME="jingdu-functional-16k-ci"
 LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-emulator.log"
 FONT_SCALE_LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-font-scale-200.log"
 BOOT_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_BOOT_TIMEOUT_SECONDS:-300}"
+FRAMEWORK_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_FRAMEWORK_TIMEOUT_SECONDS:-90}"
 EMULATOR_PID=""
 
 cleanup() {
@@ -85,7 +86,7 @@ for ((second = 1; second <= BOOT_TIMEOUT_SECONDS; second++)); do
     boot="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
     if [[ "$boot" == "1" ]]; then
       booted=1
-      echo "Android functional emulator boot completed in ${second}s"
+      echo "Android functional emulator boot property completed in ${second}s"
       break
     fi
   fi
@@ -96,6 +97,32 @@ for ((second = 1; second <= BOOT_TIMEOUT_SECONDS; second++)); do
 done
 if (( booted == 0 )); then
   fail_emulator "Android functional-test 16 KiB emulator failed to boot within ${BOOT_TIMEOUT_SECONDS}s"
+fi
+
+# sys.boot_completed can become 1 before framework binder services are actually ready on a fresh
+# hosted emulator. Do not issue SettingsProvider/ActivityManager/PackageManager commands until all
+# three service families respond successfully; otherwise a valid runtime can fail with
+# "Can't find service: settings" immediately after the boot property flips.
+framework_ready=0
+for ((second = 1; second <= FRAMEWORK_TIMEOUT_SECONDS; second++)); do
+  if ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
+    wait "$EMULATOR_PID" || true
+    fail_emulator "Android functional-test emulator exited while waiting for framework services"
+  fi
+  if "$ADB" shell settings get global window_animation_scale >/dev/null 2>&1 && \
+     "$ADB" shell pm path android >/dev/null 2>&1 && \
+     "$ADB" shell am get-current-user >/dev/null 2>&1; then
+    framework_ready=1
+    echo "Android functional framework services ready in ${second}s after boot property"
+    break
+  fi
+  if (( second % 10 == 0 )); then
+    echo "Waiting for Android framework services: ${second}s/${FRAMEWORK_TIMEOUT_SECONDS}s"
+  fi
+  sleep 1
+done
+if (( framework_ready == 0 )); then
+  fail_emulator "Android functional framework services were not ready within ${FRAMEWORK_TIMEOUT_SECONDS}s"
 fi
 
 PAGE_SIZE="$("$ADB" shell getconf PAGE_SIZE | tr -d '\r[:space:]')"
