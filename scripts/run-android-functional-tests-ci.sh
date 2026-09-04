@@ -55,6 +55,30 @@ fail_emulator() {
   exit 1
 }
 
+stabilize_test_system_ui() {
+  local phase="$1"
+
+  # The Android 15 google_apis_ps16k emulator build AE3A.240806.043 has shown a reproducible
+  # system_server null-deref in SmartspaceManagerService when the Pixel NexusLauncher recents/home
+  # client calls notifySmartspaceEvent during hosted instrumentation. Reader acceptance does not use
+  # Launcher Smartspace/At-a-Glance, so isolate that emulator-only client rather than masking a
+  # product failure or changing the Android/API/page-size environment.
+  "$ADB" shell settings put secure smartspace 0 >/dev/null 2>&1 || true
+  "$ADB" shell settings put secure smartspace_show_on_home_screen 0 >/dev/null 2>&1 || true
+  if "$ADB" shell pm path com.google.android.apps.nexuslauncher >/dev/null 2>&1; then
+    "$ADB" shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+    "$ADB" shell pm disable-user --user 0 com.google.android.apps.nexuslauncher >/dev/null \
+      || fail_emulator "Android ${phase} failed to isolate unstable NexusLauncher Smartspace client"
+  fi
+
+  # Give PackageManager/SystemUI a short settling window, then fail closed if ActivityManager was
+  # destabilized by the image itself before any Jingdu instrumentation begins.
+  sleep 3
+  "$ADB" shell am get-current-user >/dev/null 2>&1 \
+    || fail_emulator "Android ${phase} ActivityManager became unavailable while isolating Smartspace"
+  echo "Android ${phase} Pixel Smartspace client isolated for hosted functional stability"
+}
+
 start_emulator() {
   local phase="$1"
   CURRENT_PHASE="$phase"
@@ -137,6 +161,7 @@ start_emulator() {
   fi
 
   echo "Android ${phase} runtime confirmed: PAGE_SIZE=$page_size image=$IMAGE MemTotal=${mem_total_kb}kB"
+  stabilize_test_system_ui "$phase"
   "$ADB" shell input keyevent 82 >/dev/null 2>&1 || true
   "$ADB" shell settings put global window_animation_scale 0
   "$ADB" shell settings put global transition_animation_scale 0
