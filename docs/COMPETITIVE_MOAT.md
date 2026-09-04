@@ -1,4 +1,4 @@
-# Competitive Moat — TXT Doctor / Smart Clean 4 / Smart TOC / Local Automation
+# Competitive Moat — TXT Doctor / Smart Layout / Smart Clean 4 / Smart TOC / Local Automation
 
 ## Product boundary
 
@@ -11,11 +11,14 @@ select TXT / folder
   -> first-readable bounded preview
   -> private immutable import + normalization/index
   -> TXT Doctor health diagnosis
+  -> Smart Layout presentation repair
   -> Smart TOC structure intelligence
   -> Smart Clean 4 explainable cleanup
   -> long-session reading / background TTS
-  -> reusable local feedback, rules and batch automation
+  -> reusable local feedback, pronunciation, rules and batch automation
 ```
+
+The competitive promise is not “support more formats.” It is: **take a TXT that another reader treats as broken or ugly, open it correctly, explain what is wrong, repair presentation/structure/noise safely, and keep it comfortable through a long reading session.**
 
 The source TXT is never modified or deleted. Book text is never uploaded. Android retains no INTERNET permission.
 
@@ -25,6 +28,21 @@ The source TXT is never modified or deleted. Book text is never uploaded. Androi
 
 TXT Doctor combines bounded text-integrity sampling with encoding, TOC and Smart Clean results. The report stores only scores/counts/metadata, never sampled book text.
 
+### Smart Layout
+
+Legacy TXT often has a fourth defect beyond encoding, chapter structure and ads: fixed-width hard wrapping, inconsistent blank lines and paragraph presentation that makes otherwise correct text unpleasant to read.
+
+Smart Layout is a bounded display-layer repair, not a source rewrite. It joins a newline only when the local window has strong evidence of hard wrapping and refuses joins across headings, blank paragraphs, indentation, fresh dialogue/block openers or strong terminal punctuation. The transformation is followed by an exact monotonic source/display projection, so bookmarks, annotations, search, TOC, progress and Smart Clean remain in Core source coordinates.
+
+This closes a differentiated repair chain that broad readers typically treat as unrelated settings:
+
+```text
+encoding wrong   -> re-decode from immutable source
+layout wrong     -> Smart Layout display repair
+structure wrong  -> Smart TOC overlay repair
+noise wrong      -> Smart Clean explain/apply
+```
+
 ### Smart TOC
 
 Core source code-point offsets remain authoritative. Smart TOC augments Core chapter headings with carefully verified special Chinese headings and reports duplicates, nearby numeric gaps and suspicious titles. User hide/add corrections are metadata overlays; they do not rewrite source text or offsets.
@@ -33,9 +51,15 @@ Core source code-point offsets remain authoritative. Smart TOC augments Core cha
 
 New single-book import reads at most 512 KiB and renders at most 12,000 code points before the full private copy/normalization/indexing completes. The bounded preview is disposable and is not treated as the canonical document revision.
 
+### Long-session Chinese Reader
+
+Reader quality is part of the moat rather than a neutral shell around repair tools. The same bounded source model now carries phrase-aware CJK line breaking, Web-novel/Paper-book/Large/Night/Low-Vision scenarios, visual-center continuity across reflow, system reduce-motion, foldable book posture, local Process Text dictionary actions, chapter remaining time and local TTS pronunciation overrides.
+
+None of those capabilities creates a second document identity. They compound the TXT-specific repair advantage because the user can stay inside one reader after rescue instead of exporting a “fixed” file to another application.
+
 ### Professional TTS
 
-Android can move read-aloud into an exported=false foreground mediaPlayback service with MediaSession controls. Lock-screen/headset controls operate on source offsets. Current reading-window highlight is presentation-only.
+Android can move read-aloud into an exported=false foreground mediaPlayback service with MediaSession controls. Lock-screen/headset controls operate on source offsets. Current reading-window highlight is presentation-only. Literal local pronunciation overrides compose through the TTS source projection, so Chinese names/polyphones may be corrected without rewriting the book.
 
 ## P1 — retention and paid automation
 
@@ -51,7 +75,11 @@ Reports contain book identifiers/names, scores and counts only and declare `cont
 
 ### Verifiable privacy
 
-The installed app can report whether INTERNET permission is absent and whether runtime analytics/ads/book-upload capabilities are present. Exported privacy audits contain configuration and counts only.
+The installed app can report whether INTERNET permission is absent and whether runtime analytics/ads/book-upload capabilities are present. Exported privacy audits contain configuration/counts and bounded stable diagnostic codes only, not book text, paths, URIs, search queries or purchase tokens.
+
+### User-owned local assets
+
+Retention compounds without an account: annotations, TOC repairs, Clean feedback/rules, reading history/pace, themes, exact-revision progress and the bounded local TTS pronunciation dictionary remain user-owned local assets. Portable backup carries the text-free Reader state while excluding source/normalized/Clean book payloads.
 
 ## P2 — Smart Clean 4 data/model moat
 
@@ -68,11 +96,25 @@ The wide middle score range is `UNCERTAIN`; chapter-like headings receive a stro
 ### Reproducible quality assets
 
 - `quality/smartclean/train-v1.tsv` is the local labeled training corpus.
-- `quality/smartclean/eval-v1.tsv` is a held-out hard-negative-heavy evaluation set.
+- `quality/smartclean/eval-v1.tsv` is the manually curated held-out hard-negative-heavy evaluation set.
+- `quality/smartclean/eval-v2-matrix.json` expands independent adversarial coverage to a production-scale combined held-out matrix.
 - `scripts/train-smartclean-model.py --verify-source ...` proves runtime weights are reproducible from the training corpus.
-- `scripts/verify-smartclean-model.py` enforces zero held-out BODY false positives among auto-AD decisions, auto-AD precision >= 99.5%, minimum non-trivial AD recall, chapter-heading protection and candidate-only source constraints.
+- `scripts/verify-smartclean-model.py` enforces zero held-out BODY false positives among auto-AD decisions, auto-AD precision >= 99.5%, minimum non-trivial AD recall, chapter-heading protection, minimum held-out row/category counts and candidate-only source constraints.
 
 Precision is deliberately more important than recall: missing one ad is annoying; deleting prose is unacceptable.
+
+## What Jingdu deliberately does not compete on
+
+Jingdu is not a reduced ReadEra/Moon+/KOReader clone and is not a source-ecosystem replacement for Legado. It deliberately does not chase:
+
+- format-count leadership;
+- dozens of page animations or gesture-count leadership;
+- online bookstore/community/source ecosystems;
+- cloud accounts as a prerequisite for retention;
+- remote AI over private book text;
+- advertising-driven recommendation feeds.
+
+Those categories reward breadth. Jingdu's defensible depth is Chinese TXT rescue + safe repair + long-session local reading.
 
 ## Long-form invariants
 
@@ -80,6 +122,8 @@ Precision is deliberately more important than recall: missing one ad is annoying
 - No whole-document managed copy is introduced.
 - No arbitrary whole-book regex is introduced.
 - No generic EPUB/PDF/MOBI expansion is introduced.
+- Smart Layout is display-only and projection-backed.
 - Smart Clean remains explainable and reversible.
 - Folder sync, batch automation, TTS and model inference remain local.
+- CJK typography/foldable/reflow work must not redefine hosted performance thresholds or baselines.
 - Real-device 20/100/200 MiB SLO evidence remains a release/device qualification gate and is not fabricated by hosted CI.

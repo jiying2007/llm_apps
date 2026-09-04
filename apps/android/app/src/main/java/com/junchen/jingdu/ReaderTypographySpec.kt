@@ -9,9 +9,12 @@ import android.text.style.LeadingMarginSpan
 import android.text.style.LineHeightSpan
 import android.text.style.StyleSpan
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.Density
@@ -43,6 +46,18 @@ internal data class ReaderTypographySpec(
         letterSpacing = (fontSizeSp * letterSpacingEm).sp,
         textAlign = if (alignment == ReaderTextAlignment.START) TextAlign.Start else TextAlign.Justify,
         textIndent = TextIndent(firstLine = (fontSizeSp * firstLineIndentEm).sp),
+        // Phrase-aware high-quality line breaking materially improves CJK punctuation/phrase
+        // boundaries in long prose. It is presentation-only and never changes source offsets.
+        lineBreak = LineBreak(
+            strategy = LineBreak.Strategy.HighQuality,
+            strictness = LineBreak.Strictness.Normal,
+            wordBreak = LineBreak.WordBreak.Phrase,
+        ),
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both,
+        ),
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
     )
 
     fun androidTypeface(context: Context): Typeface {

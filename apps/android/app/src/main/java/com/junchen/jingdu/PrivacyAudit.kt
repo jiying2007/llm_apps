@@ -1,8 +1,11 @@
 package com.junchen.jingdu
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
+import org.json.JSONArray
 import org.json.JSONObject
 
 data class PrivacyAuditResult(
@@ -15,6 +18,13 @@ data class PrivacyAuditResult(
     val feedbackKeep: Int,
     val feedbackDelete: Int,
     val feedbackProtect: Int,
+    val sdkInt: Int = Build.VERSION.SDK_INT,
+    val manufacturer: String = Build.MANUFACTURER.orEmpty(),
+    val model: String = Build.MODEL.orEmpty(),
+    val localeTag: String = "",
+    val usablePrivateStorageBytes: Long = 0L,
+    val memoryClassMb: Int = 0,
+    val recentErrors: List<ProductErrorEvent> = emptyList(),
 )
 
 /** Runtime-verifiable privacy facts. The generated report contains counts/configuration only. */
@@ -43,6 +53,7 @@ internal object PrivacyAudit {
         val info = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
         val permissions = info.requestedPermissions?.toSet().orEmpty()
         val networkPermissionAbsent = Manifest.permission.INTERNET !in permissions
+        val memoryClass = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.memoryClass ?: 0
         return PrivacyAuditResult(
             networkPermissionAbsent = networkPermissionAbsent,
             // Conservative runtime interpretation: without INTERNET permission this APK has no
@@ -55,16 +66,34 @@ internal object PrivacyAudit {
             feedbackKeep = feedback.keep,
             feedbackDelete = feedback.delete,
             feedbackProtect = feedback.protect,
+            localeTag = context.resources.configuration.locales[0]?.toLanguageTag().orEmpty(),
+            usablePrivateStorageBytes = context.filesDir.usableSpace.coerceAtLeast(0L),
+            memoryClassMb = memoryClass,
+            recentErrors = ProductErrorLog(context).recent(),
         )
     }
 
     fun toJson(context: Context, result: PrivacyAuditResult): String {
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        val versionCode = if (Build.VERSION.SDK_INT >= 28) packageInfo.longVersionCode else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+        val errors = JSONArray()
+        result.recentErrors.forEach { event ->
+            errors.put(
+                JSONObject()
+                    .put("code", event.code.name)
+                    .put("operation", event.operation)
+                    .put("timestampMs", event.timestampMs),
+            )
+        }
         return JSONObject()
-            .put("schema", 1)
+            .put("schema", 2)
             .put("type", "jingdu-local-privacy-audit")
             .put("package", context.packageName)
             .put("versionName", packageInfo.versionName ?: "")
+            .put("versionCode", versionCode)
             .put("networkPermissionAbsent", result.networkPermissionAbsent)
             .put("bookTextUploadCapability", result.bookTextUploadCapability)
             .put("analyticsSdkPresent", result.analyticsSdkPresent)
@@ -75,6 +104,20 @@ internal object PrivacyAudit {
                 .put("keep", result.feedbackKeep)
                 .put("delete", result.feedbackDelete)
                 .put("protect", result.feedbackProtect))
+            .put("device", JSONObject()
+                .put("sdkInt", result.sdkInt)
+                .put("manufacturer", result.manufacturer)
+                .put("model", result.model)
+                .put("locale", result.localeTag)
+                .put("memoryClassMb", result.memoryClassMb)
+                .put("usablePrivateStorageBytes", result.usablePrivateStorageBytes))
+            .put("recentErrors", errors)
+            .put("diagnosticPolicy", JSONObject()
+                .put("boundedErrorEvents", ProductErrorLog.MAX_EVENTS)
+                .put("containsPaths", false)
+                .put("containsUris", false)
+                .put("containsSearchQueries", false)
+                .put("containsPurchaseTokens", false))
             .put("containsBookText", false)
             .toString(2)
     }

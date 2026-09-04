@@ -30,6 +30,8 @@ Smart Clean is advisory until explicit apply. Tests verify:
 - applying rules still writes an immutable derived file and never mutates normalized/source input;
 - portable correction-memory backup contains only `bookId + fingerprint + decision`, declares `containsBookText=false`, and round-trips KEEP/DELETE/PROTECT without candidate text.
 
+The checked-in held-out quality evidence is deliberately larger than the training examples. `eval-v1.tsv` remains the small manually curated regression corpus while `eval-v2-matrix.json` expands Simplified/Traditional/English ads and marker-in-prose hard negatives into a deterministic held-out matrix. `verify-smartclean-model.py` requires at least 500 total held-out rows, at least 100 AD rows and at least 250 BODY rows while preserving zero auto-AD hard-negative false positives, precision >= 0.995 and non-trivial recall.
+
 ## Android Free / Pro contract
 
 Automated source/UI contracts verify:
@@ -42,7 +44,9 @@ Automated source/UI contracts verify:
 - whole-line wildcard/global rule/portable-backup/offline voice actions require Pro;
 - price text comes from Play product details rather than a hard-coded currency value.
 
-License-tester device validation additionally covers fresh purchase, cancellation, pending purchase, restore after reinstall, offline launch after verified ownership and authoritative no-ownership refresh.
+`BillingEntitlementPolicyTest` additionally keeps the purchase-state policy independent of Play callbacks: PENDING/other-product rows cannot unlock, a successful authoritative no-ownership refresh revokes stale cached entitlement, and a transient Billing outage preserves the last Play-verified offline state.
+
+License-tester device validation additionally covers fresh purchase, cancellation, pending purchase, restore after reinstall, offline launch after verified ownership and authoritative no-ownership refresh. These rows remain external Play evidence and are never fabricated by source CI.
 
 ## Portable local-user asset contract
 
@@ -60,7 +64,7 @@ Reader backup schema 4 is bounded, local and text-free. Automated/instrumented t
 - schema 3 Reader settings/rules/annotation backups remain importable for pre-production testers;
 - SAF folder URI grants and unavailable imported font binaries are re-selected rather than represented as portable credentials.
 
-`PortableUserAssetsTest` covers revision-bound staged progress, Smart Clean text-free feedback round-trip and bounded reading-stat restore on AndroidTest.
+`PortableUserAssetsTest` covers revision-bound staged progress, Smart Clean text-free feedback round-trip, bounded reading-stat restore and malformed-schema preflight. It now executes in the hosted functional instrumentation job rather than being compile-only evidence.
 
 ## User asset safety
 
@@ -69,6 +73,17 @@ Reader backup schema 4 is bounded, local and text-free. Automated/instrumented t
 - Selected TTS voice is persisted only by system voice name; unavailable voices fall back without breaking base TTS.
 - Only voices reporting `isNetworkConnectionRequired == false` are offered as Pro offline voices.
 - Batch import is SAF multi-select, bounded to the configured per-operation maximum and reports partial failures.
+- Immutable private publication is isolated in `PrivateFilePublisher`; JVM tests verify completed publication, existing-target wins and failed publication leaves the candidate temporary/prior filesystem state intact.
+
+## Privacy-safe diagnostics
+
+Jingdu remains a no-INTERNET/no-runtime-analytics product. Production support diagnostics are therefore user-triggered local export rather than background telemetry.
+
+Automated/instrumented tests verify:
+- diagnostic history is bounded to stable error-code + operation + timestamp records;
+- exception messages, paths, URIs, book names/text, search terms and purchase tokens are not stored in the diagnostic ring;
+- the privacy audit declares `containsBookText=false` and explicit false flags for paths/URIs/search queries/purchase tokens;
+- repository and Billing failures map to stable non-content error categories.
 
 ## Review UX
 
@@ -105,9 +120,13 @@ Portable progress restore adds one further invariant: staged progress never cros
 
 ## Android UI / performance
 
-Hosted Android gate compiles Debug/Release, lint, Debug APK, Release AAB, AndroidTest and JNI ABIs.
+Hosted Android source acceptance now has three independent execution classes in addition to ordinary compile/lint/unit checks:
 
-Device review covers:
+1. `android-functional` boots a pinned hosted Android emulator and executes `connectedDebugAndroidTest`, including Compose UI, paging regression, portable-user-assets and product-diagnostics instrumentation tests.
+2. `android-native-compat` builds Release APK/AAB, requires `FULL` native debug symbols, verifies 16 KiB APK native-library ZIP alignment and checks every packaged ELF `LOAD` segment for >=16 KiB alignment using the pinned NDK toolchain.
+3. `android-performance` retains the existing hosted Macrobenchmark/Baseline Profile regression gate. Its checked-in thresholds/baselines are independent from functional/native-compat gates and are not changed to accommodate them.
+
+Device review additionally covers:
 - edge-to-edge/predictive back;
 - 200% font scale/TalkBack/48dp targets;
 - compact/landscape/split/tablet/foldable windows;
@@ -115,24 +134,27 @@ Device review covers:
 - configuration/process restoration;
 - ACTION_VIEW/ACTION_SEND and multi-select import;
 - Smart Clean/Pro/settings/portable-backup surfaces;
-- TTS/audio focus/voice selection, auto page and sleep timer.
+- TTS/audio focus/voice selection, auto page and sleep timer;
+- hardware keyboard navigation (`Left/Right`, `PageUp/PageDown`, `Ctrl+F`, panel `Escape`) without stealing typing from active panels.
 
 10/100/300 MiB qualification verifies no file-size-proportional work intentionally runs on the main thread, Search/Chapters reuse active session, repeat open uses valid `.jdx`, corrupt cache rebuilds and Clean/Smart Clean remain bounded-memory streaming operations.
 
-Hosted Macrobenchmark/Baseline Profile is a regression gate, not physical-device product evidence. `PRODUCTION_READINESS.md` requires the real-device matrix and release SLO evidence before production rollout.
+`TtsSemanticNavigatorTest` keeps bounded sentence/paragraph navigation Unicode/code-point safe on the host. Physical TTS engine/route/audio-focus behavior remains device evidence.
+
+Hosted Macrobenchmark/Baseline Profile is regression evidence, not physical-device product evidence. The physical workflow requires an explicit immutable `source_ref`, verifies the checked-out SHA, rejects emulators and writes source/device provenance into the evidence artifact before applying the real volume-key Reader release SLO.
 
 ## Repository/source provenance
 
 Source-release tests/contracts verify:
 - Android source/staging versions match the permanent release manifest;
-- publication runs only after all six hosted jobs;
+- publication runs only after all required hosted source jobs, including functional instrumentation and native compatibility;
 - existing source tags are never moved;
 - new source tags are annotated objects resolving to the exact gated `main` commit;
 - the annotated tag message binds the checked-in source-manifest SHA-256;
 - interrupted publication may complete only when an orphan tag already resolves to the exact gated SHA;
 - source publication never claims signed artifact, physical-device or Play production evidence.
 
-GitHub branch/tag protection itself is repository-administration evidence and therefore remains a required external P0 row in `PRODUCTION_READINESS.md`; CI must not fabricate that setting.
+GitHub branch/tag protection itself is repository-administration evidence for a future Play-production governance decision. It is intentionally not a current GitHub/debug-release gate and source CI must not fabricate that setting.
 
 ## HarmonyOS
 

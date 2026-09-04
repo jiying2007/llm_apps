@@ -24,6 +24,14 @@ trap restore_animation_scales EXIT
 
 [[ -x "$ADB" ]] || { echo "Missing adb: $ADB" >&2; exit 1; }
 
+ACTUAL_SOURCE_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+EXPECTED_SOURCE_SHA="${JINGDU_QUALIFIED_SOURCE_SHA:-}"
+SOURCE_REF="${JINGDU_QUALIFIED_SOURCE_REF:-$ACTUAL_SOURCE_SHA}"
+if [[ -n "$EXPECTED_SOURCE_SHA" && "$ACTUAL_SOURCE_SHA" != "$EXPECTED_SOURCE_SHA" ]]; then
+  echo "Physical Release source mismatch: expected=$EXPECTED_SOURCE_SHA actual=$ACTUAL_SOURCE_SHA" >&2
+  exit 1
+fi
+
 mapfile -t DEVICES < <("$ADB" devices | awk 'NR > 1 && $2 == "device" {print $1}')
 if ((${#DEVICES[@]} != 1)); then
   echo "Physical Release gate requires exactly one authorized adb device; found ${#DEVICES[@]}" >&2
@@ -44,6 +52,7 @@ if [[ "$QEMU" == "1" || "$MODEL_LOWER" == *emulator* || "$MODEL_LOWER" == *sdk_g
   exit 1
 fi
 
+echo "Physical Release source: ref=$SOURCE_REF sha=$ACTUAL_SOURCE_SHA"
 echo "Physical Release device: serial=$ANDROID_SERIAL manufacturer=$MANUFACTURER model=$MODEL sdk=$SDK"
 echo "Physical Release fingerprint: $FINGERPRINT"
 
@@ -70,6 +79,17 @@ INSTRUMENTATION="$("$ADB" shell pm list instrumentation | tr -d '\r' | sed -n 's
 
 rm -rf "$RESULT_ROOT"
 mkdir -p "$RESULT_ROOT"
+cat > "$RESULT_ROOT/provenance.txt" <<EOF
+source_ref=$SOURCE_REF
+source_sha=$ACTUAL_SOURCE_SHA
+manufacturer=$MANUFACTURER
+model=$MODEL
+sdk=$SDK
+fingerprint=$FINGERPRINT
+page_turn_input=physical-volume
+release_slo_p95_ms=40
+release_slo_p99_ms=80
+EOF
 "$ADB" shell rm -rf "$REMOTE_ROOT"
 "$ADB" shell mkdir -p "$REMOTE_ROOT"
 

@@ -11,6 +11,7 @@ internal class UserBackup(
 ) {
     private val assets = UserAssetBackup(ruleLibrary.appContext)
     private val smartCleanFeedback = SmartCleanFeedbackStore(ruleLibrary.appContext)
+    private val ttsPronunciation = TtsPronunciationStore(ruleLibrary.appContext)
 
     fun exportJson(): String {
         val settings = JSONObject()
@@ -27,6 +28,7 @@ internal class UserBackup(
             .put("libraryAssets", assets.exportLibrary())
             .put("readingStats", assets.exportReadingStats())
             .put("smartCleanFeedback", smartCleanFeedback.exportJson())
+            .put("ttsPronunciation", ttsPronunciation.raw())
         val text = root.toString(2)
         if (text.length > MAX_BACKUP_CHARS) throw IllegalStateException("backup exceeds portable size limit")
         return text
@@ -60,16 +62,19 @@ internal class UserBackup(
         var library: JSONArray? = null
         var stats: JSONObject? = null
         var feedback: JSONObject? = null
+        var pronunciationRaw: String? = null
         if (schema == SCHEMA) {
             library = root.optJSONArray("libraryAssets") ?: throw IllegalArgumentException("backup missing library assets")
             stats = root.optJSONObject("readingStats") ?: throw IllegalArgumentException("backup missing reading stats")
             feedback = root.optJSONObject("smartCleanFeedback") ?: throw IllegalArgumentException("backup missing Smart Clean feedback")
+            pronunciationRaw = root.optString("ttsPronunciation").takeIf { root.has("ttsPronunciation") }
 
             // Parse every schema-4 section before the first persistent mutation. A malformed or
             // privacy-invalid backup must fail without partially replacing settings/library state.
             assets.validateLibrary(library)
             assets.validateReadingStats(stats)
             smartCleanFeedback.validateImport(feedback)
+            pronunciationRaw?.let(TtsPronunciationStore::parse)
         }
 
         val settings = readerPreferences.importMap(settingsMap)
@@ -83,6 +88,8 @@ internal class UserBackup(
             libraryAssets = assets.importLibrary(requireNotNull(library))
             readingSessions = assets.importReadingStats(requireNotNull(stats))
             feedbackEntries = smartCleanFeedback.importJson(requireNotNull(feedback))
+            // Optional for backward compatibility with early schema-4 pre-production backups.
+            pronunciationRaw?.let(ttsPronunciation::save)
         }
         return Result(settings, rules, libraryAssets, readingSessions, feedbackEntries)
     }

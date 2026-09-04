@@ -17,10 +17,6 @@ import java.io.OutputStreamWriter
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.FileAlreadyExistsException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 /** Private immutable TXT source/revision repository. Android product persistence is Kotlin-only. */
 internal class BookRepository(context: Context) {
@@ -38,6 +34,7 @@ internal class BookRepository(context: Context) {
 
     private val context = context.applicationContext
     private val root = File(context.filesDir, "books")
+    private val errorLog = ProductErrorLog(context)
 
     init {
         if (!root.isDirectory && !root.mkdirs()) error("cannot create books directory")
@@ -92,8 +89,8 @@ internal class BookRepository(context: Context) {
             normalize(sourceTemporary, normalizedTemporary, encoding)
             val normalizedSha = NativeCore.fileSha256(normalizedTemporary)
 
-            publishImmutable(sourceTemporary, rawFile(sourceSha))
-            publishImmutable(normalizedTemporary, normalizedFile(sourceSha, normalizedSha))
+            PrivateFilePublisher.publishImmutable(sourceTemporary, rawFile(sourceSha))
+            PrivateFilePublisher.publishImmutable(normalizedTemporary, normalizedFile(sourceSha, normalizedSha))
             normalizedTemporary = null
 
             val restoredProgress = LibraryMetadataStore(context).consumeRestoredProgress(sourceSha, normalizedSha)
@@ -112,6 +109,9 @@ internal class BookRepository(context: Context) {
             upsert(book)
             prewarmChapterIndex(book)
             return book
+        } catch (error: Throwable) {
+            errorLog.record(ProductErrorClassifier.importFailure(error), "book.import")
+            throw error
         } finally {
             deleteTemporary(sourceTemporary)
             deleteTemporary(normalizedTemporary)
@@ -132,7 +132,7 @@ internal class BookRepository(context: Context) {
         try {
             normalize(raw, temporary, encoding)
             val normalizedSha = NativeCore.fileSha256(temporary)
-            publishImmutable(temporary, normalizedFile(book.id, normalizedSha))
+            PrivateFilePublisher.publishImmutable(temporary, normalizedFile(book.id, normalizedSha))
             val restoredProgress = LibraryMetadataStore(context).consumeRestoredProgress(book.id, normalizedSha)
             val sameRevision = book.normalizedSha256 == normalizedSha
             val updated = Book(
@@ -153,6 +153,9 @@ internal class BookRepository(context: Context) {
                 ReaderAnnotationStore(context).remapBookForRedecode(book.id, oldLength, newLength)
             }
             return updated
+        } catch (error: Throwable) {
+            errorLog.record(ProductErrorClassifier.redecodeFailure(error), "book.redecode")
+            throw error
         } finally {
             deleteTemporary(temporary)
         }
@@ -340,25 +343,6 @@ internal class BookRepository(context: Context) {
     private fun directory(id: String): File = File(root, id)
     private fun rawFile(id: String): File = File(directory(id), "source.bin")
     private fun normalizedFile(id: String, normalizedSha: String): File = File(directory(id), "document-$normalizedSha.txt")
-
-    @Throws(IOException::class)
-    private fun publishImmutable(source: File, target: File) {
-        if (target.isFile) {
-            deleteTemporary(source)
-            return
-        }
-        try {
-            Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: AtomicMoveNotSupportedException) {
-            try {
-                Files.move(source.toPath(), target.toPath())
-            } catch (_: FileAlreadyExistsException) {
-                deleteTemporary(source)
-            }
-        } catch (_: FileAlreadyExistsException) {
-            deleteTemporary(source)
-        }
-    }
 
     private fun deleteTemporary(file: File?) {
         if (file != null && file.exists() && !file.delete()) file.deleteOnExit()

@@ -4,8 +4,8 @@
     <string name="reader_mode_paged">分页</string>
     <string name="reader_mode_continuous">连续滚动</string>
     <string name="reader_preset">阅读预设</string>
-    <string name="reader_preset_standard">标准</string>
-    <string name="reader_preset_comfort">舒适</string>
+    <string name="reader_preset_standard">网文</string>
+    <string name="reader_preset_comfort">纸书</string>
     <string name="reader_preset_large">大字</string>
     <string name="reader_preset_night">夜读</string>
     <string name="reader_preset_custom">自定义</string>

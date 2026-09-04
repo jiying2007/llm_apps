@@ -9,7 +9,7 @@
 
 The terminal promise is:
 
-> Open messy TXT correctly, become readable quickly, diagnose what is wrong, repair structure/noise safely, keep very long books responsive, and preserve long-session reading without sending book text anywhere.
+> Open messy TXT correctly, become readable quickly, diagnose what is wrong, repair presentation/structure/noise safely, keep very long books responsive, and preserve long-session reading without sending book text anywhere.
 
 Store names remain localized for discovery: `净读 - TXT 小说阅读器`, `淨讀 - TXT 小說閱讀器`, `Jingdu - Offline TXT Reader`.
 
@@ -29,7 +29,7 @@ Detailed intelligence architecture lives in `SMART_CLEAN_ARCHITECTURE.md` and `C
 
 1. Readers with local Chinese TXT novels/archives who want a calm daily reader.
 2. Users who encounter GB18030/GBK/GB2312/Big5/UTF-16 mojibake.
-3. Web-novel readers whose TXT contains ads, watermarks, URLs, repeated tails, malformed fragments or noisy chapter structure.
+3. Web-novel readers whose TXT contains ads, watermarks, URLs, repeated tails, malformed fragments, fixed-width hard wraps or noisy chapter structure.
 4. Long-session readers who care about 20/100/200 MiB responsiveness, stable progress/bookmarks and background TTS.
 5. Readers with many TXT files who benefit from explicit folder libraries and batch automation.
 6. Privacy-conscious users who do not want accounts, ads, analytics, cloud upload or remote AI in the reading path.
@@ -41,10 +41,11 @@ TXT / user-selected TXT folder
   -> bounded first-readable preview
   -> immutable private source + normalized revision/index
   -> TXT Doctor
+  -> Smart Layout
   -> Smart TOC
   -> Smart Clean 4
   -> reading / OpenCC display / background TTS
-  -> reusable local rules, corrections, feedback and optional Pro batch automation
+  -> reusable local rules, corrections, pronunciation, feedback and optional Pro batch automation
 ```
 
 ## Open it correctly and quickly
@@ -69,6 +70,20 @@ TXT Doctor turns technical subsystems into one user-understandable health report
 - combined TXT health score.
 
 Diagnosis uses bounded Core windows and stores scores/counts only, never sampled book text.
+
+## Smart Layout
+
+Smart Layout repairs presentation defects without creating another document revision.
+
+- It is bounded and display-only; the normalized source remains authoritative.
+- It detects fixed-width hard wrapping only when a Reader window has strong local evidence of consistent wrap width and enough safe joinable line boundaries.
+- It never joins across blank paragraphs, detected headings, paragraph indentation, fresh dialogue/block openers or strong terminal punctuation.
+- It normalizes truly excessive blank-line runs as part of the same presentation pass.
+- Every transformation is followed by a monotonic `TextProjection` back to source code-point coordinates.
+- Search, Smart TOC, bookmarks, annotations, progress, Smart Clean and TTS source identity therefore remain unchanged.
+- Disabling Smart Layout restores the original line structure immediately; no TXT/source/normalized/Clean file is rewritten.
+
+Smart Layout closes the product repair chain between “decoded correctly” and “comfortable to read”: encoding rescue fixes bytes, Smart Layout fixes presentation, Smart TOC fixes structure metadata, and Smart Clean fixes distracting text through explicit derived revisions.
 
 ## Smart TOC
 
@@ -100,7 +115,7 @@ Every normal candidate remains inspectable with reason, risk, count, approximate
 - wide UNCERTAIN range and strong chapter-heading protection;
 - never opens a file, receives a whole document or uses a network/runtime ML service.
 
-Training and held-out hard-negative evaluation are checked into the repository and CI verifies exact reproducibility plus precision-first safety gates.
+Training and held-out hard-negative evaluation are checked into the repository and CI verifies exact reproducibility plus precision-first safety gates. The production maturity corpus combines the manually curated v1 held-out set with an adversarial v2 matrix so the quality gate is no longer a tiny regression-only sample.
 
 ### User correction memory
 
@@ -134,9 +149,16 @@ Conversion applies only to bounded reader/search/chapter/TTS strings. Source TXT
 - Search, Smart TOC, bookmarks and direct progress seeking.
 - Source-identity bookmarks survive encoding rescue.
 - Progress persistence is throttled and force-flushed at lifecycle/navigation boundaries.
-- Paper/Light/Night, typography, margins, auto paging and sleep timer.
+- Web-novel, Paper-book, Large-text, Night and Low-Vision reading scenarios remain editable into Custom/named themes.
+- CJK phrase/punctuation-aware line breaking improves Chinese prose while paged layout retains its fixed-cost break strategy for performance.
+- Typography/mode reflow keeps a transient visual-center source anchor instead of making the reader lose the sentence being read.
+- Non-tabletop foldable hinges prefer the existing two-column/book posture without introducing another document model.
+- System reduce-motion disables page animation at runtime without erasing the user's saved animation preference.
+- Paper/Light/Sepia/Night/OLED, typography, margins, auto paging and sleep timer remain user-controlled.
 - Reader intent restores from stable book/revision/offset identity, never native handles.
 - Portable backup stages progress against `sourceSha256 + normalizedSha256`; stale progress is never applied to a different normalized revision.
+- Long-press selection maps through presentation transforms to source ranges; optional Look up delegates only to installed Android `PROCESS_TEXT` tools.
+- Local reading pace drives book remaining time and chapter remaining time in Smart skim.
 
 ## Professional local TTS
 
@@ -146,6 +168,7 @@ Conversion applies only to bounded reader/search/chapter/TTS strings. Source TXT
 - Read-aloud source offsets are broadcast only inside the app package and synchronize the reader position/current-window highlight.
 - Existing audio-focus behavior pauses/resumes transient interruptions without skipping the interrupted chunk; permanent focus loss stops.
 - Installed offline voice selection remains a Pro convenience when the system TTS engine exposes offline voices.
+- A bounded local literal pronunciation dictionary supports Chinese names/polyphones (`source => spoken text`) without regex or source rewriting. Speech-range projection composes back to source offsets, and the optional dictionary travels in schema-4 portable backup while older schema-4 backups remain importable.
 
 ## Folder library and Pro batch automation
 
@@ -173,7 +196,8 @@ Reader schema-4 backup intentionally excludes book/source/normalized/Clean paylo
 - favorites and local tags;
 - progress staged against exact source + normalized revision identity;
 - local reading sessions and pace;
-- Smart Clean KEEP/DELETE/PROTECT fingerprint memory.
+- Smart Clean KEEP/DELETE/PROTECT fingerprint memory;
+- optional bounded local TTS pronunciation dictionary.
 
 SAF URI grants are device/install capabilities and therefore must be re-selected on a destination installation. Imported font binaries are likewise re-selected when the referenced local font is not available. The backup declares `containsBookText=false`.
 
@@ -189,7 +213,7 @@ Privacy is an architectural feature and an in-app verifiable fact:
 - no book-text upload capability;
 - no remote clean rules or semantic inference.
 
-The app can export a privacy audit containing configuration/counts only, never book text. Third-party OpenCC/OpenccJava legal assets are retained in the repository and packaged into Android application assets.
+The app can export a privacy audit containing configuration/counts and bounded stable diagnostic codes only, never book text, paths, source URIs, search queries or purchase tokens. Third-party OpenCC/OpenccJava legal assets are retained in the repository and packaged into Android application assets.
 
 ## Performance position
 
@@ -202,10 +226,11 @@ Architectural invariants:
 - content-addressed immutable revisions;
 - reusable validated sparse indexes;
 - first-readable preview is separated from full canonical import work;
+- Smart Layout is bounded display projection only;
 - Smart Clean whole-document work streams with bounded memory;
 - semantic inference is candidate-only.
 
-Release-device targets and hosted Core gates remain defined in `PERFORMANCE_SLO.md`. Hosted CI is not a substitute for physical-device startup/frame/memory evidence.
+Release-device targets and hosted Core gates remain defined in `PERFORMANCE_SLO.md`. Hosted CI is not a substitute for physical-device startup/frame/memory evidence. Richer typography/layout behavior must pass the existing performance definitions naturally; it does not justify changing benchmark definitions, SLO thresholds or hosted baselines.
 
 ## Free / Pro business model
 
@@ -214,11 +239,11 @@ Release-device targets and hosted Core gates remain defined in `PERFORMANCE_SLO.
 Free includes:
 - import/re-decode and folder library;
 - large-file reading/index cache;
-- TXT Doctor and Smart TOC;
+- TXT Doctor, Smart Layout and Smart TOC;
 - search, chapters, bookmarks, progress;
-- themes/typography;
+- themes/typography and reading scenarios;
 - OpenCC display conversion and local phrase overrides;
-- basic system TTS, auto paging and sleep timer;
+- basic system TTS, local pronunciation overrides, auto paging and sleep timer;
 - exact per-book Clean rules;
 - Smart Clean scan/preview and local correction visibility.
 
@@ -235,19 +260,19 @@ Pro includes:
 - selectable installed offline TTS voices;
 - portable local-user backup/restore.
 
-No subscription is justified while there is no recurring cloud/server service. Do not move basic reading, search, TXT Doctor, Smart TOC, bookmarks, themes or base TTS behind Pro.
+No subscription is justified while there is no recurring cloud/server service. Do not move basic reading, Smart Layout, search, TXT Doctor, Smart TOC, bookmarks, themes, local pronunciation correction or base TTS behind Pro.
 
 ## Product principles
 
 1. **TXT depth over format breadth.**
 2. **Offline/privacy by architecture and verification.**
-3. **Precision before deletion.** Missing an ad is preferable to deleting prose.
+3. **Precision before deletion or structural repair.** A missed repair is preferable to corrupting prose.
 4. **Explain before apply; preserve undo.**
 5. **Source/Core offsets are the permanent coordinate system.**
 6. **First readable before background completeness where safely possible.**
 7. **Free sells trust; Pro sells saved repetitive work.**
 8. **Chinese-content depth, multilingual shell.**
-9. **Long-session reliability is a product feature.**
+9. **Long-session reliability and typography are product features.**
 10. **User-owned local assets compound value without an account.**
 
 ## Non-goals
@@ -262,20 +287,24 @@ No subscription is justified while there is no recurring cloud/server service. D
 - Whole-document local LLM/BERT inference for cleanup.
 - Whole-book Simplified/Traditional converted copies.
 - Compatibility layers for pre-2.x experimental private state.
+- Feature-count competition through many page animations or permanent Reader toolbar buttons.
 
 ## Success measures
 
 Without adding runtime analytics SDKs, release/support/store evidence should show:
 
 - typical TXT reaches a readable preview/open state without encoding setup;
+- strongly hard-wrapped TXT becomes naturally readable through Smart Layout while ordinary paragraph/dialogue/title boundaries remain unchanged;
+- typography/mode changes retain the reader's visual source anchor instead of visibly losing the sentence;
+- phrase-aware CJK line breaking improves Simplified/Traditional prose without changing source identity or existing performance gates;
 - source-identity progress/bookmarks survive encoding rescue;
 - Smart TOC finds useful structure without changing source offsets;
 - Smart Clean held-out auto-AD decisions maintain precision-first quality gates with no hard-negative BODY false positives;
 - KEEP/DELETE/PROTECT memory never stores正文;
 - Pro batch dry-run precedes explicit apply and never changes source TXT;
-- background TTS survives ordinary Activity lifecycle changes and supports MediaSession controls;
+- background TTS survives ordinary Activity lifecycle changes, supports MediaSession controls and keeps source highlights correct through local pronunciation replacements;
 - folder sync skips reliably unchanged documents and conservatively reimports unknown metadata;
-- portable backup restores text-free user assets and applies progress only to the exact normalized revision;
+- portable backup restores text-free user assets, including optional local pronunciation rules, and applies progress only to the exact normalized revision;
 - 20/100/200 MiB real-device qualification is recorded against `PERFORMANCE_SLO.md` / `DEVICE_MATRIX.md`;
 - Android resources remain complete across en-US / zh-Hans / zh-Hant;
 - Android retains no direct INTERNET/broad-storage permission and no ads/analytics runtime SDK;

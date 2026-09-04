@@ -2,6 +2,7 @@
 """Evaluate the shipped Smart Clean tiny candidate model against held-out hard negatives."""
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -53,6 +54,34 @@ def load_rows(path: Path) -> list[tuple[str, str]]:
     return output
 
 
+def load_adversarial_matrix(path: Path) -> list[tuple[str, str]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("version") != 2:
+        raise SystemExit(f"{path}: unsupported matrix version")
+    domains = payload.get("domains") or []
+    contexts = payload.get("contexts") or []
+    strong_ad = payload.get("strongAdTemplates") or []
+    borderline_ad = payload.get("borderlineAd") or []
+    body_templates = payload.get("bodyTemplates") or []
+    if len(domains) < 8 or len(contexts) < 2 or len(strong_ad) < 5 or len(body_templates) < 20:
+        raise SystemExit(f"{path}: adversarial matrix coverage became too small")
+
+    output: list[tuple[str, str]] = []
+    for template in strong_ad:
+        for domain in domains:
+            output.append(("AD", template.format(domain=domain)))
+    for text in borderline_ad:
+        for context in contexts:
+            output.append(("AD", f"{text} {context}"))
+    for template in body_templates:
+        for domain in domains:
+            # Two independent prose contexts make marker-in-body hard negatives substantially
+            # larger than the positive set without training on these exact strings.
+            for context in contexts[:2]:
+                output.append(("BODY", f"{template.format(domain=domain)} {context}"))
+    return output
+
+
 def looks_like_heading(value: str) -> bool:
     if value.lower().startswith("chapter"):
         return True
@@ -97,7 +126,15 @@ def main() -> int:
         raise SystemExit("runtime weights must be bounded signed-int8-style values")
 
     rows = load_rows(Path("quality/smartclean/eval-v1.tsv"))
-    true_ad = sum(label == "AD" for label, _ in rows)
+    rows += load_adversarial_matrix(Path("quality/smartclean/eval-v2-matrix.json"))
+    ad_rows = sum(label == "AD" for label, _ in rows)
+    body_rows = sum(label == "BODY" for label, _ in rows)
+    if len(rows) < 500 or ad_rows < 100 or body_rows < 250:
+        raise SystemExit(
+            f"Smart Clean held-out corpus too small: total={len(rows)} AD={ad_rows} BODY={body_rows}"
+        )
+
+    true_ad = ad_rows
     decisions = [(label, text, *classify(text, weights)) for label, text in rows]
     predicted_ad = [item for item in decisions if item[2] == "AD"]
     true_positive = sum(item[0] == "AD" for item in predicted_ad)
@@ -125,7 +162,11 @@ def main() -> int:
     if re.search(r"File\(|ReaderController|normalizedFile|documentFile", runtime):
         raise SystemExit("semantic classifier must never open or receive a whole document")
 
-    print(f"Smart Clean model quality OK: precision={precision:.3f} recall={recall:.3f} false_positive=0")
+    print(
+        "Smart Clean model quality OK: "
+        f"rows={len(rows)} AD={ad_rows} BODY={body_rows} "
+        f"precision={precision:.3f} recall={recall:.3f} false_positive=0"
+    )
     return 0
 
 

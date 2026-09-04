@@ -20,6 +20,7 @@ def releaseSigningConfigured = signingPropertiesFile.isFile() && signingKeys.eve
 android {
     namespace = "com.junchen.jingdu"
     compileSdk = 37
+    ndkVersion = "29.0.14206865"
     defaultConfig {
         applicationId = applicationIdValue; minSdk = 26; targetSdk = 36; versionCode = versionCodeValue; versionName = versionNameValue
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -36,6 +37,7 @@ android {
         debug { applicationIdSuffix = ".debug"; versionNameSuffix = "-debug" }
         release {
             minifyEnabled = true; shrinkResources = true
+            ndk { debugSymbolLevel = "FULL" }
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             if (releaseSigningConfigured) signingConfig = signingConfigs.release
         }

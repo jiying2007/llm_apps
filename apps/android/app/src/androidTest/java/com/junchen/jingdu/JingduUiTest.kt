@@ -7,16 +7,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
-import androidx.compose.ui.test.performTextInput
 
 class JingduUiTest {
     @get:Rule val composeRule = createComposeRule()
@@ -27,6 +29,7 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.app_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.library_tagline_terminal)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.empty_title)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.import_txt)).assertIsDisplayed().performClick()
         composeRule.onNodeWithText(context.getString(R.string.select_txt)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
     }
@@ -51,56 +54,88 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription(context.getString(R.string.bookmarks)).assertIsDisplayed()
     }
 
-    @Test fun centerTapRestoresReaderChromeAfterAutoHide() {
+    @Test fun readerChromeAutoHidesWhenContentReady() {
         composeRule.setContent {
             JingduApp(
                 AppUiState(
                     screen = AppScreen.READER, currentBook = sampleBook(),
-                    pageText = "Chapter 1\nA stable body used for center-tap restoration verification.",
+                    pageText = "Chapter 1\nA stable body used for chrome auto-hide verification.",
                     position = 500, length = 10_000,
                     chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
-                    settings = ReaderSettings(gestureCoachDismissed = true, controlsAutoHideMs = 80L),
+                    settings = ReaderSettings(
+                        gestureCoachDismissed = true,
+                        controlsAutoHideMs = 600L,
+                        readingMode = ReaderMode.CONTINUOUS,
+                    ),
                 ), noOpActions(),
             )
         }
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
-        Thread.sleep(240L)
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsNotDisplayed()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).performTouchInput { click() }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
+        val settingsNode = composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings))
+        settingsNode.assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 3_000L) { !settingsNode.isDisplayed() }
+        settingsNode.assertIsNotDisplayed()
+    }
+
+    @Test fun pagedReaderCenterTapTogglesChromeWithoutDoubleTapDelay() {
+        val stablePage = buildString {
+            append("Chapter 1\n")
+            repeat(24) { append("A stable paged Reader line keeps center-tap gesture verification deterministic. 中文标点。\n") }
+        }
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(),
+                    pageText = stablePage,
+                    position = 500, length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
+                    settings = ReaderSettings(
+                        gestureCoachDismissed = true,
+                        controlsAutoHideMs = 60_000L,
+                        doubleTapBookmarkEnabled = false,
+                    ),
+                ), noOpActions(),
+            )
+        }
+        val settingsNode = composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings))
+        val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
+        settingsNode.assertIsDisplayed()
+        surface.performTouchInput { click() }
+        composeRule.waitUntil(timeoutMillis = 2_000L) { !settingsNode.isDisplayed() }
+        settingsNode.assertIsNotDisplayed()
+        surface.performTouchInput { click() }
+        composeRule.waitUntil(timeoutMillis = 2_000L) { settingsNode.isDisplayed() }
+        settingsNode.assertIsDisplayed()
     }
 
     @Test fun pagedReaderRightTapAlwaysHasAReachableNextPath() {
-    var nextCount = 0
-    composeRule.setContent {
-        JingduApp(
-            AppUiState(
-                screen = AppScreen.READER,
-                currentBook = sampleBook(),
-                pageText = "Chapter 1\nA stable body used for real edge-tap paging verification.",
-                position = 500,
-                length = 10_000,
-                chapters = listOf(ChapterModel(0, "Chapter 1")),
-                chaptersLoaded = true,
-                settings = ReaderSettings(
-                    gestureCoachDismissed = true,
-                    tapPagingEnabled = false,
-                    swipePagingEnabled = false,
-                ).withReachablePagedNavigation(),
-            ),
-            noOpActions().copy(onNavigateNext = { nextCount++ }),
-        )
+        var nextCount = 0
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER,
+                    currentBook = sampleBook(),
+                    pageText = "Chapter 1\nA stable body used for real edge-tap paging verification.",
+                    position = 500,
+                    length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")),
+                    chaptersLoaded = true,
+                    settings = ReaderSettings(
+                        gestureCoachDismissed = true,
+                        tapPagingEnabled = false,
+                        swipePagingEnabled = false,
+                    ).withReachablePagedNavigation(),
+                ),
+                noOpActions().copy(onNavigateNext = { nextCount++ }),
+            )
+        }
+        val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
+        val bounds = surface.fetchSemanticsNode().boundsInRoot
+        surface.performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(bounds.width * 0.88f, bounds.height * 0.50f))
+        }
+        composeRule.waitForIdle()
+        assertEquals(1, nextCount)
     }
-    val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
-    val bounds = surface.fetchSemanticsNode().boundsInRoot
-    surface.performTouchInput {
-        click(androidx.compose.ui.geometry.Offset(bounds.width * 0.88f, bounds.height * 0.50f))
-    }
-    composeRule.waitForIdle()
-    assertEquals(1, nextCount)
-}
 
     @Test fun readerChromePrioritizesAaAndContextualTools() {
         composeRule.setContent {
@@ -115,7 +150,7 @@ class JingduUiTest {
         composeRule.onNodeWithText("Aa").assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reader_location_back)).assertIsNotDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reader_location_forward)).assertIsNotDisplayed()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.more_reading_tools)).performClick()
+        composeRule.onAllNodesWithContentDescription(context.getString(R.string.more_reading_tools))[0].performClick()
         composeRule.onNodeWithText(context.getString(R.string.reader_text_tools)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.reader_more_tools)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.reading_settings)).assertIsNotDisplayed()
@@ -168,24 +203,30 @@ class JingduUiTest {
 
     @Test fun chapterRowsRemainTouchableWithNativeScrollingPanel() {
         var jumped = -1L
-        val chapters = (0 until 30).map { index -> ChapterModel(index * 1000L, "Chapter ${index + 1}") }
+        val targetIndex = 15
+        val targetTitle = "Panel Target Chapter"
+        val chapters = (0 until 30).map { index ->
+            ChapterModel(index * 1000L, if (index == targetIndex) targetTitle else "Chapter ${index + 1}")
+        }
         composeRule.setContent {
             JingduApp(
                 AppUiState(
-                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 0, length = 30_000,
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body",
+                    position = targetIndex * 1000L, length = 30_000,
                     panel = ReaderPanel.CHAPTERS, chapters = chapters, chaptersLoaded = true,
                     settings = ReaderSettings(gestureCoachDismissed = true),
                 ), noOpActions().copy(onJump = { jumped = it }),
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Chapter 1").assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription(targetTitle).assertIsDisplayed().performTouchInput { click() }
         composeRule.waitForIdle()
-        assertEquals(0L, jumped)
+        assertEquals(targetIndex * 1000L, jumped)
     }
 
     @Test fun hiddenHotPanelsRemainPhysicallyOffscreen() {
-        val chapters = listOf(ChapterModel(0, "Chapter 1"))
+        val hiddenTitle = "Hidden Panel Sentinel"
+        val chapters = listOf(ChapterModel(0, "Chapter 1"), ChapterModel(1000, hiddenTitle))
         composeRule.setContent {
             JingduApp(
                 AppUiState(
@@ -196,7 +237,7 @@ class JingduUiTest {
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Chapter 1").assertIsNotDisplayed()
+        composeRule.onNodeWithText(hiddenTitle).assertIsNotDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsNotDisplayed()
     }
 
@@ -232,7 +273,9 @@ class JingduUiTest {
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.smart_clean)).assertIsDisplayed()
-        composeRule.onNodeWithText("www.example.com").assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.rescan_noise)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.noise_summary, 1, 1, 326)).fetchSemanticsNode()
+        composeRule.onNodeWithText("www.example.com").fetchSemanticsNode()
     }
 
     @Test fun libraryPrioritizesContinueReadingAndConsolidatesManagementTools() {
@@ -263,10 +306,7 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.batch_import_picker_hint)).assertIsDisplayed()
     }
 
-    private fun sampleBook() = BookCardModel(
-        id = "a".repeat(64), name = "Long Novel.txt", encoding = "UTF-8", sizeBytes = 1024,
-        progress = 500, charCount = 10_000, touchedAt = 1, normalizedSha256 = "b".repeat(64),
-    )
+    private fun sampleBook() = ReaderInstrumentationFixture.book(context)
 
     private fun noOpActions() = JingduActions(
         onImport = {}, onBatchImport = {}, onOpenBook = {}, onDeleteLibraryBook = {},

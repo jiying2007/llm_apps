@@ -23,10 +23,12 @@ internal class TtsController(context: Context) : AutoCloseable {
     }
 
     data class VoiceOption(val name: String, val label: String)
+    private data class SpokenChunk(val text: String, val projection: TextProjection)
 
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val main = Handler(Looper.getMainLooper())
     private val generation = AtomicLong()
+    private val pronunciation = TtsPronunciationStore(context.applicationContext)
     private val attributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -55,7 +57,7 @@ internal class TtsController(context: Context) : AutoCloseable {
     private var offset = 0L
     private var pendingNextOffset = 0L
     private var currentChunkOffset = 0L
-    private var currentChunk: ReaderController.Speech? = null
+    private var currentChunk: SpokenChunk? = null
     private var chineseMode = ChineseDisplayMode.ORIGINAL
     private var chineseOverrides = ""
 
@@ -234,18 +236,20 @@ internal class TtsController(context: Context) : AutoCloseable {
         val activeReader = reader ?: return
         if (pausedForFocus || token != generation.get()) return
         try {
-            val chunk = activeReader.speech(offset, chineseMode, chineseOverrides)
-            if (chunk.text.isBlank() || chunk.nextOffset <= offset) {
+            val sourceChunk = activeReader.speech(offset, chineseMode, chineseOverrides)
+            if (sourceChunk.text.isBlank() || sourceChunk.nextOffset <= offset) {
                 stop("end")
                 return
             }
+            val spoken = pronunciation.present(sourceChunk.text)
+            val sourceToSpoken = sourceChunk.projection.compose(spoken.projection)
             currentChunkOffset = offset
-            currentChunk = chunk
-            pendingNextOffset = chunk.nextOffset
+            currentChunk = SpokenChunk(spoken.text, sourceToSpoken)
+            pendingNextOffset = sourceChunk.nextOffset
             listener?.onPosition(offset)
-            val sourceEnd = (offset + chunk.projection.sourceCodePoints).coerceAtMost(chunk.nextOffset)
+            val sourceEnd = (offset + sourceToSpoken.sourceCodePoints).coerceAtMost(sourceChunk.nextOffset)
             listener?.onRange(offset, sourceEnd.coerceAtLeast(offset + 1))
-            tts.speak(chunk.text, TextToSpeech.QUEUE_FLUSH, Bundle(), token.toString())
+            tts.speak(spoken.text, TextToSpeech.QUEUE_FLUSH, Bundle(), token.toString())
         } catch (error: Exception) {
             stop(error.message ?: "tts failure")
         }
