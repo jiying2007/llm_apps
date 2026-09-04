@@ -49,8 +49,9 @@ import kotlin.math.roundToInt
     var globalMode by rememberSaveable { mutableStateOf(RepairRuleMode.LINE_GLOB) }
     val selectedCount = state.noiseCandidates.count { it.selected }
     val selectedNoiseTotal = state.noiseCandidates.filter { it.selected }.sumOf { it.count }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
+    ModalBottomSheet(onDismissRequest = actions.onClosePanel, sheetState = sheetState) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp),
