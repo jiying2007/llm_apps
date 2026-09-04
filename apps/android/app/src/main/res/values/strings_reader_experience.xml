@@ -4,8 +4,8 @@
     <string name="reader_mode_paged">Paged</string>
     <string name="reader_mode_continuous">Continuous scroll</string>
     <string name="reader_preset">Reading preset</string>
-    <string name="reader_preset_standard">Standard</string>
-    <string name="reader_preset_comfort">Comfort</string>
+    <string name="reader_preset_standard">Web novel</string>
+    <string name="reader_preset_comfort">Paper book</string>
     <string name="reader_preset_large">Large text</string>
     <string name="reader_preset_night">Night reading</string>
     <string name="reader_preset_custom">Custom</string>
