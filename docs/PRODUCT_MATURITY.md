@@ -20,8 +20,8 @@ The following are source/CI evidence and may be enforced automatically:
 
 - Android uses pinned stable NDK `29.0.14206865`.
 - Release builds generate `FULL` native debug symbols for Play/native crash symbolication.
-- `verify-android-16k-page-size.sh` builds release APK/AAB and verifies 16 KiB ZIP alignment plus every packaged native ELF `LOAD` alignment.
-- Hosted `android-functional` installs the Android 15 `google_apis_ps16k` x86_64 system image, refuses to proceed unless `adb shell getconf PAGE_SIZE` is exactly `16384`, then executes the full Android instrumentation suite. `NativePageSizeSmokeTest` loads JNI/Core, hashes and opens/reads a UTF-8 file on that same 16 KiB runtime.
+- `verify-android-16k-page-size.sh` builds release APK/AAB, verifies 16 KiB APK ZIP alignment, and checks every packaged **64-bit** (`arm64-v8a` / `x86_64`) native ELF `LOAD` segment for >=16 KiB alignment. The 32-bit `armeabi-v7a` compatibility ABI is not incorrectly promoted into the Google Play 64-bit 16 KiB gate.
+- Hosted `android-functional` installs the Android 15 `google_apis_ps16k` x86_64 system image, requires working KVM acceleration, refuses to proceed unless `adb shell getconf PAGE_SIZE` is exactly `16384`, then executes the full Android instrumentation suite. `NativePageSizeSmokeTest` loads JNI/Core, hashes and opens/reads a UTF-8 file on that same 16 KiB runtime.
 - AndroidTest compilation alone is no longer acceptance; Compose UI, paging regression, portable-user-assets and diagnostics tests execute in hosted CI.
 - Existing hosted Macrobenchmark thresholds/baselines remain unchanged and are still an independent release gate on its pinned standard emulator environment.
 - Reader hardware-key routing supports previous/next via arrows/PageUp/PageDown and search via Ctrl+F while an active panel keeps normal text input and only intercepts Escape.
@@ -80,7 +80,7 @@ The current no-backend lifetime model intentionally accepts some piracy risk in 
 - [ ] upload/production signing certificate fingerprint recorded.
 - [ ] R8 `mapping.txt` archived.
 - [ ] native debug symbols archived/included for Play.
-- [ ] successful 16 KiB package/ELF compatibility evidence attached to the exact source candidate.
+- [ ] successful 16 KiB package + 64-bit ELF compatibility evidence attached to the exact source candidate.
 - [ ] Play app-bundle/pre-launch validation succeeds for the exact AAB.
 - [ ] each staged rollout expansion records tag/commit/AAB checksum and timestamp.
 
