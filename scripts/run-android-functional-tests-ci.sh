@@ -147,7 +147,7 @@ fi
 set +e
 "$ADB" shell am instrument -w -r \
   -e class com.junchen.jingdu.JingduUiTest \
-  "$INSTRUMENTATION" | tee "$FONT_SCALE_LOG"
+  "$INSTRUMENTATION" | tr -d '\r' | tee "$FONT_SCALE_LOG"
 FONT_SCALE_STATUS=${PIPESTATUS[0]}
 set -e
 if (( FONT_SCALE_STATUS != 0 )); then
