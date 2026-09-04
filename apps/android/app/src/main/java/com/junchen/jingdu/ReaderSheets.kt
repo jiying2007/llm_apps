@@ -65,31 +65,37 @@ import kotlin.math.roundToInt
                 }
             }
 
-            // Keep the Smart Clean value proposition in its own lazy item. Candidate rows and Pro
-            // actions can become taller than the viewport at large font scales; putting all of them
-            // inside one giant item prevents accessibility scroll-to from targeting the header.
+            // Every Smart Clean surface that must remain discoverable is its own bounded lazy item.
+            // At 200% font scale this lets accessibility scroll target the title and scan action
+            // directly instead of trying to position descendants inside an item taller than the viewport.
             item {
                 ElevatedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(stringResource(R.string.smart_clean), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text(stringResource(R.string.smart_clean_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (state.proUnlocked) AssistChip(onClick = {}, label = { Text("Pro") }, leadingIcon = { Icon(Icons.Outlined.WorkspacePremium, null) })
-                        }
-                        Text(stringResource(R.string.smart_clean_pack, BuiltinCleanRules.PACK_VERSION), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(stringResource(R.string.smart_clean_refiner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free))
-                        }
-                        if (state.smartCleanAnalyzed && state.noiseCandidates.isEmpty()) {
-                            Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            stringResource(R.string.smart_clean),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (state.proUnlocked) AssistChip(onClick = {}, label = { Text("Pro") }, leadingIcon = { Icon(Icons.Outlined.WorkspacePremium, null) })
                     }
                 }
+            }
+            item { Text(stringResource(R.string.smart_clean_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item { Text(stringResource(R.string.smart_clean_pack, BuiltinCleanRules.PACK_VERSION), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
+            item { Text(stringResource(R.string.smart_clean_refiner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free))
+                }
+            }
+            if (state.smartCleanAnalyzed && state.noiseCandidates.isEmpty()) {
+                item { Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
 
             if (state.noiseCandidates.isNotEmpty()) {
