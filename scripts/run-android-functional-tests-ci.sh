@@ -104,8 +104,15 @@ echo "Android functional runtime confirmed: PAGE_SIZE=$PAGE_SIZE image=$IMAGE"
 "$ADB" shell wm dismiss-keyguard >/dev/null 2>&1 || true
 
 cd "$ANDROID_DIR"
-# The full instrumentation suite includes NativePageSizeSmokeTest, so JNI/Core is exercised on the
-# same 16 KiB runtime as the Compose/paging/backup/diagnostic functional tests.
-./gradlew --no-daemon --warning-mode all connectedDebugAndroidTest
+TEST_SOURCE="app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt"
+[[ -f "$TEST_SOURCE" ]] || { echo "functional test source missing: $TEST_SOURCE" >&2; exit 1; }
+echo "Functional checkout SHA: $(git rev-parse HEAD)"
+echo "JingduUiTest source SHA256: $(sha256sum "$TEST_SOURCE" | awk '{print $1}')"
+
+# Instrumentation acceptance must be built from the current checkout, never from a restored Gradle
+# task-output cache. Dependency caches remain useful, but stale androidTest APK/class outputs would
+# make a green/red result describe a different source revision. clean + --no-build-cache makes the
+# APK/source binding explicit while the full suite still includes NativePageSizeSmokeTest on 16 KiB.
+./gradlew --no-daemon --warning-mode all --no-build-cache clean connectedDebugAndroidTest
 
 echo "Android functional instrumentation suite PASS on 16 KiB runtime"
