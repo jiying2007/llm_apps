@@ -22,6 +22,8 @@ grep -Fq '64-bit ELF alignment' "$NATIVE_COMPAT"
 
 # AndroidTest must execute, and it must do so on the Android 15 16 KiB runtime. This means the
 # same hosted functional gate exercises Compose/local assets plus real JNI/Core loading at 16 KiB.
+# Acceptance APK/test classes are rebuilt from the exact checkout; restored dependency caches must
+# never substitute stale instrumentation output from another source revision.
 test -f "$FUNCTIONAL"
 grep -Fq 'android-functional:' "$CI"
 grep -Fq 'connectedDebugAndroidTest' "$FUNCTIONAL"
@@ -30,6 +32,9 @@ grep -Fq 'getconf PAGE_SIZE' "$FUNCTIONAL"
 grep -Fq '"16384"' "$FUNCTIONAL"
 grep -Fq 'chmod 666 /dev/kvm' "$FUNCTIONAL"
 grep -Fq 'exited before boot completed' "$FUNCTIONAL"
+grep -Fq 'Functional checkout SHA:' "$FUNCTIONAL"
+grep -Fq 'JingduUiTest source SHA256:' "$FUNCTIONAL"
+grep -Fq -- '--no-build-cache clean connectedDebugAndroidTest' "$FUNCTIONAL"
 test -f apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
 grep -Fq 'NativeCore.fileSha256' apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
 grep -Fq 'ReaderController(false)' apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
