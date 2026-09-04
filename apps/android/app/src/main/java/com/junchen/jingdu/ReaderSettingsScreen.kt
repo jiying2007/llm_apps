@@ -123,7 +123,7 @@ private fun TypographySettings(state: AppUiState, actions: JingduActions) = Sett
     Section(stringResource(R.string.reader_preset)) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(ReaderPreset.entries.filter { it != ReaderPreset.CUSTOM }) { preset ->
-                FilterChip(s.preset == preset, { actions.onSettingsChanged(s.applyPreset(preset)) }, label = { Text(presetLabel(preset)) })
+                FilterChip(s.preset == preset, { actions.onSettingsChanged(s.applyProductPreset(preset)) }, label = { Text(presetLabel(preset)) })
             }
         }
     }
@@ -317,6 +317,9 @@ private fun LanguageSettings(state: AppUiState, actions: JingduActions) = Settin
 @Composable
 private fun SpeechSettings(state: AppUiState, actions: JingduActions) = SettingsList {
     val s = state.settings
+    val context = LocalContext.current
+    val pronunciationStore = remember(context) { TtsPronunciationStore(context) }
+    var pronunciationDraft by rememberSaveable { mutableStateOf(pronunciationStore.raw()) }
     SettingSlider(stringResource(R.string.speech_rate), s.ttsRate, 0.5f..2f, "%.1f×".format(s.ttsRate)) { actions.onSettingsChanged(s.copy(ttsRate = it)) }
     SettingSlider(stringResource(R.string.speech_pitch), s.ttsPitch, 0.6f..1.6f, "%.1f×".format(s.ttsPitch)) { actions.onSettingsChanged(s.copy(ttsPitch = it)) }
     Section(stringResource(R.string.offline_voice)) {
@@ -324,6 +327,23 @@ private fun SpeechSettings(state: AppUiState, actions: JingduActions) = Settings
             FilterChip(s.ttsVoiceName.isEmpty(), { actions.onSettingsChanged(s.copy(ttsVoiceName = "")) }, label = { Text(stringResource(R.string.system_default)) })
             state.ttsVoices.take(20).forEach { voice -> FilterChip(s.ttsVoiceName == voice.name, { actions.onSettingsChanged(s.copy(ttsVoiceName = voice.name)) }, label = { Text(voice.label) }) }
         } else OutlinedButton(actions.onUpgradePro, Modifier.fillMaxWidth()) { Text("Pro") }
+    }
+    Section(stringResource(R.string.reader_tts_pronunciation)) {
+        Text(stringResource(R.string.reader_tts_pronunciation_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(
+            value = pronunciationDraft,
+            onValueChange = { pronunciationDraft = it.take(TtsPronunciationStore.MAX_RAW_CHARS) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+            maxLines = 8,
+        )
+        Button(
+            onClick = {
+                runCatching { pronunciationStore.save(pronunciationDraft) }
+                    .onSuccess { pronunciationDraft = pronunciationStore.raw() }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(stringResource(R.string.reader_tts_pronunciation_save)) }
     }
 }
 
