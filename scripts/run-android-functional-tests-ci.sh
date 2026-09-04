@@ -109,10 +109,13 @@ TEST_SOURCE="app/src/androidTest/java/com/junchen/jingdu/JingduUiTest.kt"
 echo "Functional checkout SHA: $(git rev-parse HEAD)"
 echo "JingduUiTest source SHA256: $(sha256sum "$TEST_SOURCE" | awk '{print $1}')"
 
-# Instrumentation acceptance must be built from the current checkout, never from a restored Gradle
-# task-output cache. Dependency caches remain useful, but stale androidTest APK/class outputs would
-# make a green/red result describe a different source revision. clean + --no-build-cache makes the
-# APK/source binding explicit while the full suite still includes NativePageSizeSmokeTest on 16 KiB.
-./gradlew --no-daemon --warning-mode all --no-build-cache clean connectedDebugAndroidTest
+# Functional acceptance is the app instrumentation suite on the 16 KiB runtime. Macrobenchmark and
+# Baseline Profile instrumentation are intentionally owned by the independent android-performance
+# gate; invoking the root aggregate connectedDebugAndroidTest here would duplicate that suite and can
+# uninstall/replace the target package while app instrumentation is still running.
+#
+# Build from the exact checkout without Gradle task-output cache so the installed app/androidTest APKs
+# are source-bound. Root clean is harmless, while the execution target is deliberately app-scoped.
+./gradlew --no-daemon --warning-mode all --no-build-cache clean :app:connectedDebugAndroidTest
 
 echo "Android functional instrumentation suite PASS on 16 KiB runtime"
