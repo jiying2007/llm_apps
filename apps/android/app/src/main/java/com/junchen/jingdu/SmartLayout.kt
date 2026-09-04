@@ -26,17 +26,20 @@ internal object SmartLayout {
         val lines = normalized.split('\n')
         val output = StringBuilder(normalized.length)
         var joined = 0
+        var currentStructural = lines.firstOrNull()?.let(::isStructuralLine) ?: false
         for (index in lines.indices) {
             val current = lines[index]
             output.append(current)
             if (index == lines.lastIndex) continue
             val next = lines[index + 1]
-            if (canJoin(current, next)) {
+            val nextStructural = isStructuralLine(next)
+            if (!currentStructural && !nextStructural && canJoinInternal(current, next)) {
                 if (needsLatinSpace(current, next)) output.append(' ')
                 joined++
             } else {
                 output.append('\n')
             }
+            currentStructural = nextStructural
         }
         return Result(output.toString(), joined > 0, joined)
     }
@@ -66,7 +69,7 @@ internal object SmartLayout {
                 b.codePointCount(0, b.length) !in MIN_NEXT_CP..MAX_LINE_CP) continue
             if (ReaderHeadingClassifier.isHeading(a) || ReaderHeadingClassifier.isHeading(b)) continue
             plausible++
-            if (canJoinInternal(lines[index], lines[index + 1], protectStructure = false)) joinable++
+            if (canJoinInternal(lines[index], lines[index + 1])) joinable++
         }
         if (joinable < MIN_JOINABLE_BREAKS || plausible <= 0) return false
 
@@ -77,15 +80,12 @@ internal object SmartLayout {
         return consistentWidth && joinable.toDouble() / plausible.toDouble() >= MIN_JOINABLE_RATIO
     }
 
-    private fun canJoin(rawCurrent: String, rawNext: String): Boolean =
-        canJoinInternal(rawCurrent, rawNext, protectStructure = true)
-
     /**
-     * Shared predicate for evidence and final newline removal. Keeping the established checks in one
-     * pass avoids re-trimming the same pair on every hard-wrapped page turn. Evidence deliberately
-     * skips structure classification so normal detection semantics stay identical to main.
+     * Main-equivalent newline predicate. Structural classification is deliberately outside this
+     * predicate and cached once per line during the final hard-wrap pass, avoiding duplicate work
+     * for every adjacent pair while preserving the established evidence semantics exactly.
      */
-    private fun canJoinInternal(rawCurrent: String, rawNext: String, protectStructure: Boolean): Boolean {
+    private fun canJoinInternal(rawCurrent: String, rawNext: String): Boolean {
         if (rawCurrent.isBlank() || rawNext.isBlank()) return false
         if (hasParagraphIndent(rawNext)) return false
         val current = rawCurrent.trimEnd()
@@ -96,7 +96,6 @@ internal object SmartLayout {
         val nextCp = next.codePointCount(0, next.length)
         if (currentCp !in MIN_LINE_CP..MAX_LINE_CP || nextCp !in MIN_NEXT_CP..MAX_LINE_CP) return false
         if (endsParagraph(current) || startsFreshBlockForEvidence(next)) return false
-        if (protectStructure && (isStructuralLine(current) || isStructuralLine(next))) return false
         return true
     }
 
