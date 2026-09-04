@@ -46,6 +46,13 @@ trap cleanup EXIT
 
 fail_emulator() {
   echo "$1" >&2
+  if "$ADB" get-state >/dev/null 2>&1; then
+    {
+      echo
+      echo "===== Android ${CURRENT_PHASE} guest logcat at failure ====="
+      "$ADB" shell logcat -d -v threadtime 2>/dev/null | tail -n 800 || true
+    } >>"$LOG"
+  fi
   echo "===== Android functional emulator lifecycle log =====" >&2
   tail -n 320 "$LOG" >&2 || true
   if [[ -s "$FONT_SCALE_LOG" ]]; then
@@ -104,8 +111,9 @@ stabilize_art_gc() {
   # This Android 15 16 KiB userdebug image has also produced a fatal system_server
   # ReferenceQueueDaemon NPE immediately after a Concurrent Mark Compact (CMC) collection. That is
   # an ART/image failure, not a Jingdu process failure. ART supports selecting the GC plan through
-  # dalvik.vm.gctype. Restart only the hosted test framework under Concurrent Copying (CC), then fail
-  # closed unless the restarted system_server explicitly reports CollectorTypeCC before testing.
+  # dalvik.vm.gctype. Change the properties, then kill only system_server. Zygote's SIGCHLD handler
+  # intentionally exits when system_server dies, so init recreates Zygote + system_server without
+  # stopping SurfaceFlinger, netd or the rest of the default Android service set.
   build_type="$("$ADB" shell getprop ro.build.type 2>/dev/null | tr -d '\r[:space:]')"
   if [[ "$build_type" != "userdebug" && "$build_type" != "eng" ]]; then
     fail_emulator "Android ${phase} functional image must be debuggable before applying ART GC stability guard: build_type=${build_type:-unknown}"
@@ -132,27 +140,46 @@ stabilize_art_gc() {
     fail_emulator "Android ${phase} ART GC properties were not accepted: foreground=${gc_type:-unknown} background=${background_gc:-unknown}"
   fi
 
+  # Clear the old-runtime log first. Killing system_server is deliberate: AOSP Zygote treats that
+  # child death as a reason to terminate itself, after which init starts a fresh Zygote that reads
+  # the CC properties and forks a new system_server. Keep every other Android service untouched.
   "$ADB" logcat -c >/dev/null 2>&1 || true
-  "$ADB" shell stop >/dev/null 2>&1 \
-    || fail_emulator "Android ${phase} failed to stop framework for ART GC restart"
-  "$ADB" shell start >/dev/null 2>&1 \
-    || fail_emulator "Android ${phase} failed to restart framework with ART CC collector"
-  wait_for_framework_services "$phase" "after ART CC restart"
+  "$ADB" shell kill -9 "$old_pid" >/dev/null 2>&1 \
+    || fail_emulator "Android ${phase} failed to terminate old system_server for targeted ART GC restart"
 
-  new_pid="$("$ADB" shell pidof system_server 2>/dev/null | tr -d '\r[:space:]')"
+  new_pid=""
+  for ((second = 1; second <= FRAMEWORK_TIMEOUT_SECONDS; second++)); do
+    new_pid="$("$ADB" shell pidof system_server 2>/dev/null | tr -d '\r[:space:]' || true)"
+    if [[ "$new_pid" =~ ^[0-9]+$ && "$new_pid" != "$old_pid" ]]; then
+      echo "Android ${phase} new system_server observed in ${second}s: ${old_pid}->${new_pid}"
+      break
+    fi
+    if (( second % 10 == 0 )); then
+      echo "Waiting for Android ${phase} targeted system_server restart: ${second}s/${FRAMEWORK_TIMEOUT_SECONDS}s"
+    fi
+    sleep 1
+  done
   if [[ ! "$new_pid" =~ ^[0-9]+$ || "$new_pid" == "$old_pid" ]]; then
-    fail_emulator "Android ${phase} system_server did not restart for ART GC guard: before=$old_pid after=${new_pid:-unknown}"
+    fail_emulator "Android ${phase} system_server did not respawn after targeted ART GC restart: before=$old_pid after=${new_pid:-unknown}"
+  fi
+
+  wait_for_framework_services "$phase" "after targeted ART CC restart"
+
+  gc_type="$("$ADB" shell getprop dalvik.vm.gctype | tr -d '\r[:space:]')"
+  background_gc="$("$ADB" shell getprop dalvik.vm.backgroundgctype | tr -d '\r[:space:]')"
+  if [[ "$gc_type" != "CC" || "$background_gc" != "CC" ]]; then
+    fail_emulator "Android ${phase} ART GC properties changed across targeted restart: foreground=${gc_type:-unknown} background=${background_gc:-unknown}"
   fi
 
   for ((second = 1; second <= 30; second++)); do
-    if "$ADB" shell logcat -d -v brief -s system_server 2>/dev/null | grep -q 'Using CollectorTypeCC GC'; then
+    if "$ADB" shell logcat -d -v brief 2>/dev/null | grep -q 'Using CollectorTypeCC GC'; then
       cc_seen=1
       break
     fi
     sleep 1
   done
   if (( cc_seen == 0 )); then
-    fail_emulator "Android ${phase} restarted system_server did not confirm CollectorTypeCC GC"
+    fail_emulator "Android ${phase} restarted runtime did not confirm CollectorTypeCC GC"
   fi
   echo "Android ${phase} ART runtime stabilized: system_server ${old_pid}->${new_pid} foreground=CC background=CC"
 }
