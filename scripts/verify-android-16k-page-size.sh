@@ -56,7 +56,8 @@ done
 # Keep the build contract explicit so a future toolchain downgrade cannot silently remove support.
 grep -Fq 'ndkVersion = "29.0.14206865"' app/build.gradle
 grep -Fq 'debugSymbolLevel = "FULL"' app/build.gradle
-unzip -l "$SYMBOL_ZIP" | grep -qE '\.(so|dbg|sym)$|libjingdu_(native|core)'
+unzip -Z1 "$SYMBOL_ZIP" > "$TMP/native-symbols.list"
+grep -qE '\.(so|dbg|sym)$|libjingdu_(native|core)' "$TMP/native-symbols.list"
 
 echo "Android 16 KiB page-size packaging gate PASS"
 echo "Pinned NDK: $NDK_VERSION"
