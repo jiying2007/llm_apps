@@ -55,27 +55,38 @@ fail_emulator() {
   exit 1
 }
 
-stabilize_test_system_ui() {
+try_isolate_nexus_launcher() {
+  local phase="$1"
+  local result
+
+  # AE3A.240806.043's google_apis_ps16k image can crash system_server in
+  # SmartspaceManagerService when NexusLauncher starts its Smartspace session. PackageManager comes
+  # online before the launcher completes boot, so disable that unrelated emulator-only client at the
+  # first safe binder opportunity rather than racing it after sys.boot_completed.
+  if ! "$ADB" shell pm path com.google.android.apps.nexuslauncher >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! result="$("$ADB" shell pm disable-user --user 0 com.google.android.apps.nexuslauncher 2>/dev/null | tr -d '\r')"; then
+    return 1
+  fi
+  echo "Android ${phase} NexusLauncher isolated before boot acceptance: ${result:-disabled-user}"
+  return 0
+}
+
+finalize_test_system_ui() {
   local phase="$1"
 
-  # The Android 15 google_apis_ps16k emulator build AE3A.240806.043 has shown a reproducible
-  # system_server null-deref in SmartspaceManagerService when the Pixel NexusLauncher recents/home
-  # client calls notifySmartspaceEvent during hosted instrumentation. Reader acceptance does not use
-  # Launcher Smartspace/At-a-Glance, so isolate that emulator-only client rather than masking a
-  # product failure or changing the Android/API/page-size environment.
-  "$ADB" shell settings put secure smartspace 0 >/dev/null 2>&1 || true
-  "$ADB" shell settings put secure smartspace_show_on_home_screen 0 >/dev/null 2>&1 || true
-  if "$ADB" shell pm path com.google.android.apps.nexuslauncher >/dev/null 2>&1; then
-    "$ADB" shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
-    "$ADB" shell pm disable-user --user 0 com.google.android.apps.nexuslauncher >/dev/null \
-      || fail_emulator "Android ${phase} failed to isolate unstable NexusLauncher Smartspace client"
-  fi
-
-  # Give PackageManager/SystemUI a short settling window, then fail closed if ActivityManager was
-  # destabilized by the image itself before any Jingdu instrumentation begins.
+  # Launcher is already disabled before boot is accepted. Turn off the corresponding Smartspace
+  # surfaces as a second guard, then require the core framework to remain healthy before testing.
+  "$ADB" shell settings put secure smartspace 0 >/dev/null 2>&1 \
+    || fail_emulator "Android ${phase} SettingsProvider unavailable while disabling Smartspace"
+  "$ADB" shell settings put secure smartspace_show_on_home_screen 0 >/dev/null 2>&1 \
+    || fail_emulator "Android ${phase} SettingsProvider unavailable while disabling home Smartspace"
   sleep 3
+  "$ADB" shell pm path android >/dev/null 2>&1 \
+    || fail_emulator "Android ${phase} PackageManager became unavailable after Smartspace isolation"
   "$ADB" shell am get-current-user >/dev/null 2>&1 \
-    || fail_emulator "Android ${phase} ActivityManager became unavailable while isolating Smartspace"
+    || fail_emulator "Android ${phase} ActivityManager became unavailable after Smartspace isolation"
   echo "Android ${phase} Pixel Smartspace client isolated for hosted functional stability"
 }
 
@@ -98,6 +109,7 @@ start_emulator() {
   "$ADB" start-server >/dev/null
 
   local booted=0
+  local launcher_isolated=0
   local second adb_state boot
   for ((second = 1; second <= BOOT_TIMEOUT_SECONDS; second++)); do
     if ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
@@ -106,20 +118,23 @@ start_emulator() {
     fi
     adb_state="$("$ADB" get-state 2>/dev/null || true)"
     if [[ "$adb_state" == "device" ]]; then
+      if (( launcher_isolated == 0 )) && try_isolate_nexus_launcher "$phase"; then
+        launcher_isolated=1
+      fi
       boot="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-      if [[ "$boot" == "1" ]]; then
+      if [[ "$boot" == "1" && "$launcher_isolated" == "1" ]]; then
         booted=1
-        echo "Android ${phase} emulator boot property completed in ${second}s"
+        echo "Android ${phase} emulator boot accepted in ${second}s after early Smartspace isolation"
         break
       fi
     fi
     if (( second % 15 == 0 )); then
-      echo "Waiting for Android ${phase} emulator: ${second}s/${BOOT_TIMEOUT_SECONDS}s (adb=${adb_state:-unavailable})"
+      echo "Waiting for Android ${phase} emulator: ${second}s/${BOOT_TIMEOUT_SECONDS}s (adb=${adb_state:-unavailable} launcher_isolated=$launcher_isolated)"
     fi
     sleep 1
   done
   if (( booted == 0 )); then
-    fail_emulator "Android ${phase} 16 KiB emulator failed to boot within ${BOOT_TIMEOUT_SECONDS}s"
+    fail_emulator "Android ${phase} 16 KiB emulator failed to boot with NexusLauncher isolated within ${BOOT_TIMEOUT_SECONDS}s"
   fi
 
   # sys.boot_completed can become 1 before framework binder services are actually ready on a fresh
@@ -135,7 +150,7 @@ start_emulator() {
        "$ADB" shell pm path android >/dev/null 2>&1 && \
        "$ADB" shell am get-current-user >/dev/null 2>&1; then
       framework_ready=1
-      echo "Android ${phase} framework services ready in ${second}s after boot property"
+      echo "Android ${phase} framework services ready in ${second}s after boot acceptance"
       break
     fi
     if (( second % 10 == 0 )); then
@@ -161,7 +176,7 @@ start_emulator() {
   fi
 
   echo "Android ${phase} runtime confirmed: PAGE_SIZE=$page_size image=$IMAGE MemTotal=${mem_total_kb}kB"
-  stabilize_test_system_ui "$phase"
+  finalize_test_system_ui "$phase"
   "$ADB" shell input keyevent 82 >/dev/null 2>&1 || true
   "$ADB" shell settings put global window_animation_scale 0
   "$ADB" shell settings put global transition_animation_scale 0
