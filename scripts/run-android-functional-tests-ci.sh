@@ -15,8 +15,8 @@ LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-emulator.log"
 FONT_SCALE_LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-font-scale-200.log"
 BOOT_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_BOOT_TIMEOUT_SECONDS:-300}"
 FRAMEWORK_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_FRAMEWORK_TIMEOUT_SECONDS:-90}"
-EMULATOR_MEMORY_MB="${JINGDU_FUNCTIONAL_EMULATOR_MEMORY_MB:-4096}"
-MIN_GUEST_MEMORY_KB="${JINGDU_FUNCTIONAL_MIN_GUEST_MEMORY_KB:-3500000}"
+EMULATOR_MEMORY_MB="${JINGDU_FUNCTIONAL_EMULATOR_MEMORY_MB:-6144}"
+MIN_GUEST_MEMORY_KB="${JINGDU_FUNCTIONAL_MIN_GUEST_MEMORY_KB:-5500000}"
 EMULATOR_PID=""
 
 cleanup() {
@@ -134,10 +134,10 @@ if [[ "$PAGE_SIZE" != "16384" ]]; then
   fail_emulator "Functional emulator is not a 16 KiB runtime: PAGE_SIZE=$PAGE_SIZE"
 fi
 
-# The Google APIs 16 KiB image plus the full app instrumentation suite can exhaust the Pixel 6 AVD's
-# default ~2.5 GiB guest and trigger system-wide lowmemorykiller deaths. That is not valid product-test
-# evidence: the activity/package services can disappear before UTP receives an assertion result.
-# Pin a larger guest and verify that the emulator actually honored it before running any tests.
+# The Google APIs 16 KiB image plus the full app instrumentation suite can exhaust smaller guests and
+# trigger system-wide lowmemorykiller deaths or ART instability before UTP receives an assertion
+# result. 4 GiB removed the original system-service deaths but still allowed a low-watermark ART
+# SIGSEGV under hosted load, so pin 6 GiB and verify the emulator honored the stability floor.
 # Parse /proc/meminfo on the host side so adb-shell quoting cannot corrupt the awk/sed program.
 MEM_TOTAL_KB="$("$ADB" shell cat /proc/meminfo | tr -d '\r' | sed -n 's/^MemTotal:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)"
 if [[ ! "$MEM_TOTAL_KB" =~ ^[0-9]+$ ]] || (( MEM_TOTAL_KB < MIN_GUEST_MEMORY_KB )); then
