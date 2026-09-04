@@ -44,6 +44,43 @@ class SmartLayoutTest {
         assertTrue(result.text.contains("旧字\n　　这是一个新的自然段"))
     }
 
+    @Test fun preservesListItemsInsideOtherwiseHardWrappedWindow() {
+        val source = listOf(
+            "城南旧仓库里堆着许多搬家留下的木箱，标签上的墨迹已经发白",
+            "管理员把登记册摊在桌上，照着编号一件一件核对里面的东西",
+            "窗边落着一层很薄的灰，午后的光线把纸页照得有些刺眼",
+            "走廊尽头有人推来小车，轮子压过接缝时发出规律的轻响",
+            "1、需要单独登记的旧书和手稿请放在靠门的长桌上等待确认",
+            "下一批木箱从电梯里推出来，工作人员继续沿着标签向下检查",
+            "墙上的时钟已经走过四点，仓库里仍然没有人准备提前离开",
+            "等最后一张清单核完以后，他们才把卷帘门慢慢放了下来。",
+        ).joinToString("\n")
+
+        val result = SmartLayout.present(source)
+        assertTrue(result.hardWrapDetected)
+        assertTrue(result.text.contains("轻响\n1、需要单独登记"))
+        assertTrue(result.text.contains("等待确认\n下一批木箱"))
+    }
+
+    @Test fun preservesSceneBreakAndSingleEmDashDialogueTurn() {
+        val source = listOf(
+            "雨从凌晨一直落到天亮，院子里的青石板被冲洗得发亮",
+            "屋檐下的水珠连成细线，偶尔被风吹得斜斜落到台阶上",
+            "她把最后一页信纸折好，放进抽屉最里面那只旧木盒里",
+            "远处传来第一班电车的声音，城市开始慢慢从睡意中醒来",
+            "天边刚透出一点灰白，街口的早餐铺已经点亮了第一盏灯",
+            "***",
+            "门外忽然响起脚步声，她还没来得及起身就听见有人敲门",
+            "—我只是来把昨天借走的那本书还给你，马上就会离开这里",
+            "她没有回答，只把窗帘拉开一点，看见天边终于亮了起来。",
+        ).joinToString("\n")
+
+        val result = SmartLayout.present(source)
+        assertTrue(result.hardWrapDetected)
+        assertTrue(result.text.contains("第一盏灯\n***\n门外"))
+        assertTrue(result.text.contains("敲门\n—我只是来"))
+    }
+
     @Test fun projectionRemainsMonotonicAcrossRemovedHardWraps() {
         val source = listOf(
             "旧书店门前摆着几张木桌，桌面上堆满刚从仓库搬出的书",
