@@ -53,4 +53,7 @@
     <string name="reader_gesture_previous">上一頁</string>
     <string name="reader_settings_done">完成</string>
     <string name="reader_annotation_markdown_title">淨讀標註</string>
+    <string name="reader_tts_pronunciation">本機發音修正</string>
+    <string name="reader_tts_pronunciation_hint">每行一條純文字規則：原詞 =&gt; 朗讀文字。例如：單于 =&gt; chán yú。只影響朗讀，不修改書籍正文。</string>
+    <string name="reader_tts_pronunciation_save">儲存發音辭典</string>
 </resources>
