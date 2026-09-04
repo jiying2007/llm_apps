@@ -16,11 +16,14 @@ internal object SmartLayout {
     )
 
     fun present(source: String): Result {
-        if (source.isBlank() || '\n' !in source) return Result(source, false, 0)
+        if (source.isBlank() || ('\n' !in source && '\r' !in source)) return Result(source, false, 0)
+        // Normal well-formed TXT is the hot path. Inspect only a bounded prefix of lines first and
+        // avoid allocating/splitting the whole Reader window unless hard-wrap evidence is strong.
+        val sample = source.lineSequence().take(MAX_ANALYSIS_LINES).toList()
+        if (!looksHardWrapped(sample)) return Result(source, false, 0)
+
         val normalized = source.replace("\r\n", "\n").replace('\r', '\n')
         val lines = normalized.split('\n')
-        if (!looksHardWrapped(lines)) return Result(normalized, false, 0)
-
         val output = StringBuilder(normalized.length)
         var joined = 0
         for (index in lines.indices) {
@@ -101,6 +104,7 @@ internal object SmartLayout {
         return a.isLetterOrDigit() && b.isLetterOrDigit() && a.code < 128 && b.code < 128
     }
 
+    private const val MAX_ANALYSIS_LINES = 80
     private const val MIN_CONTENT_LINES = 5
     private const val MIN_JOINABLE_BREAKS = 4
     private const val MIN_LINE_CP = 10
