@@ -54,12 +54,12 @@ class JingduUiTest {
         composeRule.onNodeWithContentDescription(context.getString(R.string.bookmarks)).assertIsDisplayed()
     }
 
-    @Test fun centerTapRestoresReaderChromeAfterAutoHide() {
+    @Test fun readerChromeAutoHidesWhenContentReady() {
         composeRule.setContent {
             JingduApp(
                 AppUiState(
                     screen = AppScreen.READER, currentBook = sampleBook(),
-                    pageText = "Chapter 1\nA stable body used for center-tap restoration verification.",
+                    pageText = "Chapter 1\nA stable body used for chrome auto-hide verification.",
                     position = 500, length = 10_000,
                     chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
                     settings = ReaderSettings(
@@ -74,8 +74,36 @@ class JingduUiTest {
         settingsNode.assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 3_000L) { !settingsNode.isDisplayed() }
         settingsNode.assertIsNotDisplayed()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).performTouchInput { click() }
-        composeRule.waitForIdle()
+    }
+
+    @Test fun pagedReaderCenterTapTogglesChromeWithoutDoubleTapDelay() {
+        val stablePage = buildString {
+            append("Chapter 1\n")
+            repeat(24) { append("A stable paged Reader line keeps center-tap gesture verification deterministic. 中文标点。\n") }
+        }
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER, currentBook = sampleBook(),
+                    pageText = stablePage,
+                    position = 500, length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
+                    settings = ReaderSettings(
+                        gestureCoachDismissed = true,
+                        controlsAutoHideMs = 60_000L,
+                        doubleTapBookmarkEnabled = false,
+                    ),
+                ), noOpActions(),
+            )
+        }
+        val settingsNode = composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings))
+        val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
+        settingsNode.assertIsDisplayed()
+        surface.performTouchInput { click() }
+        composeRule.waitUntil(timeoutMillis = 2_000L) { !settingsNode.isDisplayed() }
+        settingsNode.assertIsNotDisplayed()
+        surface.performTouchInput { click() }
+        composeRule.waitUntil(timeoutMillis = 2_000L) { settingsNode.isDisplayed() }
         settingsNode.assertIsDisplayed()
     }
 
