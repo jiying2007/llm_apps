@@ -8,7 +8,7 @@ ADB="$SDK_ROOT/platform-tools/adb"
 SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 AVDMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"
 EMULATOR="$SDK_ROOT/emulator/emulator"
-IMAGE="system-images;android-35;google_apis_ps16k;x86_64"
+IMAGE="system-images;android-36;google_apis_ps16k;x86_64"
 AVD_HOME="${RUNNER_TEMP:-/tmp}/jingdu-functional-avd-home"
 AVD_NAME="jingdu-functional-16k-ci"
 LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-emulator.log"
@@ -54,7 +54,7 @@ fail_emulator() {
     } >>"$LOG"
   fi
   echo "===== Android functional emulator lifecycle log =====" >&2
-  tail -n 320 "$LOG" >&2 || true
+  tail -n 360 "$LOG" >&2 || true
   if [[ -s "$FONT_SCALE_LOG" ]]; then
     echo "===== Android 200% font-scale instrumentation log =====" >&2
     cat "$FONT_SCALE_LOG" >&2 || true
@@ -62,21 +62,22 @@ fail_emulator() {
   exit 1
 }
 
-try_isolate_nexus_launcher() {
+prepare_pixel_launcher_guard() {
   local phase="$1"
   local result
 
-  # AE3A.240806.043's google_apis_ps16k image can crash system_server in
-  # SmartspaceManagerService when NexusLauncher starts its Smartspace session. PackageManager comes
-  # online before the launcher completes boot, so disable that unrelated emulator-only client at the
-  # first safe binder opportunity rather than racing it after sys.boot_completed.
-  if ! "$ADB" shell pm path com.google.android.apps.nexuslauncher >/dev/null 2>&1; then
-    return 1
+  # PackageManager is the readiness boundary. Android 15's experimental 16 KiB image exposed a
+  # Smartspace crash through NexusLauncher; keep the client isolated when present, but do not require
+  # a Pixel launcher package on newer Google APIs images.
+  "$ADB" shell pm path android >/dev/null 2>&1 || return 1
+  if "$ADB" shell pm path com.google.android.apps.nexuslauncher >/dev/null 2>&1; then
+    if ! result="$("$ADB" shell pm disable-user --user 0 com.google.android.apps.nexuslauncher 2>/dev/null | tr -d '\r')"; then
+      return 1
+    fi
+    echo "Android ${phase} NexusLauncher isolated before boot acceptance: ${result:-disabled-user}"
+  else
+    echo "Android ${phase} NexusLauncher not present; no Smartspace launcher client to isolate"
   fi
-  if ! result="$("$ADB" shell pm disable-user --user 0 com.google.android.apps.nexuslauncher 2>/dev/null | tr -d '\r')"; then
-    return 1
-  fi
-  echo "Android ${phase} NexusLauncher isolated before boot acceptance: ${result:-disabled-user}"
   return 0
 }
 
@@ -104,91 +105,10 @@ wait_for_framework_services() {
   fail_emulator "Android ${phase} framework services were not ready within ${FRAMEWORK_TIMEOUT_SECONDS}s ${context}"
 }
 
-stabilize_art_gc() {
-  local phase="$1"
-  local build_type old_pid new_pid gc_type background_gc second cc_seen=0 adb_state
-
-  # This Android 15 16 KiB userdebug image has also produced a fatal system_server
-  # ReferenceQueueDaemon NPE immediately after a Concurrent Mark Compact (CMC) collection. That is
-  # an ART/image failure, not a Jingdu process failure. ART supports selecting the GC plan through
-  # dalvik.vm.gctype. Change the properties, then kill only system_server. Zygote's SIGCHLD handler
-  # intentionally exits when system_server dies, so init recreates Zygote + system_server without
-  # stopping SurfaceFlinger, netd or the rest of the default Android service set.
-  build_type="$("$ADB" shell getprop ro.build.type 2>/dev/null | tr -d '\r[:space:]')"
-  if [[ "$build_type" != "userdebug" && "$build_type" != "eng" ]]; then
-    fail_emulator "Android ${phase} functional image must be debuggable before applying ART GC stability guard: build_type=${build_type:-unknown}"
-  fi
-
-  old_pid="$("$ADB" shell pidof system_server 2>/dev/null | tr -d '\r[:space:]')"
-  [[ "$old_pid" =~ ^[0-9]+$ ]] || fail_emulator "Android ${phase} system_server PID unavailable before ART GC restart"
-
-  "$ADB" root >/dev/null 2>&1 || fail_emulator "Android ${phase} failed to restart adbd as root for ART GC stability guard"
-  for ((second = 1; second <= 30; second++)); do
-    adb_state="$("$ADB" get-state 2>/dev/null || true)"
-    [[ "$adb_state" == "device" ]] && break
-    sleep 1
-  done
-  [[ "${adb_state:-}" == "device" ]] || fail_emulator "Android ${phase} adb did not reconnect after adb root"
-
-  "$ADB" shell setprop dalvik.vm.gctype CC \
-    || fail_emulator "Android ${phase} could not select ART foreground CC collector"
-  "$ADB" shell setprop dalvik.vm.backgroundgctype CC \
-    || fail_emulator "Android ${phase} could not select ART background CC collector"
-  gc_type="$("$ADB" shell getprop dalvik.vm.gctype | tr -d '\r[:space:]')"
-  background_gc="$("$ADB" shell getprop dalvik.vm.backgroundgctype | tr -d '\r[:space:]')"
-  if [[ "$gc_type" != "CC" || "$background_gc" != "CC" ]]; then
-    fail_emulator "Android ${phase} ART GC properties were not accepted: foreground=${gc_type:-unknown} background=${background_gc:-unknown}"
-  fi
-
-  # Clear the old-runtime log first. Killing system_server is deliberate: AOSP Zygote treats that
-  # child death as a reason to terminate itself, after which init starts a fresh Zygote that reads
-  # the CC properties and forks a new system_server. Keep every other Android service untouched.
-  "$ADB" logcat -c >/dev/null 2>&1 || true
-  "$ADB" shell kill -9 "$old_pid" >/dev/null 2>&1 \
-    || fail_emulator "Android ${phase} failed to terminate old system_server for targeted ART GC restart"
-
-  new_pid=""
-  for ((second = 1; second <= FRAMEWORK_TIMEOUT_SECONDS; second++)); do
-    new_pid="$("$ADB" shell pidof system_server 2>/dev/null | tr -d '\r[:space:]' || true)"
-    if [[ "$new_pid" =~ ^[0-9]+$ && "$new_pid" != "$old_pid" ]]; then
-      echo "Android ${phase} new system_server observed in ${second}s: ${old_pid}->${new_pid}"
-      break
-    fi
-    if (( second % 10 == 0 )); then
-      echo "Waiting for Android ${phase} targeted system_server restart: ${second}s/${FRAMEWORK_TIMEOUT_SECONDS}s"
-    fi
-    sleep 1
-  done
-  if [[ ! "$new_pid" =~ ^[0-9]+$ || "$new_pid" == "$old_pid" ]]; then
-    fail_emulator "Android ${phase} system_server did not respawn after targeted ART GC restart: before=$old_pid after=${new_pid:-unknown}"
-  fi
-
-  wait_for_framework_services "$phase" "after targeted ART CC restart"
-
-  gc_type="$("$ADB" shell getprop dalvik.vm.gctype | tr -d '\r[:space:]')"
-  background_gc="$("$ADB" shell getprop dalvik.vm.backgroundgctype | tr -d '\r[:space:]')"
-  if [[ "$gc_type" != "CC" || "$background_gc" != "CC" ]]; then
-    fail_emulator "Android ${phase} ART GC properties changed across targeted restart: foreground=${gc_type:-unknown} background=${background_gc:-unknown}"
-  fi
-
-  for ((second = 1; second <= 30; second++)); do
-    if "$ADB" shell logcat -d -v brief 2>/dev/null | grep -q 'Using CollectorTypeCC GC'; then
-      cc_seen=1
-      break
-    fi
-    sleep 1
-  done
-  if (( cc_seen == 0 )); then
-    fail_emulator "Android ${phase} restarted runtime did not confirm CollectorTypeCC GC"
-  fi
-  echo "Android ${phase} ART runtime stabilized: system_server ${old_pid}->${new_pid} foreground=CC background=CC"
-}
-
 finalize_test_system_ui() {
   local phase="$1"
 
-  # Launcher is already disabled before boot is accepted. Turn off the corresponding Smartspace
-  # surfaces as a second guard, then require the core framework to remain healthy before testing.
+  # These settings are emulator-only stability guards. They do not change Jingdu or its tests.
   "$ADB" shell settings put secure smartspace 0 >/dev/null 2>&1 \
     || fail_emulator "Android ${phase} SettingsProvider unavailable while disabling Smartspace"
   "$ADB" shell settings put secure smartspace_show_on_home_screen 0 >/dev/null 2>&1 \
@@ -198,7 +118,7 @@ finalize_test_system_ui() {
     || fail_emulator "Android ${phase} PackageManager became unavailable after Smartspace isolation"
   "$ADB" shell am get-current-user >/dev/null 2>&1 \
     || fail_emulator "Android ${phase} ActivityManager became unavailable after Smartspace isolation"
-  echo "Android ${phase} Pixel Smartspace client isolated for hosted functional stability"
+  echo "Android ${phase} hosted system UI stability guards applied"
 }
 
 start_emulator() {
@@ -208,6 +128,7 @@ start_emulator() {
     echo
     echo "===== Android ${phase} emulator lifecycle ====="
     echo "Android ${phase} emulator requested RAM: ${EMULATOR_MEMORY_MB}MB"
+    echo "Android ${phase} emulator image: ${IMAGE}"
   } >>"$LOG"
 
   "$EMULATOR" -avd "$AVD_NAME" \
@@ -219,7 +140,7 @@ start_emulator() {
   echo "Android ${phase} emulator PID: $EMULATOR_PID"
   "$ADB" start-server >/dev/null
 
-  local booted=0 launcher_isolated=0
+  local booted=0 launcher_guard_ready=0
   local second adb_state boot
   for ((second = 1; second <= BOOT_TIMEOUT_SECONDS; second++)); do
     if ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
@@ -228,42 +149,46 @@ start_emulator() {
     fi
     adb_state="$("$ADB" get-state 2>/dev/null || true)"
     if [[ "$adb_state" == "device" ]]; then
-      if (( launcher_isolated == 0 )) && try_isolate_nexus_launcher "$phase"; then
-        launcher_isolated=1
+      if (( launcher_guard_ready == 0 )) && prepare_pixel_launcher_guard "$phase"; then
+        launcher_guard_ready=1
       fi
       boot="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-      if [[ "$boot" == "1" && "$launcher_isolated" == "1" ]]; then
+      if [[ "$boot" == "1" && "$launcher_guard_ready" == "1" ]]; then
         booted=1
-        echo "Android ${phase} emulator boot accepted in ${second}s after early Smartspace isolation"
+        echo "Android ${phase} emulator boot accepted in ${second}s"
         break
       fi
     fi
     if (( second % 15 == 0 )); then
-      echo "Waiting for Android ${phase} emulator: ${second}s/${BOOT_TIMEOUT_SECONDS}s (adb=${adb_state:-unavailable} launcher_isolated=$launcher_isolated)"
+      echo "Waiting for Android ${phase} emulator: ${second}s/${BOOT_TIMEOUT_SECONDS}s (adb=${adb_state:-unavailable} launcher_guard_ready=$launcher_guard_ready)"
     fi
     sleep 1
   done
   if (( booted == 0 )); then
-    fail_emulator "Android ${phase} 16 KiB emulator failed to boot with NexusLauncher isolated within ${BOOT_TIMEOUT_SECONDS}s"
+    fail_emulator "Android ${phase} 16 KiB emulator failed to boot with hosted UI guard ready within ${BOOT_TIMEOUT_SECONDS}s"
   fi
 
   wait_for_framework_services "$phase" "after boot acceptance"
-  stabilize_art_gc "$phase"
 
-  local page_size mem_total_kb
+  local page_size mem_total_kb runtime_api fingerprint
   page_size="$("$ADB" shell getconf PAGE_SIZE | tr -d '\r[:space:]')"
   if [[ "$page_size" != "16384" ]]; then
     fail_emulator "Android ${phase} emulator is not a 16 KiB runtime: PAGE_SIZE=$page_size"
   fi
 
-  # Android 15 google_apis_ps16k plus Compose instrumentation can drive smaller guests below the
-  # low-memory watermark. Pin 6 GiB and fail closed if the emulator does not honor the requested RAM.
+  runtime_api="$("$ADB" shell getprop ro.build.version.sdk | tr -d '\r[:space:]')"
+  if [[ ! "$runtime_api" =~ ^[0-9]+$ ]] || (( runtime_api < 36 )); then
+    fail_emulator "Android ${phase} functional runtime is older than API 36: api=${runtime_api:-unknown}"
+  fi
+
   mem_total_kb="$("$ADB" shell cat /proc/meminfo | tr -d '\r' | sed -n 's/^MemTotal:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)"
   if [[ ! "$mem_total_kb" =~ ^[0-9]+$ ]] || (( mem_total_kb < MIN_GUEST_MEMORY_KB )); then
     fail_emulator "Android ${phase} guest RAM is below the stability floor: MemTotal=${mem_total_kb:-unknown}kB minimum=${MIN_GUEST_MEMORY_KB}kB"
   fi
 
-  echo "Android ${phase} runtime confirmed: PAGE_SIZE=$page_size image=$IMAGE MemTotal=${mem_total_kb}kB ART_GC=CC"
+  fingerprint="$("$ADB" shell getprop ro.build.fingerprint | tr -d '\r')"
+  echo "Android ${phase} runtime confirmed: API=$runtime_api PAGE_SIZE=$page_size image=$IMAGE MemTotal=${mem_total_kb}kB"
+  echo "Android ${phase} build fingerprint: $fingerprint"
   finalize_test_system_ui "$phase"
   "$ADB" shell input keyevent 82 >/dev/null 2>&1 || true
   "$ADB" shell settings put global window_animation_scale 0
@@ -314,6 +239,8 @@ echo "JingduUiTest source SHA256: $(sha256sum "$TEST_SOURCE" | awk '{print $1}')
 # Baseline Profile instrumentation remain exclusively in android-performance.
 ./gradlew --no-daemon --warning-mode all --no-build-cache clean :app:connectedDebugAndroidTest
 
+echo "Android normal functional source-bound suite PASS"
+
 APP_APK="app/build/outputs/apk/debug/app-debug.apk"
 TEST_APK="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 [[ -s "$APP_APK" ]] || fail_emulator "Source-bound debug APK missing after normal functional suite: $APP_APK"
@@ -324,7 +251,7 @@ echo "Functional app APK SHA256: $APP_APK_SHA"
 echo "Functional androidTest APK SHA256: $TEST_APK_SHA"
 
 # Do not carry UTP/framework state from the normal suite into accessibility evidence. Start a fresh
-# -wipe-data lifecycle, apply the same ART/Smartspace guards, and install the exact APK bytes above.
+# -wipe-data 16 KiB lifecycle and install the exact APK bytes produced by the first lifecycle.
 stop_emulator
 start_emulator "200% font-scale"
 
@@ -362,10 +289,10 @@ fi
 if grep -Eq 'FAILURES!!!|INSTRUMENTATION_ABORTED|INSTRUMENTATION_FAILED|shortMsg=Process crashed|DeadSystemException' "$FONT_SCALE_LOG"; then
   fail_emulator "Android 200% font-scale JingduUiTest reported a failure or system abort"
 fi
-if ! grep -Eq '^OK \([1-9][0-9]* tests?\)$' "$FONT_SCALE_LOG"; then
-  fail_emulator "Android 200% font-scale JingduUiTest did not report a completed non-empty test run"
+if ! grep -Eq '^OK \(15 tests\)$' "$FONT_SCALE_LOG"; then
+  fail_emulator "Android 200% font-scale JingduUiTest did not report OK (15 tests)"
 fi
 "$ADB" shell settings put system font_scale 1.0
 
-echo "Android 200% font-scale JingduUiTest PASS"
+echo "Android 200% font-scale JingduUiTest PASS (15/15)"
 echo "Android functional instrumentation suite PASS on independent 16 KiB runtimes"
