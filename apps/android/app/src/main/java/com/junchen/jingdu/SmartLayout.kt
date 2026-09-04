@@ -41,10 +41,16 @@ internal object SmartLayout {
         return Result(output.toString(), joined > 0, joined)
     }
 
+    /**
+     * Keep the normal page-turn evidence path equivalent to the pre-structure-protection path.
+     * Structural protection is only needed after hard-wrap evidence is already strong, when we are
+     * actually deciding which newlines to remove. That keeps ordinary Reader paging from paying for
+     * list/separator classification while still preserving those lines in a detected hard-wrap TXT.
+     */
     private fun looksHardWrapped(lines: List<String>): Boolean {
         val contentLengths = lines.asSequence()
             .map(String::trim)
-            .filter { it.isNotEmpty() && !ReaderHeadingClassifier.isHeading(it) && !isStructuralLine(it) }
+            .filter { it.isNotEmpty() && !ReaderHeadingClassifier.isHeading(it) }
             .map { it.codePointCount(0, it.length) }
             .filter { it in MIN_LINE_CP..MAX_LINE_CP }
             .toList()
@@ -59,9 +65,8 @@ internal object SmartLayout {
             if (a.codePointCount(0, a.length) !in MIN_LINE_CP..MAX_LINE_CP ||
                 b.codePointCount(0, b.length) !in MIN_NEXT_CP..MAX_LINE_CP) continue
             if (ReaderHeadingClassifier.isHeading(a) || ReaderHeadingClassifier.isHeading(b)) continue
-            if (isStructuralLine(a) || isStructuralLine(b)) continue
             plausible++
-            if (canJoin(lines[index], lines[index + 1])) joinable++
+            if (canJoinForEvidence(lines[index], lines[index + 1])) joinable++
         }
         if (joinable < MIN_JOINABLE_BREAKS || plausible <= 0) return false
 
@@ -72,18 +77,30 @@ internal object SmartLayout {
         return consistentWidth && joinable.toDouble() / plausible.toDouble() >= MIN_JOINABLE_RATIO
     }
 
-    private fun canJoin(rawCurrent: String, rawNext: String): Boolean {
+    /** Pre-structure-protection join predicate used only for bounded hard-wrap evidence. */
+    private fun canJoinForEvidence(rawCurrent: String, rawNext: String): Boolean {
         if (rawCurrent.isBlank() || rawNext.isBlank()) return false
         if (hasParagraphIndent(rawNext)) return false
         val current = rawCurrent.trimEnd()
         val next = rawNext.trimStart()
         if (current.isEmpty() || next.isEmpty()) return false
         if (ReaderHeadingClassifier.isHeading(current.trim()) || ReaderHeadingClassifier.isHeading(next.trim())) return false
-        if (isStructuralLine(current) || isStructuralLine(next)) return false
         val currentCp = current.codePointCount(0, current.length)
         val nextCp = next.codePointCount(0, next.length)
         if (currentCp !in MIN_LINE_CP..MAX_LINE_CP || nextCp !in MIN_NEXT_CP..MAX_LINE_CP) return false
-        if (endsParagraph(current) || startsFreshBlock(next)) return false
+        if (endsParagraph(current) || startsFreshBlockForEvidence(next)) return false
+        return true
+    }
+
+    /**
+     * Final newline-removal predicate. This is reached only after hard-wrap detection, so richer
+     * structure classification does not sit on the normal page-turn path.
+     */
+    private fun canJoin(rawCurrent: String, rawNext: String): Boolean {
+        if (!canJoinForEvidence(rawCurrent, rawNext)) return false
+        val current = rawCurrent.trimEnd()
+        val next = rawNext.trimStart()
+        if (isStructuralLine(current) || isStructuralLine(next)) return false
         return true
     }
 
@@ -95,15 +112,15 @@ internal object SmartLayout {
         return last in TERMINAL_PUNCTUATION
     }
 
-    private fun startsFreshBlock(value: String): Boolean {
+    /** Keep hard-wrap evidence semantics identical to the established hot path. */
+    private fun startsFreshBlockForEvidence(value: String): Boolean {
         val first = value.firstOrNull() ?: return true
-        return first in BLOCK_OPENERS || first == '—' || value.startsWith("***") || value.startsWith("###")
+        return first in BLOCK_OPENERS || value.startsWith("——") || value.startsWith("***") || value.startsWith("###")
     }
 
     /**
-     * Protect structure that frequently appears inside downloaded Chinese web-novel TXT. Normal
-     * prose must stay extremely cheap because this predicate is used by the bounded page-turn
-     * analysis path. Only a small set of suspicious leading characters enter the deeper scan.
+     * Protect structure that frequently appears inside downloaded Chinese web-novel TXT. This runs
+     * only after the window has already been identified as hard-wrapped.
      */
     private fun isStructuralLine(value: String): Boolean {
         if (value.isEmpty()) return true
