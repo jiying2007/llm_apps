@@ -1,11 +1,17 @@
 package com.junchen.jingdu
 
+import android.provider.Settings
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -13,6 +19,7 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 
 enum class ReaderAdaptiveWidth { COMPACT, MEDIUM, EXPANDED, LARGE, EXTRA_LARGE }
 
@@ -21,8 +28,9 @@ data class ReaderAdaptiveLayout(
     val hasHinge: Boolean,
     val tabletop: Boolean,
 ) {
-    val prefersTwoColumns: Boolean get() = width >= ReaderAdaptiveWidth.EXPANDED && !tabletop
-    val prefersSideControls: Boolean get() = width >= ReaderAdaptiveWidth.LARGE && !tabletop
+    val bookPosture: Boolean get() = hasHinge && !tabletop
+    val prefersTwoColumns: Boolean get() = bookPosture || (width >= ReaderAdaptiveWidth.EXPANDED && !tabletop)
+    val prefersSideControls: Boolean get() = width >= ReaderAdaptiveWidth.LARGE && !tabletop && !hasHinge
 }
 
 @Composable
@@ -36,6 +44,7 @@ internal fun ReaderRoute(
     onLocationBack: () -> Unit,
     onLocationForward: () -> Unit,
 ) {
+    val context = LocalContext.current
     val adaptive = currentWindowAdaptiveInfoV2()
     val minWidth = adaptive.windowSizeClass.minWidthDp
     val width = when {
@@ -50,6 +59,52 @@ internal fun ReaderRoute(
         hasHinge = adaptive.windowPosture.hingeList.isNotEmpty(),
         tabletop = adaptive.windowPosture.isTabletop,
     )
+
+    var visiblePageChars by remember(state.currentBook?.id) { mutableLongStateOf(0L) }
+    var pendingCenterAnchor by remember(state.currentBook?.id) { mutableStateOf<Long?>(null) }
+    val routedActions = actions.copy(
+        onVisibleCharsChanged = { chars ->
+            val bounded = chars.coerceAtLeast(ReaderController.MIN_PAGE_CHARS)
+            visiblePageChars = bounded
+            actions.onVisibleCharsChanged(bounded)
+            val anchor = pendingCenterAnchor
+            if (anchor != null && state.settings.readingMode == ReaderMode.PAGED) {
+                pendingCenterAnchor = null
+                val target = ReaderVisualContinuity.topForCenter(anchor, bounded, state.length)
+                if (target != state.position) actions.onSyncTtsPosition(target)
+            }
+        },
+        onSettingsChanged = { next ->
+            val current = state.settings
+            val reflow = ReaderVisualContinuity.layoutKey(current) != ReaderVisualContinuity.layoutKey(next)
+            if (reflow) {
+                when {
+                    current.readingMode == ReaderMode.PAGED && next.readingMode == ReaderMode.CONTINUOUS && visiblePageChars > 0 -> {
+                        pendingCenterAnchor = null
+                        val anchor = ReaderVisualContinuity.centerAnchor(state.position, visiblePageChars, state.length)
+                        if (anchor != state.position) actions.onSyncTtsPosition(anchor)
+                    }
+                    current.readingMode == ReaderMode.PAGED && visiblePageChars > 0 -> {
+                        pendingCenterAnchor = ReaderVisualContinuity.centerAnchor(state.position, visiblePageChars, state.length)
+                    }
+                    current.readingMode == ReaderMode.CONTINUOUS && next.readingMode == ReaderMode.PAGED -> {
+                        pendingCenterAnchor = state.position
+                    }
+                }
+            }
+            actions.onSettingsChanged(next)
+        },
+    )
+
+    val animationScale = runCatching {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+    }.getOrDefault(1f)
+    // Respect Android's system-level "remove animations" preference without overwriting the user's
+    // saved Reader animation choice. Re-enabling system animations restores their saved preference.
+    val effectiveState = if (animationScale <= 0f && state.settings.pageAnimation != ReaderPageAnimation.NONE) {
+        state.copy(settings = state.settings.copy(pageAnimation = ReaderPageAnimation.NONE))
+    } else state
+
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -81,8 +136,8 @@ internal fun ReaderRoute(
         },
     ) {
         ReaderScreen(
-            state = state,
-            actions = actions,
+            state = effectiveState,
+            actions = routedActions,
             snackbar = snackbar,
             adaptiveLayout = layout,
             panelState = panelState,
