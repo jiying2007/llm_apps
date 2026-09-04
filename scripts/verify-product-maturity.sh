@@ -8,6 +8,7 @@ APP_GRADLE="apps/android/app/build.gradle"
 CI=".github/workflows/ci.yml"
 PHYSICAL=".github/workflows/android-physical-release-performance.yml"
 MANIFEST="apps/android/app/src/main/AndroidManifest.xml"
+FUNCTIONAL="scripts/run-android-functional-tests-ci.sh"
 
 # Production-native compatibility and symbolication must not regress silently.
 grep -Fq 'ndkVersion = "29.0.14206865"' "$APP_GRADLE"
@@ -16,10 +17,17 @@ test -f scripts/verify-android-16k-page-size.sh
 grep -Fq -- '"$ZIPALIGN" -c -P 16 -v 4' scripts/verify-android-16k-page-size.sh
 grep -Fq 'llvm-readelf' scripts/verify-android-16k-page-size.sh
 
-# AndroidTest must execute on a hosted emulator; compiling tests alone is not acceptance.
-test -f scripts/run-android-functional-tests-ci.sh
+# AndroidTest must execute, and it must do so on the Android 15 16 KiB runtime. This means the
+# same hosted functional gate exercises Compose/local assets plus real JNI/Core loading at 16 KiB.
+test -f "$FUNCTIONAL"
 grep -Fq 'android-functional:' "$CI"
-grep -Fq 'connectedDebugAndroidTest' scripts/run-android-functional-tests-ci.sh
+grep -Fq 'connectedDebugAndroidTest' "$FUNCTIONAL"
+grep -Fq 'system-images;android-35;google_apis_ps16k;x86_64' "$FUNCTIONAL"
+grep -Fq 'getconf PAGE_SIZE' "$FUNCTIONAL"
+grep -Fq '"16384"' "$FUNCTIONAL"
+test -f apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
+grep -Fq 'NativeCore.fileSha256' apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
+grep -Fq 'ReaderController(false)' apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
 grep -Fq 'android-native-compat:' "$CI"
 grep -Fq 'android-functional, android-native-compat, android-performance' "$CI"
 
@@ -43,6 +51,9 @@ test -f apps/android/app/src/main/java/com/junchen/jingdu/BillingEntitlementPoli
 test -f apps/android/app/src/test/java/com/junchen/jingdu/BillingEntitlementPolicyTest.kt
 test -f apps/android/app/src/main/java/com/junchen/jingdu/PrivateFilePublisher.kt
 test -f apps/android/app/src/test/java/com/junchen/jingdu/PrivateFilePublisherTest.kt
+
+# Bounded TTS semantic navigation stays host-testable while real engine/routes remain device evidence.
+test -f apps/android/app/src/test/java/com/junchen/jingdu/TtsSemanticNavigatorTest.kt
 
 # Smart Clean held-out evidence must remain production-scale and independent from training rows.
 test -f quality/smartclean/eval-v2-matrix.json
