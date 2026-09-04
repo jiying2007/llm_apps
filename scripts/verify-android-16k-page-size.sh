@@ -25,9 +25,11 @@ SYMBOL_ZIP="app/build/outputs/native-debug-symbols/release/native-debug-symbols.
 [[ -s "$SYMBOL_ZIP" ]] || { echo "FULL native debug symbols missing: $SYMBOL_ZIP" >&2; exit 1; }
 [[ -d "$NDK_DIR" ]] || { echo "pinned NDK missing: $NDK_DIR" >&2; exit 1; }
 
-READELF="$(find "$NDK_DIR/toolchains/llvm/prebuilt" -type f -name llvm-readelf -perm -111 -print -quit)"
+# Current NDK packages expose llvm-readelf through the toolchain bin directory and may represent
+# it as a symlink. The previous -type f lookup therefore produced a false negative on hosted CI.
+READELF="$(find "$NDK_DIR/toolchains/llvm/prebuilt" -path '*/bin/llvm-readelf' -print -quit)"
 ZIPALIGN="$(find "$SDK_ROOT/build-tools" -type f -name zipalign -perm -111 | sort -V | tail -n1)"
-[[ -x "$READELF" ]] || { echo "llvm-readelf missing from pinned NDK" >&2; exit 1; }
+[[ -n "$READELF" && -x "$READELF" ]] || { echo "llvm-readelf missing from pinned NDK" >&2; exit 1; }
 [[ -x "$ZIPALIGN" ]] || { echo "zipalign missing" >&2; exit 1; }
 
 # Android 15+ 16 KiB devices require both package alignment and 16 KiB ELF LOAD alignment.
