@@ -2,7 +2,9 @@ package com.junchen.jingdu
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.text.LineBreakConfig
 import android.graphics.text.LineBreaker
+import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -193,6 +195,7 @@ internal object ReaderPageLayoutCache {
         )
         get(key)?.let { return it }
 
+        val cjk = ReaderCjkTypography.containsCjk(displayText)
         val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG or TextPaint.SUBPIXEL_TEXT_FLAG).apply {
             textSize = with(density) { spec.fontSizeSp.sp.toPx() }
             letterSpacing = spec.letterSpacingEm
@@ -200,6 +203,7 @@ internal object ReaderPageLayoutCache {
                 ReaderFontWeight.NORMAL -> Typeface.NORMAL
                 ReaderFontWeight.MEDIUM, ReaderFontWeight.SEMIBOLD -> Typeface.BOLD
             })
+            if (cjk) textLocale = ReaderCjkTypography.localeFor(displayText, settings.chineseMode)
         }
         val layoutText = spec.androidLayoutText(displayText, density, settings.emphasizeHeadings)
         // A line cannot be shorter than the paint's font box. Capping layout construction to the
@@ -214,7 +218,17 @@ internal object ReaderPageLayoutCache {
                 .setMaxLines(maxVisibleLines)
                 .setLineSpacing(0f, spec.lineHeightMultiplier.coerceAtLeast(1f))
                 .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                // Keep the proven fixed-cost strategy on the page-turn hot path. API 33+ can still
+                // apply CJK punctuation/phrase rules without switching to a costlier break strategy.
                 .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE)
+            if (Build.VERSION.SDK_INT >= 33 && cjk) {
+                builder.setLineBreakConfig(
+                    LineBreakConfig.Builder()
+                        .setLineBreakStyle(LineBreakConfig.LINE_BREAK_STYLE_NORMAL)
+                        .setLineBreakWordStyle(LineBreakConfig.LINE_BREAK_WORD_STYLE_PHRASE)
+                        .build(),
+                )
+            }
             if (spec.alignment == ReaderTextAlignment.JUSTIFY) builder.setJustificationMode(LineBreaker.JUSTIFICATION_MODE_INTER_WORD)
             return builder.build()
         }
