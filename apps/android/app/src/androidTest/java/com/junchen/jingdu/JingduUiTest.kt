@@ -246,7 +246,7 @@ class JingduUiTest {
         }
         composeRule.onNodeWithText(context.getString(R.string.smart_clean)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.rescan_noise)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.noise_summary, 1, 1, 94)).fetchSemanticsNode()
+        composeRule.onNodeWithText(context.getString(R.string.noise_summary, 1, 1, 326)).fetchSemanticsNode()
         composeRule.onNodeWithText("www.example.com").fetchSemanticsNode()
     }
 
