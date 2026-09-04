@@ -12,6 +12,7 @@ IMAGE="system-images;android-35;google_apis_ps16k;x86_64"
 AVD_HOME="${RUNNER_TEMP:-/tmp}/jingdu-functional-avd-home"
 AVD_NAME="jingdu-functional-16k-ci"
 LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-emulator.log"
+FONT_SCALE_LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-font-scale-200.log"
 BOOT_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_BOOT_TIMEOUT_SECONDS:-300}"
 EMULATOR_PID=""
 
@@ -28,6 +29,10 @@ fail_emulator() {
   echo "$1" >&2
   echo "===== Android functional emulator log =====" >&2
   tail -n 240 "$LOG" >&2 || true
+  if [[ -s "$FONT_SCALE_LOG" ]]; then
+    echo "===== Android 200% font-scale instrumentation log =====" >&2
+    cat "$FONT_SCALE_LOG" >&2 || true
+  fi
   exit 1
 }
 
@@ -60,6 +65,7 @@ echo no | "$AVDMANAGER" create avd \
   --path "$AVD_HOME/$AVD_NAME.avd" >/dev/null
 
 : >"$LOG"
+: >"$FONT_SCALE_LOG"
 "$EMULATOR" -avd "$AVD_NAME" \
   -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -no-metrics \
   -gpu swiftshader_indirect -accel on -camera-back none -camera-front none \
@@ -119,20 +125,40 @@ echo "JingduUiTest source SHA256: $(sha256sum "$TEST_SOURCE" | awk '{print $1}')
 # are source-bound. Root clean is harmless, while the execution target is deliberately app-scoped.
 ./gradlew --no-daemon --warning-mode all --no-build-cache clean :app:connectedDebugAndroidTest
 
-# Reuse the same source-bound UI suite at Android's 200% font scale. This is a hosted layout and
-# discoverability regression gate, not a claim that emulator testing replaces physical TalkBack/OEM
-# qualification. Keeping it in the functional job avoids changing Reader performance definitions,
-# thresholds, baselines or benchmark workloads. `--rerun-tasks` is intentional: font_scale is an
-# external device input that Gradle cannot see, so an up-to-date instrumentation result is invalid.
+# Reuse the already-installed source-bound app/test APKs at Android's 200% font scale. This is a
+# hosted layout/discoverability regression gate, not a claim that emulator testing replaces physical
+# TalkBack/OEM qualification. The second run deliberately invokes AndroidJUnitRunner directly rather
+# than asking Gradle to rebuild/reinstall every task: font_scale is an external device input, so a
+# Gradle up-to-date result would be invalid, while a second full --rerun-tasks build adds no source
+# evidence and can destabilize the constrained emulator before instrumentation even starts.
 echo "Running JingduUiTest at Android font_scale=2.0"
 "$ADB" shell settings put system font_scale 2.0
 FONT_SCALE="$("$ADB" shell settings get system font_scale | tr -d '\r[:space:]')"
 if [[ "$FONT_SCALE" != "2.0" && "$FONT_SCALE" != "2" ]]; then
   fail_emulator "Failed to configure Android 200% font scale: font_scale=$FONT_SCALE"
 fi
-./gradlew --no-daemon --warning-mode all --no-build-cache --rerun-tasks \
-  :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.junchen.jingdu.JingduUiTest
+
+TARGET_PACKAGE="com.junchen.jingdu.debug"
+INSTRUMENTATION="$({ "$ADB" shell pm list instrumentation || true; } | tr -d '\r' | sed -n "s/^instrumentation:\([^ ]*\) (target=${TARGET_PACKAGE})$/\1/p" | head -n1)"
+if [[ -z "$INSTRUMENTATION" ]]; then
+  fail_emulator "Source-bound Android test instrumentation is not installed after the normal functional suite"
+fi
+"$ADB" shell am force-stop "$TARGET_PACKAGE" >/dev/null 2>&1 || true
+set +e
+"$ADB" shell am instrument -w -r \
+  -e class com.junchen.jingdu.JingduUiTest \
+  "$INSTRUMENTATION" | tee "$FONT_SCALE_LOG"
+FONT_SCALE_STATUS=${PIPESTATUS[0]}
+set -e
+if (( FONT_SCALE_STATUS != 0 )); then
+  fail_emulator "Android 200% font-scale instrumentation command failed: status=$FONT_SCALE_STATUS"
+fi
+if grep -Eq 'FAILURES!!!|INSTRUMENTATION_ABORTED|INSTRUMENTATION_FAILED|shortMsg=Process crashed|DeadSystemException' "$FONT_SCALE_LOG"; then
+  fail_emulator "Android 200% font-scale JingduUiTest reported a failure or system abort"
+fi
+if ! grep -Eq '^OK \([1-9][0-9]* tests?\)$' "$FONT_SCALE_LOG"; then
+  fail_emulator "Android 200% font-scale JingduUiTest did not report a completed non-empty test run"
+fi
 "$ADB" shell settings put system font_scale 1.0
 
 echo "Android 200% font-scale JingduUiTest PASS"
