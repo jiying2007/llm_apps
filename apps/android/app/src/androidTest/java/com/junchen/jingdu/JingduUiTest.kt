@@ -64,7 +64,7 @@ class JingduUiTest {
                     chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
                     settings = ReaderSettings(
                         gestureCoachDismissed = true,
-                        controlsAutoHideMs = 80L,
+                        controlsAutoHideMs = 600L,
                         readingMode = ReaderMode.CONTINUOUS,
                     ),
                 ), noOpActions(),
