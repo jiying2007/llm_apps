@@ -148,16 +148,27 @@ echo "JingduUiTest source SHA256: $(sha256sum "$TEST_SOURCE" | awk '{print $1}')
 # gate; invoking the root aggregate connectedDebugAndroidTest here would duplicate that suite and can
 # uninstall/replace the target package while app instrumentation is still running.
 #
-# Build from the exact checkout without Gradle task-output cache so the installed app/androidTest APKs
-# are source-bound. Root clean is harmless, while the execution target is deliberately app-scoped.
+# Build from the exact checkout without Gradle task-output cache so the app/androidTest APKs and the
+# first instrumentation result are source-bound. Root clean is harmless, while the execution target
+# is deliberately app-scoped.
 ./gradlew --no-daemon --warning-mode all --no-build-cache clean :app:connectedDebugAndroidTest
 
-# Reuse the already-installed source-bound app/test APKs at Android's 200% font scale. This is a
-# hosted layout/discoverability regression gate, not a claim that emulator testing replaces physical
-# TalkBack/OEM qualification. The second run deliberately invokes AndroidJUnitRunner directly rather
-# than asking Gradle to rebuild/reinstall every task: font_scale is an external device input, so a
-# Gradle up-to-date result would be invalid, while a second full --rerun-tasks build adds no source
-# evidence and can destabilize the constrained emulator before instrumentation even starts.
+# UTP may uninstall the target/test packages after connectedDebugAndroidTest. Reinstall the exact APKs
+# produced by that already-successful source-bound build before the 200% rerun; this does not rebuild
+# or substitute artifacts and keeps both font-scale passes tied to the same checkout and binaries.
+APP_APK="app/build/outputs/apk/debug/app-debug.apk"
+TEST_APK="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+[[ -s "$APP_APK" ]] || fail_emulator "Source-bound debug APK missing after normal functional suite: $APP_APK"
+[[ -s "$TEST_APK" ]] || fail_emulator "Source-bound androidTest APK missing after normal functional suite: $TEST_APK"
+echo "Functional app APK SHA256: $(sha256sum "$APP_APK" | awk '{print $1}')"
+echo "Functional androidTest APK SHA256: $(sha256sum "$TEST_APK" | awk '{print $1}')"
+"$ADB" install -r -t "$APP_APK" >/dev/null || fail_emulator "Failed to reinstall source-bound debug APK"
+"$ADB" install -r -t "$TEST_APK" >/dev/null || fail_emulator "Failed to reinstall source-bound androidTest APK"
+
+# Reuse those already-built source-bound APKs at Android's 200% font scale. This is a hosted layout
+# and discoverability regression gate, not a claim that emulator testing replaces physical
+# TalkBack/OEM qualification. Invoking AndroidJUnitRunner directly makes the second run real while
+# avoiding a second full Gradle build/reinstall cycle that adds no source evidence.
 echo "Running JingduUiTest at Android font_scale=2.0"
 "$ADB" shell settings put system font_scale 2.0
 FONT_SCALE="$("$ADB" shell settings get system font_scale | tr -d '\r[:space:]')"
@@ -168,7 +179,7 @@ fi
 TARGET_PACKAGE="com.junchen.jingdu.debug"
 INSTRUMENTATION="$({ "$ADB" shell pm list instrumentation || true; } | tr -d '\r' | sed -n "s/^instrumentation:\([^ ]*\) (target=${TARGET_PACKAGE})$/\1/p" | head -n1)"
 if [[ -z "$INSTRUMENTATION" ]]; then
-  fail_emulator "Source-bound Android test instrumentation is not installed after the normal functional suite"
+  fail_emulator "Source-bound Android test instrumentation is not installed for the 200% font-scale rerun"
 fi
 "$ADB" shell am force-stop "$TARGET_PACKAGE" >/dev/null 2>&1 || true
 set +e
