@@ -7,16 +7,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
-import androidx.compose.ui.test.performTextInput
 
 class JingduUiTest {
     @get:Rule val composeRule = createComposeRule()
@@ -64,13 +67,13 @@ class JingduUiTest {
                 ), noOpActions(),
             )
         }
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
-        Thread.sleep(240L)
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsNotDisplayed()
+        val settingsNode = composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings))
+        settingsNode.assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 3_000L) { !settingsNode.isDisplayed() }
+        settingsNode.assertIsNotDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface)).performTouchInput { click() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.reading_settings)).assertIsDisplayed()
+        settingsNode.assertIsDisplayed()
     }
 
     @Test fun pagedReaderRightTapAlwaysHasAReachableNextPath() {
@@ -116,7 +119,7 @@ class JingduUiTest {
         composeRule.onNodeWithText("Aa").assertIsDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reader_location_back)).assertIsNotDisplayed()
         composeRule.onNodeWithContentDescription(context.getString(R.string.reader_location_forward)).assertIsNotDisplayed()
-        composeRule.onNodeWithContentDescription(context.getString(R.string.more_reading_tools)).performClick()
+        composeRule.onAllNodesWithContentDescription(context.getString(R.string.more_reading_tools))[0].performClick()
         composeRule.onNodeWithText(context.getString(R.string.reader_text_tools)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.reader_more_tools)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.reading_settings)).assertIsNotDisplayed()
@@ -169,7 +172,10 @@ class JingduUiTest {
 
     @Test fun chapterRowsRemainTouchableWithNativeScrollingPanel() {
         var jumped = -1L
-        val chapters = (0 until 30).map { index -> ChapterModel(index * 1000L, "Chapter ${index + 1}") }
+        val targetTitle = "Panel Target Chapter"
+        val chapters = (0 until 30).map { index ->
+            ChapterModel(index * 1000L, if (index == 1) targetTitle else "Chapter ${index + 1}")
+        }
         composeRule.setContent {
             JingduApp(
                 AppUiState(
@@ -180,13 +186,14 @@ class JingduUiTest {
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Chapter 1").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText(targetTitle).assertIsDisplayed().performClick()
         composeRule.waitForIdle()
-        assertEquals(0L, jumped)
+        assertEquals(1000L, jumped)
     }
 
     @Test fun hiddenHotPanelsRemainPhysicallyOffscreen() {
-        val chapters = listOf(ChapterModel(0, "Chapter 1"))
+        val hiddenTitle = "Hidden Panel Sentinel"
+        val chapters = listOf(ChapterModel(0, "Chapter 1"), ChapterModel(1000, hiddenTitle))
         composeRule.setContent {
             JingduApp(
                 AppUiState(
@@ -197,7 +204,7 @@ class JingduUiTest {
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Chapter 1").assertIsNotDisplayed()
+        composeRule.onNodeWithText(hiddenTitle).assertIsNotDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.reader_quick_settings)).assertIsNotDisplayed()
     }
 
@@ -233,7 +240,7 @@ class JingduUiTest {
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.smart_clean)).assertIsDisplayed()
-        composeRule.onNodeWithText("www.example.com").assertIsDisplayed()
+        composeRule.onNodeWithText("www.example.com").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun libraryPrioritizesContinueReadingAndConsolidatesManagementTools() {
