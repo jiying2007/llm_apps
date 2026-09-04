@@ -46,8 +46,15 @@ require_executable() {
 fail_emulator() {
   local message="$1"
   echo "$message" >&2
+  if "$ADB" get-state >/dev/null 2>&1; then
+    {
+      echo
+      echo "===== Android performance guest logcat at failure ====="
+      "$ADB" shell logcat -d -v threadtime 2>/dev/null | tail -n 800 || true
+    } >>"$EMULATOR_LOG"
+  fi
   echo "===== Android emulator log =====" >&2
-  tail -n 240 "$EMULATOR_LOG" >&2 || true
+  tail -n 320 "$EMULATOR_LOG" >&2 || true
   exit 1
 }
 
@@ -61,7 +68,10 @@ wait_for_android_ready() {
     adb_state="$("$ADB" get-state 2>/dev/null || true)"
     if [[ "$adb_state" == "device" ]]; then
       boot_state="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-      if [[ "$boot_state" == "1" ]]; then
+      if [[ "$boot_state" == "1" ]] && \
+         "$ADB" shell settings get global window_animation_scale >/dev/null 2>&1 && \
+         "$ADB" shell pm path android >/dev/null 2>&1 && \
+         "$ADB" shell am get-current-user >/dev/null 2>&1; then
         return 0
       fi
     fi
@@ -144,7 +154,10 @@ preserve_failed_macro_evidence() {
   echo "Preserving Macrobenchmark failure traces from ${remote_dir}"
   "$ADB" shell "ls -lah $remote_dir" || true
   "$ADB" pull "$remote_dir" "$local_dir/" || true
-  find "$local_dir" -type f \( -name '*.perfetto-trace' -o -name '*-benchmarkData.json' \) -print || true
+  if "$ADB" get-state >/dev/null 2>&1; then
+    "$ADB" shell logcat -d -v threadtime 2>/dev/null | tail -n 800 >"$local_dir/guest-logcat-tail.txt" || true
+  fi
+  find "$local_dir" -type f \( -name '*.perfetto-trace' -o -name '*-benchmarkData.json' -o -name 'guest-logcat-tail.txt' \) -print || true
 }
 
 cd "$ROOT"
@@ -176,6 +189,33 @@ if [[ -e /dev/kvm ]]; then
 else
   echo "KVM unavailable; using software acceleration fallback"
 fi
+
+# Build every APK before starting the benchmark guest. Keeping an Android 15 emulator alive while
+# Gradle/KSP/CMake/R8 run for several minutes has produced system_server crashes before the first
+# benchmark case, yielding no performance evidence. Building first preserves the exact benchmark
+# image/RAM/GPU/SLO/baseline while ensuring measurement starts on a fresh guest.
+cd "$ANDROID_DIR"
+./gradlew --no-daemon --warning-mode all \
+  :app:assembleBenchmark :macrobenchmark:assembleBenchmark \
+  :app:assembleProfile :macrobenchmark:assembleProfile
+BENCHMARK_TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
+BENCHMARK_TEST_APK="$(find "$ANDROID_DIR/macrobenchmark/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
+PROFILE_TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/profile" -type f -name '*.apk' -print -quit)"
+PROFILE_TEST_APK="$(find "$ANDROID_DIR/macrobenchmark/build/outputs/apk/profile" -type f -name '*.apk' -print -quit)"
+for pair in \
+  "benchmark target:$BENCHMARK_TARGET_APK" \
+  "benchmark test:$BENCHMARK_TEST_APK" \
+  "profile target:$PROFILE_TARGET_APK" \
+  "profile test:$PROFILE_TEST_APK"; do
+  label="${pair%%:*}"
+  path="${pair#*:}"
+  if [[ -z "$path" || ! -f "$path" ]]; then
+    echo "${label} APK was not produced" >&2
+    exit 1
+  fi
+done
+cd "$ROOT"
+echo "Performance APKs built before emulator start; launching fresh measurement guest"
 
 rm -rf "$AVD_HOME"
 mkdir -p "$AVD_HOME"
@@ -233,6 +273,9 @@ done
 if (( booted == 0 )); then
   fail_emulator "Android emulator did not finish booting within ${BOOT_TIMEOUT_SECONDS}s"
 fi
+if ! wait_for_android_ready 120; then
+  fail_emulator "Android framework services were not ready after benchmark guest boot"
+fi
 
 "$ADB" shell input keyevent 82 || true
 "$ADB" shell settings put secure immersive_mode_confirmations confirmed
@@ -247,27 +290,6 @@ fi
 "$ADB" shell getprop ro.build.version.release
 "$ADB" shell getprop ro.product.cpu.abi
 
-cd "$ANDROID_DIR"
-./gradlew --no-daemon --warning-mode all \
-  :app:assembleBenchmark :macrobenchmark:assembleBenchmark \
-  :app:assembleProfile :macrobenchmark:assembleProfile
-BENCHMARK_TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
-BENCHMARK_TEST_APK="$(find "$ANDROID_DIR/macrobenchmark/build/outputs/apk/benchmark" -type f -name '*.apk' -print -quit)"
-PROFILE_TARGET_APK="$(find "$ANDROID_DIR/app/build/outputs/apk/profile" -type f -name '*.apk' -print -quit)"
-PROFILE_TEST_APK="$(find "$ANDROID_DIR/macrobenchmark/build/outputs/apk/profile" -type f -name '*.apk' -print -quit)"
-for pair in \
-  "benchmark target:$BENCHMARK_TARGET_APK" \
-  "benchmark test:$BENCHMARK_TEST_APK" \
-  "profile target:$PROFILE_TARGET_APK" \
-  "profile test:$PROFILE_TEST_APK"; do
-  label="${pair%%:*}"
-  path="${pair#*:}"
-  if [[ -z "$path" || ! -f "$path" ]]; then
-    echo "${label} APK was not produced" >&2
-    exit 1
-  fi
-done
-
 # Stage 1: production-like R8 target. The hosted result is frozen before any generated profile exists.
 install_pair "R8 Macrobenchmark" "$BENCHMARK_TARGET_APK" "$BENCHMARK_TEST_APK"
 rm -rf "$RESULT_ROOT"
@@ -279,17 +301,7 @@ MACRO_REMOTE="$REMOTE_RESULT_ROOT/macro"
 MACRO_CLASS="com.junchen.jingdu.macrobenchmark.ReaderJourneyBenchmark"
 if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation.log" "$MACRO_CLASS"; then
   preserve_failed_macro_evidence "$MACRO_REMOTE"
-  echo "Macrobenchmark instrumentation aborted before valid evidence; attempting one bounded guest recovery" >&2
-  if ! wait_for_android_ready 120; then
-    fail_emulator "Android guest did not recover after Macrobenchmark instrumentation abort"
-  fi
-  "$ADB" shell settings put global window_animation_scale 0 || true
-  "$ADB" shell settings put global transition_animation_scale 0 || true
-  "$ADB" shell settings put global animator_duration_scale 0 || true
-  if ! run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation-retry.log" "$MACRO_CLASS"; then
-    preserve_failed_macro_evidence "$MACRO_REMOTE"
-    fail_emulator "Reader Macrobenchmark instrumentation failed after one guest recovery"
-  fi
+  fail_emulator "Reader Macrobenchmark instrumentation failed on fresh measurement guest"
 fi
 REMOTE_JSON="$("$ADB" shell "ls -1 $MACRO_REMOTE/*-benchmarkData.json 2>/dev/null | head -n 1" | tr -d '\r')"
 if [[ -z "$REMOTE_JSON" ]]; then
@@ -311,7 +323,7 @@ set -e
 find "$RESULT_ROOT/macro" -type f -name '*-benchmarkData.json' -print -quit | grep -q .
 
 # A red hosted regression is a product result. Preserve its traces before any later Profile failure
-# can terminate the shell; install_pair below re-validates/re-recovers adbd after this evidence pull.
+# can terminate the shell; install_pair below re-validates the still-live guest before swapping APKs.
 if (( SLO_STATUS != 0 )); then
   preserve_failed_macro_evidence "$MACRO_REMOTE"
 fi
