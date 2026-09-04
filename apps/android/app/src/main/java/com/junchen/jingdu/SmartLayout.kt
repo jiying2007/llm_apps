@@ -66,7 +66,7 @@ internal object SmartLayout {
                 b.codePointCount(0, b.length) !in MIN_NEXT_CP..MAX_LINE_CP) continue
             if (ReaderHeadingClassifier.isHeading(a) || ReaderHeadingClassifier.isHeading(b)) continue
             plausible++
-            if (canJoinForEvidence(lines[index], lines[index + 1])) joinable++
+            if (canJoinInternal(lines[index], lines[index + 1], protectStructure = false)) joinable++
         }
         if (joinable < MIN_JOINABLE_BREAKS || plausible <= 0) return false
 
@@ -77,8 +77,15 @@ internal object SmartLayout {
         return consistentWidth && joinable.toDouble() / plausible.toDouble() >= MIN_JOINABLE_RATIO
     }
 
-    /** Pre-structure-protection join predicate used only for bounded hard-wrap evidence. */
-    private fun canJoinForEvidence(rawCurrent: String, rawNext: String): Boolean {
+    private fun canJoin(rawCurrent: String, rawNext: String): Boolean =
+        canJoinInternal(rawCurrent, rawNext, protectStructure = true)
+
+    /**
+     * Shared predicate for evidence and final newline removal. Keeping the established checks in one
+     * pass avoids re-trimming the same pair on every hard-wrapped page turn. Evidence deliberately
+     * skips structure classification so normal detection semantics stay identical to main.
+     */
+    private fun canJoinInternal(rawCurrent: String, rawNext: String, protectStructure: Boolean): Boolean {
         if (rawCurrent.isBlank() || rawNext.isBlank()) return false
         if (hasParagraphIndent(rawNext)) return false
         val current = rawCurrent.trimEnd()
@@ -89,18 +96,7 @@ internal object SmartLayout {
         val nextCp = next.codePointCount(0, next.length)
         if (currentCp !in MIN_LINE_CP..MAX_LINE_CP || nextCp !in MIN_NEXT_CP..MAX_LINE_CP) return false
         if (endsParagraph(current) || startsFreshBlockForEvidence(next)) return false
-        return true
-    }
-
-    /**
-     * Final newline-removal predicate. This is reached only after hard-wrap detection, so richer
-     * structure classification does not sit on the normal page-turn path.
-     */
-    private fun canJoin(rawCurrent: String, rawNext: String): Boolean {
-        if (!canJoinForEvidence(rawCurrent, rawNext)) return false
-        val current = rawCurrent.trimEnd()
-        val next = rawNext.trimStart()
-        if (isStructuralLine(current) || isStructuralLine(next)) return false
+        if (protectStructure && (isStructuralLine(current) || isStructuralLine(next))) return false
         return true
     }
 
