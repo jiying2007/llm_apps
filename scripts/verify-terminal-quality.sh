@@ -3,7 +3,7 @@ set -euo pipefail
 
 required=(
   docs/PRODUCT.md docs/PERFORMANCE_SLO.md docs/SMART_CLEAN_ARCHITECTURE.md docs/COMPETITIVE_MOAT.md
-  docs/GROWTH_MONETIZATION.md docs/RELEASE.md docs/PRODUCTION_READINESS.md docs/PRODUCT_MATURITY.md
+  docs/GROWTH_MONETIZATION.md docs/RELEASE.md docs/PRODUCTION_READINESS.md docs/PRODUCT_MATURITY.md docs/READING_EXPERIENCE.md
   THIRD_PARTY_NOTICES.md third_party/NOTICE.md
   core/native/tests/core_performance_gate_test.cpp
   apps/android/app/src/main/java/com/junchen/jingdu/TxtDoctor.kt
@@ -20,6 +20,7 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/TtsPlaybackService.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderTtsPlayer.kt
   apps/android/app/src/main/java/com/junchen/jingdu/TtsSemanticNavigator.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/TtsPronunciationStore.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderMotionController.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderViewportEngine.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderAnnotationStore.kt
@@ -32,18 +33,30 @@ required=(
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderQuickPanels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderInsightsPanels.kt
   apps/android/app/src/main/java/com/junchen/jingdu/ReaderPresentationPipeline.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/SmartLayout.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderVisualContinuity.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderSystemMotion.kt
+  apps/android/app/src/main/java/com/junchen/jingdu/ReaderReadingPresets.kt
   apps/android/app/src/main/java/com/junchen/jingdu/TextProjection.kt
   apps/android/app/src/test/java/com/junchen/jingdu/BillingEntitlementPolicyTest.kt
   apps/android/app/src/test/java/com/junchen/jingdu/PrivateFilePublisherTest.kt
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
   apps/android/app/src/test/java/com/junchen/jingdu/ReaderFoundationsTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/SmartLayoutTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/ReaderCjkTypographyTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/ReaderVisualContinuityTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/ReaderAdaptiveLayoutTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/ReaderSystemMotionTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/ReaderReadingPresetsTest.kt
+  apps/android/app/src/test/java/com/junchen/jingdu/TtsPronunciationStoreTest.kt
   apps/android/app/src/androidTest/java/com/junchen/jingdu/ProductDiagnosticsTest.kt
+  apps/android/app/src/androidTest/java/com/junchen/jingdu/TtsPronunciationBackupTest.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/ReaderJourneyBenchmark.kt
   apps/android/macrobenchmark/src/main/java/com/junchen/jingdu/macrobenchmark/BaselineProfileGenerator.kt
   quality/smartclean/eval-v2-matrix.json
   scripts/check-android-performance-slo.py scripts/run-android-macrobenchmark-ci.sh
   scripts/run-android-functional-tests-ci.sh scripts/verify-android-16k-page-size.sh scripts/verify-product-maturity.sh
-  scripts/train-smartclean-model.py scripts/verify-smartclean-model.py scripts/verify-reader.sh
+  scripts/train-smartclean-model.py scripts/verify-smartclean-model.py scripts/verify-reader.sh scripts/verify-reading-experience.sh
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "terminal-quality asset missing: $path" >&2; exit 1; }; done
 
@@ -67,7 +80,7 @@ grep -q 'TinyLocalSemanticCandidateClassifier' apps/android/app/src/main/java/co
 python3 scripts/train-smartclean-model.py --verify-source apps/android/app/src/main/java/com/junchen/jingdu/SemanticCandidateClassifier.kt
 python3 scripts/verify-smartclean-model.py
 
-bash ./scripts/verify-reader.sh
+bash ./scripts/verify-reading-experience.sh
 bash ./scripts/verify-product-maturity.sh
 grep -q ':app:testDebugUnitTest' apps/android/build.gradle
 grep -q 'repeat(100_000)' apps/android/app/src/test/java/com/junchen/jingdu/ReaderMotionControllerTest.kt
