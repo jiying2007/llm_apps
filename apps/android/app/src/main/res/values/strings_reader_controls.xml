@@ -34,7 +34,7 @@
     <string name="reader_show_battery">Show battery</string>
     <string name="reader_letter_spacing">Letter spacing</string>
     <string name="reader_paragraph_spacing">Paragraph spacing</string>
-    <string name="reader_compress_blank_lines">Smart layout for messy TXT</string>
+    <string name="reader_compress_blank_lines">Smart layout</string>
     <string name="reader_emphasize_headings">Emphasize detected headings</string>
     <string name="reader_font_monospace">Monospace</string>
     <string name="reader_font_custom">Custom font</string>
