@@ -15,6 +15,8 @@ LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-emulator.log"
 FONT_SCALE_LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-font-scale-200.log"
 BOOT_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_BOOT_TIMEOUT_SECONDS:-300}"
 FRAMEWORK_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_FRAMEWORK_TIMEOUT_SECONDS:-90}"
+EMULATOR_MEMORY_MB="${JINGDU_FUNCTIONAL_EMULATOR_MEMORY_MB:-4096}"
+MIN_GUEST_MEMORY_KB="${JINGDU_FUNCTIONAL_MIN_GUEST_MEMORY_KB:-3500000}"
 EMULATOR_PID=""
 
 cleanup() {
@@ -67,9 +69,11 @@ echo no | "$AVDMANAGER" create avd \
 
 : >"$LOG"
 : >"$FONT_SCALE_LOG"
+echo "Android functional emulator requested RAM: ${EMULATOR_MEMORY_MB}MB"
 "$EMULATOR" -avd "$AVD_NAME" \
   -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -no-metrics \
   -gpu swiftshader_indirect -accel on -camera-back none -camera-front none \
+  -memory "$EMULATOR_MEMORY_MB" \
   >"$LOG" 2>&1 &
 EMULATOR_PID=$!
 echo "Android functional emulator PID: $EMULATOR_PID"
@@ -130,7 +134,16 @@ if [[ "$PAGE_SIZE" != "16384" ]]; then
   fail_emulator "Functional emulator is not a 16 KiB runtime: PAGE_SIZE=$PAGE_SIZE"
 fi
 
-echo "Android functional runtime confirmed: PAGE_SIZE=$PAGE_SIZE image=$IMAGE"
+# The Google APIs 16 KiB image plus the full app instrumentation suite can exhaust the Pixel 6 AVD's
+# default ~2.5 GiB guest and trigger system-wide lowmemorykiller deaths. That is not valid product-test
+# evidence: the activity/package services can disappear before UTP receives an assertion result.
+# Pin a larger guest and verify that the emulator actually honored it before running any tests.
+MEM_TOTAL_KB="$("$ADB" shell awk '/^MemTotal:/ {print $2}' /proc/meminfo | tr -d '\r[:space:]')"
+if [[ ! "$MEM_TOTAL_KB" =~ ^[0-9]+$ ]] || (( MEM_TOTAL_KB < MIN_GUEST_MEMORY_KB )); then
+  fail_emulator "Functional emulator guest RAM is below the stability floor: MemTotal=${MEM_TOTAL_KB:-unknown}kB minimum=${MIN_GUEST_MEMORY_KB}kB"
+fi
+
+echo "Android functional runtime confirmed: PAGE_SIZE=$PAGE_SIZE image=$IMAGE MemTotal=${MEM_TOTAL_KB}kB"
 "$ADB" shell input keyevent 82 >/dev/null 2>&1 || true
 "$ADB" shell settings put global window_animation_scale 0
 "$ADB" shell settings put global transition_animation_scale 0
