@@ -6,14 +6,23 @@ ANDROID_DIR="$ROOT/apps/android"
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
 NDK_VERSION="29.0.14206865"
 NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
+SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+if [[ ! -d "$NDK_DIR" ]]; then
+  [[ -x "$SDKMANAGER" ]] || { echo "sdkmanager missing: $SDKMANAGER" >&2; exit 1; }
+  yes | "$SDKMANAGER" --licenses >/dev/null || true
+  "$SDKMANAGER" "ndk;$NDK_VERSION" >/dev/null
+fi
 
 cd "$ANDROID_DIR"
 ./gradlew --no-daemon --warning-mode all :app:assembleRelease :app:bundleRelease
 
 APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f \( -name 'app-release.apk' -o -name 'app-release-unsigned.apk' \) -print -quit)"
 AAB="app/build/outputs/bundle/release/app-release.aab"
+SYMBOL_ZIP="app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip"
 [[ -n "$APK" && -s "$APK" ]] || { echo "release APK missing" >&2; exit 1; }
 [[ -s "$AAB" ]] || { echo "release AAB missing" >&2; exit 1; }
+[[ -s "$SYMBOL_ZIP" ]] || { echo "FULL native debug symbols missing: $SYMBOL_ZIP" >&2; exit 1; }
 [[ -d "$NDK_DIR" ]] || { echo "pinned NDK missing: $NDK_DIR" >&2; exit 1; }
 
 READELF="$(find "$NDK_DIR/toolchains/llvm/prebuilt" -type f -name llvm-readelf -perm -111 -print -quit)"
@@ -47,7 +56,9 @@ done
 # Keep the build contract explicit so a future toolchain downgrade cannot silently remove support.
 grep -Fq 'ndkVersion = "29.0.14206865"' app/build.gradle
 grep -Fq 'debugSymbolLevel = "FULL"' app/build.gradle
+unzip -l "$SYMBOL_ZIP" | grep -qE '\.(so|dbg|sym)$|libjingdu_(native|core)'
 
 echo "Android 16 KiB page-size packaging gate PASS"
 echo "Pinned NDK: $NDK_VERSION"
 echo "Release AAB: $AAB"
+echo "Native symbols: $SYMBOL_ZIP"
