@@ -16,6 +16,7 @@ BOOT_TIMEOUT_SECONDS="${JINGDU_FUNCTIONAL_BOOT_TIMEOUT_SECONDS:-300}"
 EMULATOR_PID=""
 
 cleanup() {
+  "$ADB" shell settings put system font_scale 1.0 >/dev/null 2>&1 || true
   "$ADB" emu kill >/dev/null 2>&1 || true
   if [[ -n "$EMULATOR_PID" ]] && kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
     kill "$EMULATOR_PID" >/dev/null 2>&1 || true
@@ -118,4 +119,20 @@ echo "JingduUiTest source SHA256: $(sha256sum "$TEST_SOURCE" | awk '{print $1}')
 # are source-bound. Root clean is harmless, while the execution target is deliberately app-scoped.
 ./gradlew --no-daemon --warning-mode all --no-build-cache clean :app:connectedDebugAndroidTest
 
+# Reuse the same source-bound UI suite at Android's 200% font scale. This is a hosted layout and
+# discoverability regression gate, not a claim that emulator testing replaces physical TalkBack/OEM
+# qualification. Keeping it in the functional job avoids changing Reader performance definitions,
+# thresholds, baselines or benchmark workloads.
+echo "Running JingduUiTest at Android font_scale=2.0"
+"$ADB" shell settings put system font_scale 2.0
+FONT_SCALE="$("$ADB" shell settings get system font_scale | tr -d '\r[:space:]')"
+if [[ "$FONT_SCALE" != "2.0" && "$FONT_SCALE" != "2" ]]; then
+  fail_emulator "Failed to configure Android 200% font scale: font_scale=$FONT_SCALE"
+fi
+./gradlew --no-daemon --warning-mode all --no-build-cache \
+  :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.junchen.jingdu.JingduUiTest
+"$ADB" shell settings put system font_scale 1.0
+
+echo "Android 200% font-scale JingduUiTest PASS"
 echo "Android functional instrumentation suite PASS on 16 KiB runtime"
