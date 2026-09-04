@@ -73,6 +73,90 @@ try_isolate_nexus_launcher() {
   return 0
 }
 
+wait_for_framework_services() {
+  local phase="$1"
+  local context="$2"
+  local second
+
+  for ((second = 1; second <= FRAMEWORK_TIMEOUT_SECONDS; second++)); do
+    if ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
+      wait "$EMULATOR_PID" || true
+      fail_emulator "Android ${phase} emulator exited while waiting for framework services ${context}"
+    fi
+    if "$ADB" shell settings get global window_animation_scale >/dev/null 2>&1 && \
+       "$ADB" shell pm path android >/dev/null 2>&1 && \
+       "$ADB" shell am get-current-user >/dev/null 2>&1; then
+      echo "Android ${phase} framework services ready in ${second}s ${context}"
+      return 0
+    fi
+    if (( second % 10 == 0 )); then
+      echo "Waiting for Android ${phase} framework services ${context}: ${second}s/${FRAMEWORK_TIMEOUT_SECONDS}s"
+    fi
+    sleep 1
+  done
+  fail_emulator "Android ${phase} framework services were not ready within ${FRAMEWORK_TIMEOUT_SECONDS}s ${context}"
+}
+
+stabilize_art_gc() {
+  local phase="$1"
+  local build_type old_pid new_pid gc_type background_gc second cc_seen=0 adb_state
+
+  # This Android 15 16 KiB userdebug image has also produced a fatal system_server
+  # ReferenceQueueDaemon NPE immediately after a Concurrent Mark Compact (CMC) collection. That is
+  # an ART/image failure, not a Jingdu process failure. ART supports selecting the GC plan through
+  # dalvik.vm.gctype. Restart only the hosted test framework under Concurrent Copying (CC), then fail
+  # closed unless the restarted system_server explicitly reports CollectorTypeCC before testing.
+  build_type="$("$ADB" shell getprop ro.build.type 2>/dev/null | tr -d '\r[:space:]')"
+  if [[ "$build_type" != "userdebug" && "$build_type" != "eng" ]]; then
+    fail_emulator "Android ${phase} functional image must be debuggable before applying ART GC stability guard: build_type=${build_type:-unknown}"
+  fi
+
+  old_pid="$("$ADB" shell pidof system_server 2>/dev/null | tr -d '\r[:space:]')"
+  [[ "$old_pid" =~ ^[0-9]+$ ]] || fail_emulator "Android ${phase} system_server PID unavailable before ART GC restart"
+
+  "$ADB" root >/dev/null 2>&1 || fail_emulator "Android ${phase} failed to restart adbd as root for ART GC stability guard"
+  for ((second = 1; second <= 30; second++)); do
+    adb_state="$("$ADB" get-state 2>/dev/null || true)"
+    [[ "$adb_state" == "device" ]] && break
+    sleep 1
+  done
+  [[ "${adb_state:-}" == "device" ]] || fail_emulator "Android ${phase} adb did not reconnect after adb root"
+
+  "$ADB" shell setprop dalvik.vm.gctype CC \
+    || fail_emulator "Android ${phase} could not select ART foreground CC collector"
+  "$ADB" shell setprop dalvik.vm.backgroundgctype CC \
+    || fail_emulator "Android ${phase} could not select ART background CC collector"
+  gc_type="$("$ADB" shell getprop dalvik.vm.gctype | tr -d '\r[:space:]')"
+  background_gc="$("$ADB" shell getprop dalvik.vm.backgroundgctype | tr -d '\r[:space:]')"
+  if [[ "$gc_type" != "CC" || "$background_gc" != "CC" ]]; then
+    fail_emulator "Android ${phase} ART GC properties were not accepted: foreground=${gc_type:-unknown} background=${background_gc:-unknown}"
+  fi
+
+  "$ADB" logcat -c >/dev/null 2>&1 || true
+  "$ADB" shell stop >/dev/null 2>&1 \
+    || fail_emulator "Android ${phase} failed to stop framework for ART GC restart"
+  "$ADB" shell start >/dev/null 2>&1 \
+    || fail_emulator "Android ${phase} failed to restart framework with ART CC collector"
+  wait_for_framework_services "$phase" "after ART CC restart"
+
+  new_pid="$("$ADB" shell pidof system_server 2>/dev/null | tr -d '\r[:space:]')"
+  if [[ ! "$new_pid" =~ ^[0-9]+$ || "$new_pid" == "$old_pid" ]]; then
+    fail_emulator "Android ${phase} system_server did not restart for ART GC guard: before=$old_pid after=${new_pid:-unknown}"
+  fi
+
+  for ((second = 1; second <= 30; second++)); do
+    if "$ADB" shell logcat -d -v brief -s system_server 2>/dev/null | grep -q 'Using CollectorTypeCC GC'; then
+      cc_seen=1
+      break
+    fi
+    sleep 1
+  done
+  if (( cc_seen == 0 )); then
+    fail_emulator "Android ${phase} restarted system_server did not confirm CollectorTypeCC GC"
+  fi
+  echo "Android ${phase} ART runtime stabilized: system_server ${old_pid}->${new_pid} foreground=CC background=CC"
+}
+
 finalize_test_system_ui() {
   local phase="$1"
 
@@ -108,8 +192,7 @@ start_emulator() {
   echo "Android ${phase} emulator PID: $EMULATOR_PID"
   "$ADB" start-server >/dev/null
 
-  local booted=0
-  local launcher_isolated=0
+  local booted=0 launcher_isolated=0
   local second adb_state boot
   for ((second = 1; second <= BOOT_TIMEOUT_SECONDS; second++)); do
     if ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
@@ -137,30 +220,8 @@ start_emulator() {
     fail_emulator "Android ${phase} 16 KiB emulator failed to boot with NexusLauncher isolated within ${BOOT_TIMEOUT_SECONDS}s"
   fi
 
-  # sys.boot_completed can become 1 before framework binder services are actually ready on a fresh
-  # hosted emulator. Require SettingsProvider, PackageManager and ActivityManager before accepting
-  # either lifecycle as test evidence.
-  local framework_ready=0
-  for ((second = 1; second <= FRAMEWORK_TIMEOUT_SECONDS; second++)); do
-    if ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
-      wait "$EMULATOR_PID" || true
-      fail_emulator "Android ${phase} emulator exited while waiting for framework services"
-    fi
-    if "$ADB" shell settings get global window_animation_scale >/dev/null 2>&1 && \
-       "$ADB" shell pm path android >/dev/null 2>&1 && \
-       "$ADB" shell am get-current-user >/dev/null 2>&1; then
-      framework_ready=1
-      echo "Android ${phase} framework services ready in ${second}s after boot acceptance"
-      break
-    fi
-    if (( second % 10 == 0 )); then
-      echo "Waiting for Android ${phase} framework services: ${second}s/${FRAMEWORK_TIMEOUT_SECONDS}s"
-    fi
-    sleep 1
-  done
-  if (( framework_ready == 0 )); then
-    fail_emulator "Android ${phase} framework services were not ready within ${FRAMEWORK_TIMEOUT_SECONDS}s"
-  fi
+  wait_for_framework_services "$phase" "after boot acceptance"
+  stabilize_art_gc "$phase"
 
   local page_size mem_total_kb
   page_size="$("$ADB" shell getconf PAGE_SIZE | tr -d '\r[:space:]')"
@@ -175,7 +236,7 @@ start_emulator() {
     fail_emulator "Android ${phase} guest RAM is below the stability floor: MemTotal=${mem_total_kb:-unknown}kB minimum=${MIN_GUEST_MEMORY_KB}kB"
   fi
 
-  echo "Android ${phase} runtime confirmed: PAGE_SIZE=$page_size image=$IMAGE MemTotal=${mem_total_kb}kB"
+  echo "Android ${phase} runtime confirmed: PAGE_SIZE=$page_size image=$IMAGE MemTotal=${mem_total_kb}kB ART_GC=CC"
   finalize_test_system_ui "$phase"
   "$ADB" shell input keyevent 82 >/dev/null 2>&1 || true
   "$ADB" shell settings put global window_animation_scale 0
@@ -235,11 +296,8 @@ TEST_APK_SHA="$(sha256sum "$TEST_APK" | awk '{print $1}')"
 echo "Functional app APK SHA256: $APP_APK_SHA"
 echo "Functional androidTest APK SHA256: $TEST_APK_SHA"
 
-# A completed UTP run can leave Android 15's 16 KiB Google APIs system_server under enough GC/WM
-# pressure that a second instrumentation command aborts before test 1, even when the first 29 tests
-# all passed and the guest has 6 GiB RAM. Do not carry that system state into accessibility evidence.
-# Start a fresh -wipe-data lifecycle and install the exact APK bytes produced above; this keeps the
-# 200% pass source-bound while making the two acceptance passes independent at the Android runtime.
+# Do not carry UTP/framework state from the normal suite into accessibility evidence. Start a fresh
+# -wipe-data lifecycle, apply the same ART/Smartspace guards, and install the exact APK bytes above.
 stop_emulator
 start_emulator "200% font-scale"
 
