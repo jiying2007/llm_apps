@@ -27,6 +27,7 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.app_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.library_tagline_terminal)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.empty_title)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.import_txt)).assertIsDisplayed().performClick()
         composeRule.onNodeWithText(context.getString(R.string.select_txt)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.select_multiple_txt)).assertIsDisplayed()
     }
@@ -73,34 +74,34 @@ class JingduUiTest {
     }
 
     @Test fun pagedReaderRightTapAlwaysHasAReachableNextPath() {
-    var nextCount = 0
-    composeRule.setContent {
-        JingduApp(
-            AppUiState(
-                screen = AppScreen.READER,
-                currentBook = sampleBook(),
-                pageText = "Chapter 1\nA stable body used for real edge-tap paging verification.",
-                position = 500,
-                length = 10_000,
-                chapters = listOf(ChapterModel(0, "Chapter 1")),
-                chaptersLoaded = true,
-                settings = ReaderSettings(
-                    gestureCoachDismissed = true,
-                    tapPagingEnabled = false,
-                    swipePagingEnabled = false,
-                ).withReachablePagedNavigation(),
-            ),
-            noOpActions().copy(onNavigateNext = { nextCount++ }),
-        )
+        var nextCount = 0
+        composeRule.setContent {
+            JingduApp(
+                AppUiState(
+                    screen = AppScreen.READER,
+                    currentBook = sampleBook(),
+                    pageText = "Chapter 1\nA stable body used for real edge-tap paging verification.",
+                    position = 500,
+                    length = 10_000,
+                    chapters = listOf(ChapterModel(0, "Chapter 1")),
+                    chaptersLoaded = true,
+                    settings = ReaderSettings(
+                        gestureCoachDismissed = true,
+                        tapPagingEnabled = false,
+                        swipePagingEnabled = false,
+                    ).withReachablePagedNavigation(),
+                ),
+                noOpActions().copy(onNavigateNext = { nextCount++ }),
+            )
+        }
+        val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
+        val bounds = surface.fetchSemanticsNode().boundsInRoot
+        surface.performTouchInput {
+            click(androidx.compose.ui.geometry.Offset(bounds.width * 0.88f, bounds.height * 0.50f))
+        }
+        composeRule.waitForIdle()
+        assertEquals(1, nextCount)
     }
-    val surface = composeRule.onNodeWithContentDescription(context.getString(R.string.reader_surface))
-    val bounds = surface.fetchSemanticsNode().boundsInRoot
-    surface.performTouchInput {
-        click(androidx.compose.ui.geometry.Offset(bounds.width * 0.88f, bounds.height * 0.50f))
-    }
-    composeRule.waitForIdle()
-    assertEquals(1, nextCount)
-}
 
     @Test fun readerChromePrioritizesAaAndContextualTools() {
         composeRule.setContent {
@@ -263,10 +264,7 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.batch_import_picker_hint)).assertIsDisplayed()
     }
 
-    private fun sampleBook() = BookCardModel(
-        id = "a".repeat(64), name = "Long Novel.txt", encoding = "UTF-8", sizeBytes = 1024,
-        progress = 500, charCount = 10_000, touchedAt = 1, normalizedSha256 = "b".repeat(64),
-    )
+    private fun sampleBook() = ReaderInstrumentationFixture.book(context)
 
     private fun noOpActions() = JingduActions(
         onImport = {}, onBatchImport = {}, onOpenBook = {}, onDeleteLibraryBook = {},
