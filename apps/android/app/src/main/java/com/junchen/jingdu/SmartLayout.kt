@@ -101,39 +101,70 @@ internal object SmartLayout {
     }
 
     /**
-     * Protect structure that frequently appears inside downloaded Chinese web-novel TXT. These
-     * lines can have the same visual width as hard-wrapped prose, but joining them would destroy
-     * list items, scene breaks or dialogue-turn semantics. Precision is intentionally preferred
-     * over recovering every possible wrap.
+     * Protect structure that frequently appears inside downloaded Chinese web-novel TXT. Normal
+     * prose must stay extremely cheap because this predicate is used by the bounded page-turn
+     * analysis path. Only a small set of suspicious leading characters enter the deeper scan.
      */
     private fun isStructuralLine(value: String): Boolean {
-        val trimmed = value.trim()
-        if (trimmed.isEmpty()) return true
-        val first = trimmed.first()
-        if (first in LIST_MARKERS) return true
-        if (trimmed.startsWith("——") || trimmed.startsWith("---") || trimmed.startsWith("***") ||
-            trimmed.startsWith("###") || trimmed.startsWith("~~~") || trimmed.startsWith("～～～")) return true
-        if (startsNumberedList(trimmed)) return true
-        return looksLikeSceneSeparator(trimmed)
+        if (value.isEmpty()) return true
+        var start = 0
+        var end = value.length
+        while (start < end && value[start].isWhitespace()) start++
+        if (start >= end) return true
+        while (end > start && value[end - 1].isWhitespace()) end--
+
+        val first = value[start]
+        if (first !in STRUCTURAL_PREFIXES) return false
+        if (first in LIST_MARKERS || first == '—') return true
+        if (startsRepeatedSeparator(value, start, end)) return true
+        if (startsNumberedList(value, start, end)) return true
+        return looksLikeSceneSeparator(value, start, end)
     }
 
-    private fun startsNumberedList(value: String): Boolean {
-        var cursor = 0
-        while (cursor < value.length && cursor < 3 && value[cursor].isDigit()) cursor++
-        if (cursor > 0 && cursor < value.length && value[cursor] in LIST_SUFFIXES) return true
-        if (value.length >= 3 && value.first() in "（(" && value[1].isDigit()) {
-            val close = value.indexOfFirst { it in "）)" }
-            if (close in 2..4) return true
+    private fun startsRepeatedSeparator(value: String, start: Int, end: Int): Boolean {
+        val remaining = end - start
+        if (remaining < 2) return false
+        val first = value[start]
+        if (first == '—' && value[start + 1] == '—') return true
+        if (remaining < 3) return false
+        return when (first) {
+            '-', '*', '#', '~', '～' -> value[start + 1] == first && value[start + 2] == first
+            else -> false
         }
-        var chineseDigits = 0
-        while (chineseDigits < value.length && chineseDigits < 4 && value[chineseDigits] in CHINESE_NUMERALS) chineseDigits++
-        return chineseDigits > 0 && chineseDigits < value.length && value[chineseDigits] in LIST_SUFFIXES
     }
 
-    private fun looksLikeSceneSeparator(value: String): Boolean {
-        if (value.length < 3 || value.length > 24) return false
+    private fun startsNumberedList(value: String, start: Int, end: Int): Boolean {
+        var cursor = start
+        var digits = 0
+        while (cursor < end && digits < 3 && value[cursor].isDigit()) {
+            cursor++
+            digits++
+        }
+        if (digits > 0 && cursor < end && value[cursor] in LIST_SUFFIXES) return true
+
+        if (end - start >= 3 && value[start] in "（(" && value[start + 1].isDigit()) {
+            var close = start + 2
+            while (close < end && close <= start + 4) {
+                if (value[close] in "）)") return true
+                close++
+            }
+        }
+
+        cursor = start
+        var chineseDigits = 0
+        while (cursor < end && chineseDigits < 4 && value[cursor] in CHINESE_NUMERALS) {
+            cursor++
+            chineseDigits++
+        }
+        return chineseDigits > 0 && cursor < end && value[cursor] in LIST_SUFFIXES
+    }
+
+    private fun looksLikeSceneSeparator(value: String, start: Int, end: Int): Boolean {
+        val length = end - start
+        if (length !in 3..24) return false
         var meaningful = 0
-        for (char in value) {
+        for (index in start until end) {
+            val char = value[index]
             if (char.isWhitespace()) continue
             if (char !in SCENE_SEPARATOR_MARKERS) return false
             meaningful++
@@ -163,4 +194,5 @@ internal object SmartLayout {
     private const val LIST_SUFFIXES = ".、)）"
     private const val CHINESE_NUMERALS = "零〇一二三四五六七八九十百"
     private const val SCENE_SEPARATOR_MARKERS = "*-—_=~～·※◆◇○●☆★"
+    private const val STRUCTURAL_PREFIXES = LIST_MARKERS + "—-*#~～_=（(" + CHINESE_NUMERALS + "0123456789"
 }
