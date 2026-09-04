@@ -138,7 +138,8 @@ fi
 # default ~2.5 GiB guest and trigger system-wide lowmemorykiller deaths. That is not valid product-test
 # evidence: the activity/package services can disappear before UTP receives an assertion result.
 # Pin a larger guest and verify that the emulator actually honored it before running any tests.
-MEM_TOTAL_KB="$("$ADB" shell awk '/^MemTotal:/ {print $2}' /proc/meminfo | tr -d '\r[:space:]')"
+# Parse /proc/meminfo on the host side so adb-shell quoting cannot corrupt the awk/sed program.
+MEM_TOTAL_KB="$("$ADB" shell cat /proc/meminfo | tr -d '\r' | sed -n 's/^MemTotal:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)"
 if [[ ! "$MEM_TOTAL_KB" =~ ^[0-9]+$ ]] || (( MEM_TOTAL_KB < MIN_GUEST_MEMORY_KB )); then
   fail_emulator "Functional emulator guest RAM is below the stability floor: MemTotal=${MEM_TOTAL_KB:-unknown}kB minimum=${MIN_GUEST_MEMORY_KB}kB"
 fi
