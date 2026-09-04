@@ -122,14 +122,15 @@ echo "JingduUiTest source SHA256: $(sha256sum "$TEST_SOURCE" | awk '{print $1}')
 # Reuse the same source-bound UI suite at Android's 200% font scale. This is a hosted layout and
 # discoverability regression gate, not a claim that emulator testing replaces physical TalkBack/OEM
 # qualification. Keeping it in the functional job avoids changing Reader performance definitions,
-# thresholds, baselines or benchmark workloads.
+# thresholds, baselines or benchmark workloads. `--rerun-tasks` is intentional: font_scale is an
+# external device input that Gradle cannot see, so an up-to-date instrumentation result is invalid.
 echo "Running JingduUiTest at Android font_scale=2.0"
 "$ADB" shell settings put system font_scale 2.0
 FONT_SCALE="$("$ADB" shell settings get system font_scale | tr -d '\r[:space:]')"
 if [[ "$FONT_SCALE" != "2.0" && "$FONT_SCALE" != "2" ]]; then
   fail_emulator "Failed to configure Android 200% font scale: font_scale=$FONT_SCALE"
 fi
-./gradlew --no-daemon --warning-mode all --no-build-cache \
+./gradlew --no-daemon --warning-mode all --no-build-cache --rerun-tasks \
   :app:connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.junchen.jingdu.JingduUiTest
 "$ADB" shell settings put system font_scale 1.0
