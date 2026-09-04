@@ -19,6 +19,10 @@ cleanup() {
 trap cleanup EXIT
 
 [[ -x "$SDKMANAGER" ]] || { echo "sdkmanager missing: $SDKMANAGER" >&2; exit 1; }
+if command -v apt-get >/dev/null 2>&1; then
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq libpulse0 >/dev/null
+fi
 yes | "$SDKMANAGER" --licenses >/dev/null || true
 "$SDKMANAGER" "platform-tools" "emulator" "$IMAGE" >/dev/null
 
