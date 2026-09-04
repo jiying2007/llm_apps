@@ -9,13 +9,16 @@ CI=".github/workflows/ci.yml"
 PHYSICAL=".github/workflows/android-physical-release-performance.yml"
 MANIFEST="apps/android/app/src/main/AndroidManifest.xml"
 FUNCTIONAL="scripts/run-android-functional-tests-ci.sh"
+NATIVE_COMPAT="scripts/verify-android-16k-page-size.sh"
 
 # Production-native compatibility and symbolication must not regress silently.
 grep -Fq 'ndkVersion = "29.0.14206865"' "$APP_GRADLE"
 grep -Fq 'debugSymbolLevel = "FULL"' "$APP_GRADLE"
-test -f scripts/verify-android-16k-page-size.sh
-grep -Fq -- '"$ZIPALIGN" -c -P 16 -v 4' scripts/verify-android-16k-page-size.sh
-grep -Fq 'llvm-readelf' scripts/verify-android-16k-page-size.sh
+test -f "$NATIVE_COMPAT"
+grep -Fq -- '"$ZIPALIGN" -c -P 16 -v 4' "$NATIVE_COMPAT"
+grep -Fq 'llvm-readelf' "$NATIVE_COMPAT"
+grep -Fq 'arm64-v8a x86_64' "$NATIVE_COMPAT"
+grep -Fq '64-bit ELF alignment' "$NATIVE_COMPAT"
 
 # AndroidTest must execute, and it must do so on the Android 15 16 KiB runtime. This means the
 # same hosted functional gate exercises Compose/local assets plus real JNI/Core loading at 16 KiB.
@@ -25,6 +28,8 @@ grep -Fq 'connectedDebugAndroidTest' "$FUNCTIONAL"
 grep -Fq 'system-images;android-35;google_apis_ps16k;x86_64' "$FUNCTIONAL"
 grep -Fq 'getconf PAGE_SIZE' "$FUNCTIONAL"
 grep -Fq '"16384"' "$FUNCTIONAL"
+grep -Fq 'chmod 666 /dev/kvm' "$FUNCTIONAL"
+grep -Fq 'exited before boot completed' "$FUNCTIONAL"
 test -f apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
 grep -Fq 'NativeCore.fileSha256' apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
 grep -Fq 'ReaderController(false)' apps/android/app/src/androidTest/java/com/junchen/jingdu/NativePageSizeSmokeTest.kt
