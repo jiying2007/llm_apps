@@ -13,7 +13,7 @@ MANIFEST="apps/android/app/src/main/AndroidManifest.xml"
 grep -Fq 'ndkVersion = "29.0.14206865"' "$APP_GRADLE"
 grep -Fq 'debugSymbolLevel = "FULL"' "$APP_GRADLE"
 test -f scripts/verify-android-16k-page-size.sh
-grep -Fq 'zipalign" -c -P 16' scripts/verify-android-16k-page-size.sh
+grep -Fq -- '"$ZIPALIGN" -c -P 16 -v 4' scripts/verify-android-16k-page-size.sh
 grep -Fq 'llvm-readelf' scripts/verify-android-16k-page-size.sh
 
 # AndroidTest must execute on a hosted emulator; compiling tests alone is not acceptance.
