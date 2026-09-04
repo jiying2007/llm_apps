@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
@@ -13,7 +14,6 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.platform.app.InstrumentationRegistry
@@ -63,7 +63,11 @@ class JingduUiTest {
                     pageText = "Chapter 1\nA stable body used for center-tap restoration verification.",
                     position = 500, length = 10_000,
                     chapters = listOf(ChapterModel(0, "Chapter 1")), chaptersLoaded = true,
-                    settings = ReaderSettings(gestureCoachDismissed = true, controlsAutoHideMs = 80L),
+                    settings = ReaderSettings(
+                        gestureCoachDismissed = true,
+                        controlsAutoHideMs = 80L,
+                        readingMode = ReaderMode.CONTINUOUS,
+                    ),
                 ), noOpActions(),
             )
         }
@@ -172,23 +176,25 @@ class JingduUiTest {
 
     @Test fun chapterRowsRemainTouchableWithNativeScrollingPanel() {
         var jumped = -1L
+        val targetIndex = 15
         val targetTitle = "Panel Target Chapter"
         val chapters = (0 until 30).map { index ->
-            ChapterModel(index * 1000L, if (index == 1) targetTitle else "Chapter ${index + 1}")
+            ChapterModel(index * 1000L, if (index == targetIndex) targetTitle else "Chapter ${index + 1}")
         }
         composeRule.setContent {
             JingduApp(
                 AppUiState(
-                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body", position = 0, length = 30_000,
+                    screen = AppScreen.READER, currentBook = sampleBook(), pageText = "Body",
+                    position = targetIndex * 1000L, length = 30_000,
                     panel = ReaderPanel.CHAPTERS, chapters = chapters, chaptersLoaded = true,
                     settings = ReaderSettings(gestureCoachDismissed = true),
                 ), noOpActions().copy(onJump = { jumped = it }),
             )
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(targetTitle).assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription(targetTitle).assertIsDisplayed().performTouchInput { click() }
         composeRule.waitForIdle()
-        assertEquals(1000L, jumped)
+        assertEquals(targetIndex * 1000L, jumped)
     }
 
     @Test fun hiddenHotPanelsRemainPhysicallyOffscreen() {
@@ -240,7 +246,9 @@ class JingduUiTest {
             )
         }
         composeRule.onNodeWithText(context.getString(R.string.smart_clean)).assertIsDisplayed()
-        composeRule.onNodeWithText("www.example.com").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.rescan_noise)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.noise_summary, 1, 1, 94)).assertExists()
+        composeRule.onNodeWithText("www.example.com").assertExists()
     }
 
     @Test fun libraryPrioritizesContinueReadingAndConsolidatesManagementTools() {
