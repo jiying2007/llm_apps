@@ -15,6 +15,10 @@ internal object ReaderPresentationPipeline {
     fun present(source: String, settings: ReaderSettings): ReaderPresentedText {
         var intermediate = source
         if (settings.compressBlankLines) {
+            // The long-standing presentation toggle now represents conservative Smart Layout:
+            // repair fixed-width hard wraps only with strong local evidence, then normalize truly
+            // excessive blank lines. Both operations remain display-only and projection-backed.
+            intermediate = SmartLayout.present(intermediate).text
             intermediate = intermediate.replace(Regex("\\n[ \\t]*\\n(?:[ \\t]*\\n)+"), "\n\n")
         }
         if (settings.paragraphSpacingEm > 0f) {
