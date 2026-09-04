@@ -1,6 +1,5 @@
 package com.junchen.jingdu
 
-import android.provider.Settings
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarHostState
@@ -19,7 +18,6 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalContext
 
 enum class ReaderAdaptiveWidth { COMPACT, MEDIUM, EXPANDED, LARGE, EXTRA_LARGE }
 
@@ -44,7 +42,6 @@ internal fun ReaderRoute(
     onLocationBack: () -> Unit,
     onLocationForward: () -> Unit,
 ) {
-    val context = LocalContext.current
     val adaptive = currentWindowAdaptiveInfoV2()
     val minWidth = adaptive.windowSizeClass.minWidthDp
     val width = when {
@@ -96,13 +93,10 @@ internal fun ReaderRoute(
         },
     )
 
-    val animationScale = runCatching {
-        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
-    }.getOrDefault(1f)
-    // Respect Android's system-level "remove animations" preference without overwriting the user's
-    // saved Reader animation choice. Re-enabling system animations restores their saved preference.
-    val effectiveState = if (animationScale <= 0f && state.settings.pageAnimation != ReaderPageAnimation.NONE) {
-        state.copy(settings = state.settings.copy(pageAnimation = ReaderPageAnimation.NONE))
+    val systemAnimationsEnabled = rememberReaderSystemAnimationsEnabled()
+    val effectiveAnimation = readerEffectivePageAnimation(state.settings.pageAnimation, systemAnimationsEnabled)
+    val effectiveState = if (effectiveAnimation != state.settings.pageAnimation) {
+        state.copy(settings = state.settings.copy(pageAnimation = effectiveAnimation))
     } else state
 
     Box(
