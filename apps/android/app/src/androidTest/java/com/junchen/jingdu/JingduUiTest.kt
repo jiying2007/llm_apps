@@ -4,7 +4,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
@@ -247,8 +246,8 @@ class JingduUiTest {
         }
         composeRule.onNodeWithText(context.getString(R.string.smart_clean)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.rescan_noise)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.noise_summary, 1, 1, 94)).assertExists()
-        composeRule.onNodeWithText("www.example.com").assertExists()
+        composeRule.onNodeWithText(context.getString(R.string.noise_summary, 1, 1, 94)).fetchSemanticsNode()
+        composeRule.onNodeWithText("www.example.com").fetchSemanticsNode()
     }
 
     @Test fun libraryPrioritizesContinueReadingAndConsolidatesManagementTools() {
