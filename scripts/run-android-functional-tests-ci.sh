@@ -8,9 +8,9 @@ ADB="$SDK_ROOT/platform-tools/adb"
 SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 AVDMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"
 EMULATOR="$SDK_ROOT/emulator/emulator"
-IMAGE="system-images;android-35;google_apis;x86_64"
+IMAGE="system-images;android-35;google_apis_ps16k;x86_64"
 AVD_HOME="${RUNNER_TEMP:-/tmp}/jingdu-functional-avd-home"
-AVD_NAME="jingdu-functional-ci"
+AVD_NAME="jingdu-functional-16k-ci"
 LOG="${RUNNER_TEMP:-/tmp}/jingdu-functional-emulator.log"
 
 cleanup() {
@@ -37,23 +37,33 @@ echo no | "$AVDMANAGER" create avd --force --name "$AVD_NAME" --package "$IMAGE"
   >"$LOG" 2>&1 &
 
 "$ADB" wait-for-device
-for attempt in $(seq 1 48); do
+for attempt in $(seq 1 60); do
   boot="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
   if [[ "$boot" == "1" ]]; then break; fi
-  if (( attempt == 48 )); then
-    echo "Android functional-test emulator failed to boot" >&2
+  if (( attempt == 60 )); then
+    echo "Android functional-test 16 KiB emulator failed to boot" >&2
     cat "$LOG" >&2 || true
     exit 1
   fi
   sleep 5
 done
 
+PAGE_SIZE="$("$ADB" shell getconf PAGE_SIZE | tr -d '\r[:space:]')"
+if [[ "$PAGE_SIZE" != "16384" ]]; then
+  echo "Functional emulator is not a 16 KiB runtime: PAGE_SIZE=$PAGE_SIZE" >&2
+  cat "$LOG" >&2 || true
+  exit 1
+fi
+
+echo "Android functional runtime confirmed: PAGE_SIZE=$PAGE_SIZE image=$IMAGE"
 "$ADB" shell settings put global window_animation_scale 0
 "$ADB" shell settings put global transition_animation_scale 0
 "$ADB" shell settings put global animator_duration_scale 0
 "$ADB" shell wm dismiss-keyguard >/dev/null 2>&1 || true
 
 cd "$ANDROID_DIR"
+# The full instrumentation suite includes NativePageSizeSmokeTest, so JNI/Core is exercised on the
+# same 16 KiB runtime as the Compose/paging/backup/diagnostic functional tests.
 ./gradlew --no-daemon --warning-mode all connectedDebugAndroidTest
 
-echo "Android functional instrumentation suite PASS"
+echo "Android functional instrumentation suite PASS on 16 KiB runtime"
