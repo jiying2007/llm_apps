@@ -141,16 +141,7 @@ class ReaderPagingRegressionTest {
         actions,
     )
 
-    private fun sampleBook() = BookCardModel(
-        id = "a".repeat(64),
-        name = "Long Novel.txt",
-        encoding = "UTF-8",
-        sizeBytes = 1024,
-        progress = 500,
-        charCount = 10_000,
-        touchedAt = 1,
-        normalizedSha256 = "b".repeat(64),
-    )
+    private fun sampleBook() = ReaderInstrumentationFixture.book(context)
 
     private fun noOpActions() = JingduActions(
         onImport = {}, onBatchImport = {}, onOpenBook = {}, onDeleteLibraryBook = {},
