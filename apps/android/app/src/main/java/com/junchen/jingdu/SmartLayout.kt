@@ -5,8 +5,8 @@ package com.junchen.jingdu
  *
  * The source text remains authoritative. This helper only removes a newline when the bounded window
  * has strong evidence of fixed-width hard wrapping; ordinary paragraph-per-line files, headings,
- * indentation and dialogue boundaries stay untouched. ReaderPresentationPipeline builds the exact
- * monotonic source projection after the transformation.
+ * indentation, dialogue turns and structural list/separator lines stay untouched.
+ * ReaderPresentationPipeline builds the exact monotonic source projection after the transformation.
  */
 internal object SmartLayout {
     data class Result(
@@ -44,7 +44,7 @@ internal object SmartLayout {
     private fun looksHardWrapped(lines: List<String>): Boolean {
         val contentLengths = lines.asSequence()
             .map(String::trim)
-            .filter { it.isNotEmpty() && !ReaderHeadingClassifier.isHeading(it) }
+            .filter { it.isNotEmpty() && !ReaderHeadingClassifier.isHeading(it) && !isStructuralLine(it) }
             .map { it.codePointCount(0, it.length) }
             .filter { it in MIN_LINE_CP..MAX_LINE_CP }
             .toList()
@@ -59,6 +59,7 @@ internal object SmartLayout {
             if (a.codePointCount(0, a.length) !in MIN_LINE_CP..MAX_LINE_CP ||
                 b.codePointCount(0, b.length) !in MIN_NEXT_CP..MAX_LINE_CP) continue
             if (ReaderHeadingClassifier.isHeading(a) || ReaderHeadingClassifier.isHeading(b)) continue
+            if (isStructuralLine(a) || isStructuralLine(b)) continue
             plausible++
             if (canJoin(lines[index], lines[index + 1])) joinable++
         }
@@ -78,6 +79,7 @@ internal object SmartLayout {
         val next = rawNext.trimStart()
         if (current.isEmpty() || next.isEmpty()) return false
         if (ReaderHeadingClassifier.isHeading(current.trim()) || ReaderHeadingClassifier.isHeading(next.trim())) return false
+        if (isStructuralLine(current) || isStructuralLine(next)) return false
         val currentCp = current.codePointCount(0, current.length)
         val nextCp = next.codePointCount(0, next.length)
         if (currentCp !in MIN_LINE_CP..MAX_LINE_CP || nextCp !in MIN_NEXT_CP..MAX_LINE_CP) return false
@@ -95,7 +97,48 @@ internal object SmartLayout {
 
     private fun startsFreshBlock(value: String): Boolean {
         val first = value.firstOrNull() ?: return true
-        return first in BLOCK_OPENERS || value.startsWith("——") || value.startsWith("***") || value.startsWith("###")
+        return first in BLOCK_OPENERS || first == '—' || value.startsWith("***") || value.startsWith("###")
+    }
+
+    /**
+     * Protect structure that frequently appears inside downloaded Chinese web-novel TXT. These
+     * lines can have the same visual width as hard-wrapped prose, but joining them would destroy
+     * list items, scene breaks or dialogue-turn semantics. Precision is intentionally preferred
+     * over recovering every possible wrap.
+     */
+    private fun isStructuralLine(value: String): Boolean {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return true
+        val first = trimmed.first()
+        if (first in LIST_MARKERS) return true
+        if (trimmed.startsWith("——") || trimmed.startsWith("---") || trimmed.startsWith("***") ||
+            trimmed.startsWith("###") || trimmed.startsWith("~~~") || trimmed.startsWith("～～～")) return true
+        if (startsNumberedList(trimmed)) return true
+        return looksLikeSceneSeparator(trimmed)
+    }
+
+    private fun startsNumberedList(value: String): Boolean {
+        var cursor = 0
+        while (cursor < value.length && cursor < 3 && value[cursor].isDigit()) cursor++
+        if (cursor > 0 && cursor < value.length && value[cursor] in LIST_SUFFIXES) return true
+        if (value.length >= 3 && value.first() in "（(" && value[1].isDigit()) {
+            val close = value.indexOfFirst { it in "）)" }
+            if (close in 2..4) return true
+        }
+        var chineseDigits = 0
+        while (chineseDigits < value.length && chineseDigits < 4 && value[chineseDigits] in CHINESE_NUMERALS) chineseDigits++
+        return chineseDigits > 0 && chineseDigits < value.length && value[chineseDigits] in LIST_SUFFIXES
+    }
+
+    private fun looksLikeSceneSeparator(value: String): Boolean {
+        if (value.length < 3 || value.length > 24) return false
+        var meaningful = 0
+        for (char in value) {
+            if (char.isWhitespace()) continue
+            if (char !in SCENE_SEPARATOR_MARKERS) return false
+            meaningful++
+        }
+        return meaningful >= 3
     }
 
     private fun needsLatinSpace(current: String, next: String): Boolean {
@@ -116,4 +159,8 @@ internal object SmartLayout {
     private const val MIN_JOINABLE_RATIO = 0.55
     private const val TERMINAL_PUNCTUATION = "。！？!?；;…：:。！？!?；;\"'”’」』》）)]】"
     private const val BLOCK_OPENERS = "“‘「『《（(【["
+    private const val LIST_MARKERS = "•·※◆◇○●☆★▪▫►▶"
+    private const val LIST_SUFFIXES = ".、)）"
+    private const val CHINESE_NUMERALS = "零〇一二三四五六七八九十百"
+    private const val SCENE_SEPARATOR_MARKERS = "*-—_=~～·※◆◇○●☆★"
 }
