@@ -2,6 +2,7 @@
 <resources>
     <string name="txt_doctor">TXT Doctor</string>
     <string name="txt_doctor_body">Diagnose encoding, text quality, chapter structure and distracting text locally before you repair anything.</string>
+    <string name="txt_doctor_failed">Couldn’t complete the TXT check. Try again.</string>
     <string name="txt_health_score">TXT health · %1$d/100</string>
     <string name="doctor_encoding">Encoding health</string>
     <string name="doctor_toc">Chapter structure</string>
