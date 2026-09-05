@@ -4,8 +4,11 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private val SKIM_WHITESPACE = Regex("\\s+")
+
 internal class ReaderSkimController(context: Context, private val bookId: String) : AutoCloseable {
     private val engine = ReaderViewportEngine(context.applicationContext, bookId)
+    @Volatile private var documentLength = 0L
 
     suspend fun preview(
         fraction: Float,
@@ -14,15 +17,16 @@ internal class ReaderSkimController(context: Context, private val bookId: String
         chapters: List<ChapterModel>,
         charsPerMinute: Double,
     ): ReaderSkimPreview = withContext(Dispatchers.IO) {
-        val initial = engine.readAround(originOffset, settings)
-        val length = initial.documentLength
+        val length = documentLength.takeIf { it > 0L } ?: engine.readAround(originOffset, settings).documentLength.also {
+            documentLength = it
+        }
         if (length <= 0) return@withContext ReaderSkimPreview(0f, 0, null, "", 0, 0, null, null, originOffset)
         val offset = (fraction.coerceIn(0f, 1f) * (length - 1).toFloat()).toLong().coerceIn(0, length - 1)
         val window = engine.readAround(offset, settings)
         val localSource = (offset - window.start).coerceIn(0, window.map.sourceCodePoints)
         val displayCp = window.map.displayForSource(localSource)
         val utf = utf16Index(window.displayText, displayCp)
-        val preview = previewAround(window.displayText, utf)
+        val preview = readerSkimPreviewAround(window.displayText, utf)
         val chapterIndex = chapters.indexOfLast { it.offset <= offset }
         val chapter = chapters.getOrNull(chapterIndex)
         val chapterEnd = chapters.getOrNull(chapterIndex + 1)?.offset ?: length
@@ -49,17 +53,22 @@ internal class ReaderSkimController(context: Context, private val bookId: String
         return kotlin.math.ceil((end - position).toDouble() / cpm.coerceAtLeast(1.0)).toInt().coerceAtLeast(1)
     }
 
-    private fun previewAround(text: String, utf: Int): String {
-        if (text.isBlank()) return ""
-        val clean = text.replace(ReaderTypographySpec.PARAGRAPH_SPACER.toString(), "")
-        val safe = utf.coerceIn(0, clean.length)
-        val start = (safe - 90).coerceAtLeast(0)
-        val end = (safe + 180).coerceAtMost(clean.length)
-        return clean.substring(start, end).replace(Regex("\\s+"), " ").trim()
-    }
-
     private fun utf16Index(text: String, codePoints: Long): Int {
         val total = text.codePointCount(0, text.length)
         return text.offsetByCodePoints(0, codePoints.coerceIn(0, total.toLong()).toInt())
     }
+}
+
+internal fun readerSkimPreviewAround(text: String, utf: Int): String {
+    if (text.isBlank()) return ""
+    val sourceSafe = utf.coerceIn(0, text.length)
+    var removedBefore = 0
+    for (index in 0 until sourceSafe) {
+        if (text[index] == ReaderTypographySpec.PARAGRAPH_SPACER) removedBefore++
+    }
+    val clean = text.replace(ReaderTypographySpec.PARAGRAPH_SPACER.toString(), "")
+    val safe = (sourceSafe - removedBefore).coerceIn(0, clean.length)
+    val start = (safe - 90).coerceAtLeast(0)
+    val end = (safe + 180).coerceAtMost(clean.length)
+    return clean.substring(start, end).replace(SKIM_WHITESPACE, " ").trim()
 }
