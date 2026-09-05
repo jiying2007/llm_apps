@@ -25,6 +25,7 @@
     <string name="smart_clean4_body">Precision-first local cleanup suggestions · private and offline</string>
     <string name="smart_clean4_signal">Candidate found %2$d× · review before applying</string>
     <string name="smart_clean4_memory">Your local choice has been saved</string>
+    <string name="smart_clean_load_failed">Couldn’t load cleanup suggestions. Try again.</string>
     <string name="keep_text">Keep</string>
     <string name="protect_text">Always protect</string>
     <string name="delete_and_remember">Delete + remember</string>
