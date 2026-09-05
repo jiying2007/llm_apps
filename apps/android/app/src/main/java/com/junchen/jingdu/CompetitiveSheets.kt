@@ -24,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -34,13 +35,19 @@ internal fun DoctorSheet(state: AppUiState, actions: JingduActions) {
     var report by remember(book?.id) { mutableStateOf<TxtDoctorReport?>(null) }
     var loading by remember(book?.id) { mutableStateOf(false) }
     var error by remember(book?.id) { mutableStateOf<String?>(null) }
+    var scanRequest by remember(book?.id) { mutableIntStateOf(0) }
 
-    fun request() { loading = true; error = null; report = null }
-    LaunchedEffect(book?.id, loading) {
-        if (book == null || (!loading && report != null)) return@LaunchedEffect
+    fun request() {
+        scanRequest++
+        error = null
+        report = null
+    }
+    LaunchedEffect(book?.id, scanRequest) {
+        if (book == null) return@LaunchedEffect
         loading = true
-        runCatching {
-            withContext(Dispatchers.IO) {
+        error = null
+        try {
+            report = withContext(Dispatchers.IO) {
                 val repo = BookRepository(context)
                 val source = repo.list().firstOrNull { it.id == book.id } ?: error("missing book")
                 ReaderController().use { reader ->
@@ -48,11 +55,16 @@ internal fun DoctorSheet(state: AppUiState, actions: JingduActions) {
                     TxtDoctor.diagnose(reader, source)
                 }
             }
-        }.onSuccess { report = it }.onFailure { error = it.message }
-        loading = false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            error = failure.message ?: "TXT doctor failed"
+        } finally {
+            loading = false
+        }
     }
 
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
+    ModalBottomSheet(onDismissRequest = actions.onClosePanel, sheetGesturesEnabled = false) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             contentPadding = PaddingValues(20.dp, 8.dp, 20.dp, 36.dp),
@@ -225,7 +237,7 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
     }
     LaunchedEffect(book?.id) { load() }
 
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
+    ModalBottomSheet(onDismissRequest = actions.onClosePanel, sheetGesturesEnabled = false) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             contentPadding = PaddingValues(20.dp, 8.dp, 20.dp, 36.dp),
