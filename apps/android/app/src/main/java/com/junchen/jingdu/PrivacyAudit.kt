@@ -3,6 +3,7 @@ package com.junchen.jingdu
 import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import org.json.JSONArray
@@ -10,6 +11,7 @@ import org.json.JSONObject
 
 data class PrivacyAuditResult(
     val networkPermissionAbsent: Boolean,
+    val automaticBackupDisabled: Boolean,
     val bookTextUploadCapability: Boolean,
     val analyticsSdkPresent: Boolean,
     val adsSdkPresent: Boolean,
@@ -53,9 +55,11 @@ internal object PrivacyAudit {
         val info = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
         val permissions = info.requestedPermissions?.toSet().orEmpty()
         val networkPermissionAbsent = Manifest.permission.INTERNET !in permissions
+        val automaticBackupDisabled = context.applicationInfo.flags and ApplicationInfo.FLAG_ALLOW_BACKUP == 0
         val memoryClass = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.memoryClass ?: 0
         return PrivacyAuditResult(
             networkPermissionAbsent = networkPermissionAbsent,
+            automaticBackupDisabled = automaticBackupDisabled,
             // Conservative runtime interpretation: without INTERNET permission this APK has no
             // direct network transport for uploading private book text.
             bookTextUploadCapability = !networkPermissionAbsent,
@@ -89,12 +93,13 @@ internal object PrivacyAudit {
             )
         }
         return JSONObject()
-            .put("schema", 2)
+            .put("schema", 3)
             .put("type", "jingdu-local-privacy-audit")
             .put("package", context.packageName)
             .put("versionName", packageInfo.versionName ?: "")
             .put("versionCode", versionCode)
             .put("networkPermissionAbsent", result.networkPermissionAbsent)
+            .put("automaticBackupDisabled", result.automaticBackupDisabled)
             .put("bookTextUploadCapability", result.bookTextUploadCapability)
             .put("analyticsSdkPresent", result.analyticsSdkPresent)
             .put("adsSdkPresent", result.adsSdkPresent)
