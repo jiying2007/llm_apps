@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="chinese_conversion">Chinese conversion</string>
-    <string name="chinese_conversion_body">Convert only the visible reading window with OpenCC-compatible phrase dictionaries. The source TXT and Core offsets stay unchanged.</string>
+    <string name="chinese_conversion_body">Changes reading display only and never rewrites the original TXT. Search, reading progress and bookmark positions stay consistent.</string>
     <string name="chinese_original">Original</string>
     <string name="chinese_simplified">Simplified</string>
     <string name="chinese_traditional">Traditional</string>
@@ -13,8 +13,8 @@
     <string name="chinese_overrides_hint">头发 =&gt; 頭髮\n软件 =&gt; 軟體</string>
     <string name="chinese_overrides_count">%1$d valid local mappings</string>
     <string name="save_dictionary">Save dictionary</string>
-    <string name="smart_clean_pack">Built-in high-confidence clean signatures</string>
-    <string name="smart_clean_refiner">Smart Clean also checks inline promotional fragments and clearly malformed lines. These higher-risk suggestions are never preselected.</string>
+    <string name="smart_clean_pack">Built-in safe cleanup rules</string>
+    <string name="smart_clean_refiner">Smart Clean also checks inline promotional fragments and clearly malformed lines. Higher-risk suggestions are never selected automatically.</string>
     <string name="noise_reason_inline_fragment">inline promotional fragment</string>
     <string name="noise_reason_garbled_line">malformed / replacement-character line</string>
 </resources>
