@@ -2,6 +2,7 @@
 <resources>
     <string name="txt_doctor">TXT 体检</string>
     <string name="txt_doctor_body">在修复前完全本地检查编码、文本质量、章节结构和干扰内容。</string>
+    <string name="txt_doctor_failed">无法完成 TXT 体检，请重试。</string>
     <string name="txt_health_score">TXT 健康度 · %1$d/100</string>
     <string name="doctor_encoding">编码健康</string>
     <string name="doctor_toc">章节结构</string>
