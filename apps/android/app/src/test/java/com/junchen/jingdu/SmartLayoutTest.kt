@@ -30,6 +30,21 @@ class SmartLayoutTest {
         assertEquals(source, result.text)
     }
 
+    @Test fun preservesEnglishSentencePerLineAndMixedTxt() {
+        val source = listOf(
+            "The quick brown fox jumps over the lazy dog.",
+            "This is a complete English sentence in a normal TXT file.",
+            "Reader should preserve this newline instead of treating it as a hard wrap.",
+            "Another ordinary sentence ends with a full stop.",
+            "中英混排内容也可能逐句换行，而不是固定宽度强制折行。",
+            "The final English sentence should remain on its own line.",
+        ).joinToString("\n")
+
+        val result = SmartLayout.present(source)
+        assertFalse(result.hardWrapDetected)
+        assertEquals(source, result.text)
+    }
+
     @Test fun preservesIndentedParagraphBoundaryEvenInsideHardWrappedSample() {
         val source = listOf(
             "山路从村口一直向北延伸，清晨的雾还没有完全散开",

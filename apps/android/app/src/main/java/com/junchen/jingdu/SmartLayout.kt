@@ -200,7 +200,7 @@ internal object SmartLayout {
     private const val MAX_MEDIAN_CP = 90
     private const val MAX_WRAP_VARIANCE_CP = 12
     private const val MIN_JOINABLE_RATIO = 0.55
-    private const val TERMINAL_PUNCTUATION = "。！？!?；;…：:。！？!?；;\"'”’」』》）)]】"
+    private const val TERMINAL_PUNCTUATION = ".。！？!?；;…：:。！？!?；;\"'”’」』》）)]】"
     private const val BLOCK_OPENERS = "“‘「『《（(【["
     private const val LIST_MARKERS = "•·※◆◇○●☆★▪▫►▶"
     private const val LIST_SUFFIXES = ".、)）"
