@@ -21,14 +21,14 @@
     <string name="toc_reset_repairs">重置本地目录修复</string>
     <string name="toc_source_user_or_special">本地修复 / 特殊标题</string>
 
-    <string name="smart_clean4">智能净化 4</string>
-    <string name="smart_clean4_body">准确率优先的本地候选判断 · 轻量模型 v%1$d · 不扫描整本模型</string>
+    <string name="smart_clean4">智能净化</string>
+    <string name="smart_clean4_body">准确率优先的本地净化建议 · 隐私本地运行</string>
     <string name="smart_clean4_signal">%1$s · %2$d 次 · 基础 %3$d · 语义 %4$s · 调整后 %5$d</string>
     <string name="smart_clean4_memory">本地判断记忆 · %1$s</string>
     <string name="keep_text">保留</string>
     <string name="protect_text">永久保护</string>
     <string name="delete_and_remember">删除并记住</string>
-    <string name="open_standard_clean">打开净化预览</string>
+    <string name="open_standard_clean">返回智能净化</string>
 
     <string name="privacy_verification">隐私验证</string>
     <string name="privacy_verification_body">从已安装应用本身验证离线承诺。导出的审计只包含配置和数量，不包含任何书籍正文。</string>
