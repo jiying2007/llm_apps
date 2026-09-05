@@ -32,6 +32,7 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun DoctorSheet(state: AppUiState, actions: JingduActions) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val book = state.currentBook
     var report by remember(book?.id) { mutableStateOf<TxtDoctorReport?>(null) }
     var loading by remember(book?.id) { mutableStateOf(false) }
@@ -58,8 +59,9 @@ internal fun DoctorSheet(state: AppUiState, actions: JingduActions) {
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: Exception) {
-            error = failure.message ?: "TXT doctor failed"
+        } catch (_: Exception) {
+            ProductErrorLog(context).record(ProductErrorCode.INTERNAL_OPERATION_FAILED, "txt-doctor")
+            error = resources.getString(R.string.txt_doctor_failed)
         } finally {
             loading = false
         }
@@ -243,9 +245,10 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (failure: Exception) {
+        } catch (_: Exception) {
+            ProductErrorLog(context).record(ProductErrorCode.INTERNAL_OPERATION_FAILED, "smart-clean-review")
             candidates = emptyList()
-            error = failure.message ?: resources.getString(R.string.smart_clean_load_failed)
+            error = resources.getString(R.string.smart_clean_load_failed)
         } finally {
             loading = false
         }
