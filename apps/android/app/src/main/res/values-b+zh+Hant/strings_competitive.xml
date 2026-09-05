@@ -23,7 +23,7 @@
 
     <string name="smart_clean4">覆核淨化建議</string>
     <string name="smart_clean4_body">準確率優先的本機淨化建議 · 私隱本機運行</string>
-    <string name="smart_clean4_signal">候選出現 %2$d 次 · 套用前請覆核</string>
+    <string name="smart_clean4_signal">候選出現 %1$d 次 · 套用前請覆核</string>
     <string name="smart_clean4_memory">已儲存你的本機選擇</string>
     <string name="smart_clean_load_failed">無法載入淨化建議，請重試。</string>
     <string name="keep_text">保留</string>
