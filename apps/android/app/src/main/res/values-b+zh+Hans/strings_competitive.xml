@@ -34,6 +34,7 @@
     <string name="privacy_verification">隐私验证</string>
     <string name="privacy_verification_body">从已安装应用本身验证离线承诺。导出的审计只包含配置和数量，不包含任何书籍正文。</string>
     <string name="privacy_no_internet">没有 Android INTERNET 权限</string>
+    <string name="privacy_auto_backup_disabled">系统自动备份已关闭</string>
     <string name="privacy_no_upload">没有正文上传能力</string>
     <string name="privacy_no_analytics">没有运行时统计 SDK</string>
     <string name="privacy_no_ads">没有广告 SDK</string>
