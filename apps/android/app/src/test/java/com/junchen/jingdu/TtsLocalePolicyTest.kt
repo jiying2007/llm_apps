@@ -2,7 +2,9 @@ package com.junchen.jingdu
 
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TtsLocalePolicyTest {
@@ -37,6 +39,18 @@ class TtsLocalePolicyTest {
         ) { it.toLanguageTag() == "zh-TW" }
 
         assertEquals("zh-TW", selected?.toLanguageTag())
+    }
+
+    @Test
+    fun convertedChineseRejectsSavedNonChineseVoice() {
+        assertFalse(TtsLocalePolicy.acceptsSavedVoice(ChineseDisplayMode.TRADITIONAL, Locale.ENGLISH))
+        assertFalse(TtsLocalePolicy.acceptsSavedVoice(ChineseDisplayMode.SIMPLIFIED, Locale.JAPANESE))
+        assertTrue(TtsLocalePolicy.acceptsSavedVoice(ChineseDisplayMode.HONG_KONG, Locale.forLanguageTag("zh-CN")))
+    }
+
+    @Test
+    fun originalAllowsExplicitSavedVoice() {
+        assertTrue(TtsLocalePolicy.acceptsSavedVoice(ChineseDisplayMode.ORIGINAL, Locale.ENGLISH))
     }
 
     @Test
