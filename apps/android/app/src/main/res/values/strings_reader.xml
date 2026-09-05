@@ -53,6 +53,8 @@
     <string name="reader_gesture_previous">Previous page</string>
     <string name="reader_settings_done">Done</string>
     <string name="reader_annotation_markdown_title">Jingdu annotations</string>
+    <string name="reader_chapters_failed">Couldn’t load chapters. Try again.</string>
+    <string name="reader_retry">Try again</string>
     <string name="reader_tts_pronunciation">Pronunciation overrides</string>
     <string name="reader_tts_pronunciation_hint">One local literal rule per line: source =&gt; spoken text. Example: 单于 =&gt; chán yú. This affects read-aloud only and never changes the book.</string>
     <string name="reader_tts_pronunciation_save">Save pronunciation dictionary</string>
