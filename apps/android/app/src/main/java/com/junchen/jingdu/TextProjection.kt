@@ -11,6 +11,7 @@ package com.junchen.jingdu
 internal class TextProjection private constructor(
     private val sourceToDisplay: IntArray,
     private val displayToSource: IntArray,
+    private val identityMapping: Boolean,
 ) {
     val sourceCodePoints: Long get() = (sourceToDisplay.size - 1).toLong()
     val displayCodePoints: Long get() = (displayToSource.size - 1).toLong()
@@ -23,22 +24,37 @@ internal class TextProjection private constructor(
 
     fun compose(after: TextProjection): TextProjection {
         require(displayCodePoints == after.sourceCodePoints) { "projection domains do not compose" }
+        // Reader presentation commonly ends in an equal-code-point transformation (ORIGINAL or
+        // OpenCC script conversion). Reusing the authoritative mapping avoids copying and walking
+        // two full IntArrays on every page while preserving exactly the same boundary semantics.
+        if (after.identityMapping) return this
+        if (identityMapping) return after
         val s2d = IntArray(sourceToDisplay.size)
         for (index in s2d.indices) s2d[index] = after.displayForSource(sourceToDisplay[index].toLong()).toInt()
         val d2s = IntArray(after.displayToSource.size)
         for (index in d2s.indices) d2s[index] = sourceForDisplay(after.sourceForDisplay(index.toLong())).toInt()
-        return TextProjection(s2d, d2s)
+        return TextProjection(s2d, d2s, false)
     }
 
     companion object {
         fun identity(codePoints: Int): TextProjection {
             val count = codePoints.coerceAtLeast(0)
+            // The arrays are private and never mutated after construction, so an identity mapping can
+            // safely share its single table in both directions instead of allocating three copies.
             val values = IntArray(count + 1) { it }
-            return TextProjection(values.copyOf(), values.copyOf())
+            return TextProjection(values, values, true)
         }
 
-        fun between(source: String, display: String): TextProjection =
-            between(source.codePoints().toArray(), display.codePoints().toArray())
+        fun between(source: String, display: String): TextProjection {
+            // Preserve the existing rule exactly: equal code-point counts map one-to-one regardless
+            // of glyph/script changes. Count first so the hot identity path never materializes two
+            // complete code-point arrays merely to discover that their lengths are equal.
+            if (source === display) return identity(source.codePointCount(0, source.length))
+            val sourceCount = source.codePointCount(0, source.length)
+            val displayCount = display.codePointCount(0, display.length)
+            if (sourceCount == displayCount) return identity(sourceCount)
+            return between(source.codePoints().toArray(), display.codePoints().toArray())
+        }
 
         fun between(source: IntArray, display: IntArray): TextProjection {
             val n = source.size
@@ -68,7 +84,7 @@ internal class TextProjection private constructor(
             s2d[n] = m; d2s[m] = n
             fillMonotonic(s2d, m)
             fillMonotonic(d2s, n)
-            return TextProjection(s2d, d2s)
+            return TextProjection(s2d, d2s, false)
         }
 
         private fun nearestAnchor(source: IntArray, display: IntArray, sourceAt: Int, displayAt: Int): Pair<Int, Int>? {
