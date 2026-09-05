@@ -114,12 +114,27 @@ assert "-keep class com.junchen.jingdu.ReaderBenchmarkFixtureProvider { *; }" in
 slo_call = 'python3 scripts/check-android-performance-slo.py'
 profile_swap = 'install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFILE_TEST_APK"'
 profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log" "$PROFILE_CLASS"'
+emulator_start = '"$EMULATOR" -avd "$AVD_NAME"'
+host_build = './gradlew --no-daemon --warning-mode all'
+settle_call = '\nwait_for_performance_settle\n'
+r8_install = 'install_pair "R8 Macrobenchmark" "$BENCHMARK_TARGET_APK" "$BENCHMARK_TEST_APK"'
+macro_call = 'run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation.log" "$MACRO_CLASS"'
 assert slo_call in runner and profile_call in runner and profile_swap in runner
 assert '--mode hosted-regression' in runner, "hosted CI must use regression mode"
 assert '--baseline "$HOSTED_BASELINE"' in runner and 'reader-hosted-emulator-baseline.json' in runner, "hosted CI baseline wiring missing"
 assert ':app:assembleBenchmark :macrobenchmark:assembleBenchmark' in runner
 assert ':app:assembleProfile :macrobenchmark:assembleProfile' in runner
 assert 'BENCHMARK_TARGET_APK=' in runner and 'PROFILE_TARGET_APK=' in runner
+assert host_build in runner and emulator_start in runner
+assert runner.index(host_build) < runner.index(emulator_start), "hosted performance APKs must build before the measurement emulator starts"
+assert 'Performance APKs built before emulator start; launching fresh measurement guest' in runner
+assert 'PERFORMANCE_SETTLE_SECONDS="${JINGDU_PERFORMANCE_SETTLE_SECONDS:-360}"' in runner, "fresh hosted performance guest must retain deterministic six-minute post-boot settle"
+assert 'wait_for_performance_settle()' in runner, "fresh hosted performance settle function missing"
+assert settle_call in runner and r8_install in runner
+assert runner.index(emulator_start) < runner.index(settle_call) < runner.index(r8_install), "performance measurement must begin only after fresh guest settle"
+assert 'second % 15 == 0' in runner, "performance settle must repeatedly verify guest health"
+assert 'Android framework health check failed during performance settle' in runner
+assert 'guest_uptime=' in runner, "performance settle must log guest age for evidence"
 assert runner.index(slo_call) < runner.index(profile_swap) < runner.index(profile_call), "R8 performance result must freeze before non-minified profile target is installed"
 assert "SLO_STATUS=$?" in runner, "performance result must be retained across profile generation"
 assert 'preserve_failed_macro_evidence "$MACRO_REMOTE"' in runner
@@ -142,13 +157,16 @@ assert 'MACRO_CLASS="com.junchen.jingdu.macrobenchmark.ReaderJourneyBenchmark"' 
 assert 'PROFILE_CLASS="com.junchen.jingdu.macrobenchmark.BaselineProfileGenerator"' in runner
 assert 'StartupBenchmark' not in runner, "standalone startup suite must not contaminate the frame gate"
 
-# An invalid instrumentation run is infrastructure evidence, not a performance result. Exactly one
-# bounded Macrobenchmark recovery is allowed; valid measurements remain untouched.
+# An invalid instrumentation run is infrastructure evidence, not a performance result. The hosted
+# gate must fail closed on the fresh measurement guest rather than retrying a system_server-dead AVD.
 assert "return 1" in runner[runner.index("run_instrumentation()") : runner.index("preserve_failed_macro_evidence()")]
-assert "attempting one bounded guest recovery" in runner
 assert "wait_for_android_ready 120" in runner
 assert "INSTRUMENTATION_ABORTED" in runner and "System has crashed" in runner
-assert runner.count("run_instrumentation Macrobenchmark") == 2, "exactly one Macrobenchmark retry is allowed"
+assert runner.count(macro_call) == 1, "Macrobenchmark must not retry on the same failed guest"
+assert "attempting one bounded guest recovery" not in runner
+assert "macro-instrumentation-retry.log" not in runner
+assert 'fail_emulator "Reader Macrobenchmark instrumentation failed on fresh measurement guest"' in runner
+assert 'guest-logcat-tail.txt' in runner, "system-level performance failures must preserve guest logcat evidence"
 
 # Physical Release qualification is a separate, manually dispatched self-hosted physical-device gate.
 assert physical_runner_path.is_file() and physical_workflow_path.is_file(), "physical Release performance gate assets missing"

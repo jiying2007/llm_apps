@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.platform.app.InstrumentationRegistry
@@ -173,7 +174,7 @@ class JingduUiTest {
         composeRule.onNodeWithText(context.getString(R.string.reader_more_gesture_options)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.reader_brightness_gesture)).assertIsNotDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.reader_more_gesture_options)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.reader_brightness_gesture)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.reader_brightness_gesture)).performScrollTo().assertIsDisplayed()
     }
 
     @Test fun quickReadingSettingsStayTouchableAcrossRepeatedStateChanges() {
@@ -272,8 +273,8 @@ class JingduUiTest {
                 ), noOpActions(),
             )
         }
-        composeRule.onNodeWithText(context.getString(R.string.smart_clean)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.rescan_noise)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.smart_clean)).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.rescan_noise)).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.noise_summary, 1, 1, 326)).fetchSemanticsNode()
         composeRule.onNodeWithText("www.example.com").fetchSemanticsNode()
     }
