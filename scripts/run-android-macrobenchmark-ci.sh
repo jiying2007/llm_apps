@@ -16,6 +16,7 @@ ADB="${ADB:-$SDK_ROOT/platform-tools/adb}"
 TEMP_DIR="${RUNNER_TEMP:-/tmp}"
 AVD_HOME="${ANDROID_AVD_HOME:-$TEMP_DIR/jingdu-avd-home}"
 BOOT_TIMEOUT_SECONDS="${JINGDU_EMULATOR_BOOT_TIMEOUT_SECONDS:-240}"
+PERFORMANCE_SETTLE_SECONDS="${JINGDU_PERFORMANCE_SETTLE_SECONDS:-360}"
 EMULATOR_LOG="$TEMP_DIR/jingdu-emulator.log"
 EMULATOR_PID=""
 REMOTE_RESULT_ROOT="/sdcard/Download/jingdu-reader-ci"
@@ -78,6 +79,40 @@ wait_for_android_ready() {
     sleep 1
   done
   return 1
+}
+
+wait_for_performance_settle() {
+  local second uptime_seconds
+
+  if [[ ! "$PERFORMANCE_SETTLE_SECONDS" =~ ^[0-9]+$ ]] || (( PERFORMANCE_SETTLE_SECONDS < 1 )); then
+    fail_emulator "Android performance settle duration must be a positive integer: ${PERFORMANCE_SETTLE_SECONDS}"
+  fi
+
+  # Keep the measurement guest fresh, but do not benchmark the first seconds after sys.boot_completed.
+  # The checked-in hosted baseline and the last same-code green run were measured after roughly six
+  # minutes of healthy post-boot residency. A deterministic 360 s settle preserves that measurement
+  # age without keeping the guest alive during host Gradle/R8 work. Core framework services are
+  # checked every 15 s so a system_server failure is infrastructure evidence, never a frame result.
+  echo "Waiting ${PERFORMANCE_SETTLE_SECONDS}s for fresh Android performance guest post-boot stabilization"
+  for ((second = 1; second <= PERFORMANCE_SETTLE_SECONDS; second++)); do
+    if [[ -n "$EMULATOR_PID" ]] && ! kill -0 "$EMULATOR_PID" >/dev/null 2>&1; then
+      fail_emulator "Android performance emulator exited during post-boot stabilization"
+    fi
+    if (( second % 15 == 0 || second == PERFORMANCE_SETTLE_SECONDS )); then
+      if ! wait_for_android_ready 5; then
+        fail_emulator "Android framework health check failed during performance settle at ${second}s/${PERFORMANCE_SETTLE_SECONDS}s"
+      fi
+      uptime_seconds="$("$ADB" shell cut -d' ' -f1 /proc/uptime 2>/dev/null | tr -d '\r' || true)"
+      echo "Android performance settle: ${second}s/${PERFORMANCE_SETTLE_SECONDS}s guest_uptime=${uptime_seconds:-unknown}s"
+    fi
+    sleep 1
+  done
+
+  if ! wait_for_android_ready 15; then
+    fail_emulator "Android framework services were not healthy after performance settle"
+  fi
+  uptime_seconds="$("$ADB" shell cut -d' ' -f1 /proc/uptime 2>/dev/null | tr -d '\r' || true)"
+  echo "Android performance guest stabilized after ${PERFORMANCE_SETTLE_SECONDS}s post-boot settle: guest_uptime=${uptime_seconds:-unknown}s"
 }
 
 resolve_instrumentation() {
@@ -289,6 +324,7 @@ fi
 "$ADB" shell settings put global animator_duration_scale 0
 "$ADB" shell getprop ro.build.version.release
 "$ADB" shell getprop ro.product.cpu.abi
+wait_for_performance_settle
 
 # Stage 1: production-like R8 target. The hosted result is frozen before any generated profile exists.
 install_pair "R8 Macrobenchmark" "$BENCHMARK_TARGET_APK" "$BENCHMARK_TEST_APK"
