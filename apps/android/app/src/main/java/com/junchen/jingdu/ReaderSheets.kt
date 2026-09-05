@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -51,7 +52,7 @@ import kotlin.math.roundToInt
     val selectedNoiseTotal = state.noiseCandidates.filter { it.selected }.sumOf { it.count }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel, sheetState = sheetState) {
+    ModalBottomSheet(onDismissRequest = actions.onClosePanel, sheetState = sheetState, sheetGesturesEnabled = false) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 36.dp),
@@ -66,10 +67,6 @@ import kotlin.math.roundToInt
                 }
             }
 
-            // Keep the Smart Clean identity and primary action in one bounded lazy item. At 200%
-            // font scale, scrolling the title into view must also compose the scan/rescan action so
-            // accessibility services can discover and focus it without depending on an offscreen
-            // LazyColumn item that has not been composed yet.
             item {
                 ElevatedCard(Modifier.fillMaxWidth()) {
                     Column(
@@ -90,15 +87,16 @@ import kotlin.math.roundToInt
                         OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) {
                             Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free))
                         }
+                        OutlinedButton(onClick = { actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Outlined.Psychology, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.smart_clean4))
+                        }
                     }
                 }
             }
 
             if (state.noiseCandidates.isNotEmpty()) {
-                // Value comes before explanation/paywall: keep the summary and first candidate in one
-                // bounded item directly after the primary action. This guarantees that a 200% font
-                // scale viewport composes the useful result preview instead of leaving it beyond
-                // several explanatory lazy items. Remaining candidates stay independently lazy.
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -144,8 +142,6 @@ import kotlin.math.roundToInt
                 item { OutlinedButton(onClick = actions.onUndoSmartClean, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean_undo)) } }
             }
 
-            // Supporting Smart Clean explanation follows the actionable result preview so large-text
-            // users encounter value and candidate evidence before secondary implementation detail.
             item { Text(stringResource(R.string.smart_clean_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item { Text(stringResource(R.string.smart_clean_pack, BuiltinCleanRules.PACK_VERSION), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
             item { Text(stringResource(R.string.smart_clean_refiner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -162,7 +158,7 @@ import kotlin.math.roundToInt
             item { Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.global_rule_library), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold); Spacer(Modifier.width(8.dp)); AssistChip(onClick = {}, label = { Text("Pro") }) } }
             item { Text(stringResource(R.string.global_rule_body), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (!state.proUnlocked) item { ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(stringResource(R.string.pro_lifetime_title), fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.pro_lifetime_body), color = MaterialTheme.colorScheme.onSurfaceVariant); val suffix = state.proPrice?.let { stringResource(R.string.price_suffix, it) } ?: ""; Button(onClick = actions.onUpgradePro, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.WorkspacePremium, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.unlock_jingdu_pro, suffix)) }; TextButton(onClick = actions.onRestorePro, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restore_purchase)) } } } }
-            else { item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { AssistChip(onClick = actions.onInstallRecommendedRules, label = { Text(stringResource(R.string.install_recommended_rules)) }); AssistChip(onClick = actions.onImportGlobalRules, label = { Text(stringResource(R.string.import_action)) }); AssistChip(onClick = actions.onExportGlobalRules, label = { Text(stringResource(R.string.export_action)) }) } }; item { RuleModeChips(globalMode, true) { globalMode = it } }; item { OutlinedTextField(globalFind, { globalFind = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(if (globalMode == RepairRuleMode.LITERAL) R.string.global_find_text else R.string.global_line_pattern)) }, singleLine = true) }; item { OutlinedTextField(globalReplacement, { globalReplacement = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.replacement_hint)) }, singleLine = true) }; item { Button(onClick = { actions.onAddGlobalRule(globalMode, globalFind, globalReplacement); globalFind = ""; globalReplacement = "" }, enabled = globalFind.isNotBlank()) { Text(stringResource(R.string.add_global_rule)) } }; if (state.globalRules.isNotEmpty()) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.global_rules_count, state.globalRules.size)); TextButton(onClick = actions.onClearGlobalRules) { Text(stringResource(R.string.clear)) } } }; items(state.globalRules.indices.toList()) { i -> RuleCard(state.globalRules[i]) { actions.onDeleteGlobalRule(i) } } }
+            else { item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { AssistChip(onClick = actions.onInstallRecommendedRules, label = { Text(stringResource(R.string.install_recommended_rules)) }); AssistChip(onClick = actions.onImportGlobalRules, label = { Text(stringResource(R.string.import_action)) }); AssistChip(onClick = actions.onExportGlobalRules, label = { Text(stringResource(R.string.export_action)) }) } }; item { RuleModeChips(globalMode, true) { globalMode = it } }; item { OutlinedTextField(globalFind, { globalFind = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(if (globalMode == RepairRuleMode.LITERAL) R.string.global_find_text else R.string.global_line_pattern)) }, singleLine = true) }; item { OutlinedTextField(globalReplacement, { globalReplacement = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.replacement_hint)) }, singleLine = true) }; item { Button(onClick = { actions.onAddGlobalRule(globalMode, globalFind, globalReplacement); globalFind = ""; globalReplacement = "" }, enabled = globalFind.isNotBlank()) { Text(stringResource(R.string.add_global_rule)) } }; if (state.globalRules.isNotEmpty()) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(R.string.global_rules_count, state.globalRules.size)); TextButton(onClick = actions.onClearGlobalRules) { Text(stringResource(R.string.clear)) } } }; items(state.globalRules.indices.toList()) { i -> RuleCard(state.globalRules[i]) { actions.onDeleteGlobalRule(i) } }
         }
     }
 }
