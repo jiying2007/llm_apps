@@ -300,7 +300,7 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.smart_clean4_signal, candidate.raw.count), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Text(candidate.raw.text, maxLines = 4, overflow = TextOverflow.Ellipsis)
-                        if (candidate.feedback != SmartCleanFeedback.NONE) Text(stringResource(R.string.smart_clean4_memory, candidate.feedback.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (candidate.feedback != SmartCleanFeedback.NONE) Text(stringResource(R.string.smart_clean4_memory), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             OutlinedButton(onClick = { record(candidate, SmartCleanFeedback.KEEP) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.keep_text)) }
                             OutlinedButton(onClick = { record(candidate, SmartCleanFeedback.PROTECT) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.protect_text)) }
