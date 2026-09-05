@@ -2,6 +2,7 @@
 <resources>
     <string name="txt_doctor">TXT 體檢</string>
     <string name="txt_doctor_body">在修復前完全本機檢查編碼、文字品質、章節結構和干擾內容。</string>
+    <string name="txt_doctor_failed">無法完成 TXT 體檢，請重試。</string>
     <string name="txt_health_score">TXT 健康度 · %1$d/100</string>
     <string name="doctor_encoding">編碼健康</string>
     <string name="doctor_toc">章節結構</string>
