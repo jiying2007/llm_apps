@@ -53,6 +53,8 @@
     <string name="reader_gesture_previous">上一页</string>
     <string name="reader_settings_done">完成</string>
     <string name="reader_annotation_markdown_title">净读标注</string>
+    <string name="reader_chapters_failed">无法加载章节，请重试。</string>
+    <string name="reader_retry">重试</string>
     <string name="reader_tts_pronunciation">本地发音修正</string>
     <string name="reader_tts_pronunciation_hint">每行一条纯文本规则：原词 =&gt; 朗读文本。例如：单于 =&gt; chán yú。只影响朗读，不修改书籍正文。</string>
     <string name="reader_tts_pronunciation_save">保存发音词典</string>
