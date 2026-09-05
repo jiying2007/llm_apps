@@ -34,6 +34,15 @@ internal object TtsLocalePolicy {
         return values.distinctBy { it.toLanguageTag().lowercase(Locale.ROOT) }
     }
 
+    fun acceptsSavedVoice(mode: ChineseDisplayMode, voiceLocale: Locale): Boolean = when (mode) {
+        ChineseDisplayMode.ORIGINAL -> true
+        ChineseDisplayMode.SIMPLIFIED,
+        ChineseDisplayMode.TRADITIONAL,
+        ChineseDisplayMode.TAIWAN,
+        ChineseDisplayMode.TAIWAN_PHRASES,
+        ChineseDisplayMode.HONG_KONG -> voiceLocale.language.equals("zh", ignoreCase = true)
+    }
+
     fun choose(
         mode: ChineseDisplayMode,
         documentLocale: Locale,
