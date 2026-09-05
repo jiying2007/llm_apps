@@ -87,6 +87,17 @@ import kotlin.math.roundToInt
                         OutlinedButton(onClick = actions.onAnalyzeSmartClean, modifier = Modifier.fillMaxWidth()) {
                             Text(stringResource(if (state.smartCleanAnalyzed) R.string.rescan_noise else R.string.scan_noise_free))
                         }
+                        if (state.noiseCandidates.isNotEmpty()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    stringResource(R.string.noise_summary, state.noiseCandidates.size, selectedCount, selectedNoiseTotal),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(stringResource(R.string.smart_clean_apply_warning), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            NoiseCandidateCard(state.noiseCandidates.first(), 0, actions)
+                        }
                         OutlinedButton(onClick = { actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Outlined.Psychology, null)
                             Spacer(Modifier.width(8.dp))
@@ -97,19 +108,6 @@ import kotlin.math.roundToInt
             }
 
             if (state.noiseCandidates.isNotEmpty()) {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                stringResource(R.string.noise_summary, state.noiseCandidates.size, selectedCount, selectedNoiseTotal),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(stringResource(R.string.smart_clean_apply_warning), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        NoiseCandidateCard(state.noiseCandidates.first(), 0, actions)
-                    }
-                }
                 items((1 until minOf(20, state.noiseCandidates.size)).toList(), key = { it }) { index ->
                     NoiseCandidateCard(state.noiseCandidates[index], index, actions)
                 }
