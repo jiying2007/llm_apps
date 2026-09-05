@@ -116,6 +116,8 @@ profile_swap = 'install_pair "Profile collection" "$PROFILE_TARGET_APK" "$PROFIL
 profile_call = 'run_instrumentation BaselineProfile "$PROFILE_REMOTE" "$RESULT_ROOT/profile-instrumentation.log" "$PROFILE_CLASS"'
 emulator_start = '"$EMULATOR" -avd "$AVD_NAME"'
 host_build = './gradlew --no-daemon --warning-mode all'
+settle_call = '\nwait_for_performance_settle\n'
+r8_install = 'install_pair "R8 Macrobenchmark" "$BENCHMARK_TARGET_APK" "$BENCHMARK_TEST_APK"'
 macro_call = 'run_instrumentation Macrobenchmark "$MACRO_REMOTE" "$RESULT_ROOT/macro-instrumentation.log" "$MACRO_CLASS"'
 assert slo_call in runner and profile_call in runner and profile_swap in runner
 assert '--mode hosted-regression' in runner, "hosted CI must use regression mode"
@@ -126,6 +128,13 @@ assert 'BENCHMARK_TARGET_APK=' in runner and 'PROFILE_TARGET_APK=' in runner
 assert host_build in runner and emulator_start in runner
 assert runner.index(host_build) < runner.index(emulator_start), "hosted performance APKs must build before the measurement emulator starts"
 assert 'Performance APKs built before emulator start; launching fresh measurement guest' in runner
+assert 'PERFORMANCE_SETTLE_SECONDS="${JINGDU_PERFORMANCE_SETTLE_SECONDS:-360}"' in runner, "fresh hosted performance guest must retain deterministic six-minute post-boot settle"
+assert 'wait_for_performance_settle()' in runner, "fresh hosted performance settle function missing"
+assert settle_call in runner and r8_install in runner
+assert runner.index(emulator_start) < runner.index(settle_call) < runner.index(r8_install), "performance measurement must begin only after fresh guest settle"
+assert 'second % 15 == 0' in runner, "performance settle must repeatedly verify guest health"
+assert 'Android framework health check failed during performance settle' in runner
+assert 'guest_uptime=' in runner, "performance settle must log guest age for evidence"
 assert runner.index(slo_call) < runner.index(profile_swap) < runner.index(profile_call), "R8 performance result must freeze before non-minified profile target is installed"
 assert "SLO_STATUS=$?" in runner, "performance result must be retained across profile generation"
 assert 'preserve_failed_macro_evidence "$MACRO_REMOTE"' in runner
