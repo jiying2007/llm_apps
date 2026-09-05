@@ -63,7 +63,7 @@ internal class ReaderViewportEngine(context: Context, private val bookId: String
         val key = WindowKey(aligned, presentationKey(settings), windowChars)
         cache[key]?.let { return it }
         val source = reader.readAt(aligned, windowChars)
-        val presented = ReaderPresentationPipeline.present(source, settings)
+        val presented = ReaderPresentationPipeline.present(source, settings, prewarmSelection = continuous)
         val result = ReaderDisplayWindow(
             start = aligned,
             sourceText = source,
@@ -139,10 +139,22 @@ internal object ReaderPageLayoutCache {
     private val cache = object : LinkedHashMap<PageLayoutKey, PageLayoutSnapshot>(20, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PageLayoutKey, PageLayoutSnapshot>?): Boolean = size > 16
     }
+    private var mostRecent: PageLayoutSnapshot? = null
 
-    @Synchronized fun get(key: PageLayoutKey): PageLayoutSnapshot? = cache[key]
-    @Synchronized fun put(key: PageLayoutKey, value: PageLayoutSnapshot) { cache[key] = value }
-    @Synchronized fun clear() = cache.clear()
+    @Synchronized
+    fun get(key: PageLayoutKey): PageLayoutSnapshot? = cache[key]?.also { mostRecent = it }
+
+    @Synchronized
+    fun put(key: PageLayoutKey, value: PageLayoutSnapshot) {
+        cache[key] = value
+        mostRecent = value
+    }
+
+    @Synchronized
+    fun clear() {
+        cache.clear()
+        mostRecent = null
+    }
 
     /**
      * Paged rendering normally receives exactly the visible prefix measured below. For a plain body
@@ -154,14 +166,21 @@ internal object ReaderPageLayoutCache {
     @Synchronized
     fun reusableLayoutFor(visibleText: String, widthPx: Int, heightPx: Int, hasHeadingStyle: Boolean): StaticLayout? {
         if (visibleText.isEmpty() || widthPx <= 0 || heightPx <= 0) return null
-        val entries = cache.values.toList()
-        for (index in entries.indices.reversed()) {
-            val snapshot = entries[index]
-            if (snapshot.reusableWidthPx == widthPx &&
+        fun matches(snapshot: PageLayoutSnapshot): Boolean =
+            snapshot.reusableWidthPx == widthPx &&
                 snapshot.reusableHeightPx == heightPx &&
                 snapshot.reusableVisibleText == visibleText &&
                 snapshot.reusableHasHeadingStyle == hasHeadingStyle
-            ) return snapshot.reusableLayout
+
+        // The draw immediately following page measurement overwhelmingly asks for the snapshot that
+        // was just inserted. Resolve that case without allocating cache.values.toList() on the UI
+        // path; only history/back-navigation falls through to the tiny bounded LRU scan.
+        mostRecent?.takeIf(::matches)?.let { return it.reusableLayout }
+        for (snapshot in cache.values) {
+            if (matches(snapshot)) {
+                mostRecent = snapshot
+                return snapshot.reusableLayout
+            }
         }
         return null
     }
@@ -186,8 +205,10 @@ internal object ReaderPageLayoutCache {
         val columnWidth = ((boundedWidth - horizontalPadding - gap) / safeColumns).coerceAtLeast(1)
         val contentHeight = (heightPx - verticalPadding).coerceAtLeast(1)
         val spec = ReaderTypographySpec.from(settings)
+        val sourceHash = sourceText.hashCode()
+        val displayHash = if (sourceText === displayText) sourceHash else displayText.hashCode()
         val key = PageLayoutKey(
-            textHash = 31 * sourceText.hashCode() + displayText.hashCode(),
+            textHash = 31 * sourceHash + displayHash,
             widthPx = columnWidth,
             heightPx = contentHeight,
             typographyFingerprint = 31 * spec.fingerprint + settings.emphasizeHeadings.hashCode(),
