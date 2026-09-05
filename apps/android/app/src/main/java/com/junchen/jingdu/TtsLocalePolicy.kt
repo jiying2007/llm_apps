@@ -21,6 +21,7 @@ internal object TtsLocalePolicy {
             ChineseDisplayMode.HONG_KONG -> Locale.forLanguageTag("zh-HK")
             ChineseDisplayMode.ORIGINAL -> documentLocale
         }
+        val convertedChinese = mode != ChineseDisplayMode.ORIGINAL
         val values = buildList {
             add(preferred)
             if (documentLocale.language.equals("zh", ignoreCase = true)) add(documentLocale)
@@ -29,7 +30,7 @@ internal object TtsLocalePolicy {
                 add(Locale.forLanguageTag("zh-TW"))
                 add(Locale.forLanguageTag("zh-HK"))
             }
-            add(systemLocale)
+            if (!convertedChinese || systemLocale.language.equals("zh", ignoreCase = true)) add(systemLocale)
         }
         return values.distinctBy { it.toLanguageTag().lowercase(Locale.ROOT) }
     }
