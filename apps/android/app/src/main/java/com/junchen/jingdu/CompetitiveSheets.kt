@@ -20,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -205,14 +206,13 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
 
 private data class LabCandidate(
     val raw: ReaderController.NoiseCandidate,
-    val semantic: SemanticCandidateDecision,
     val feedback: SmartCleanFeedback,
-    val adjustedScore: Int,
 )
 
 @Composable
 internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val book = state.currentBook
     val feedbackStore = remember(book?.id) { SmartCleanFeedbackStore(context) }
     var candidates by remember(book?.id) { mutableStateOf<List<LabCandidate>>(emptyList()) }
@@ -236,9 +236,10 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
                 ReaderController().use { reader ->
                     reader.open(repo.normalizedFile(source), source.progress)
                     reader.noiseCandidates().map { candidate ->
-                        val semantic = TinyLocalSemanticCandidateClassifier.classifyCandidate(candidate.text)
-                        val feedback = feedbackStore.decision(book.id, candidate.reason, candidate.text)
-                        LabCandidate(candidate, semantic, feedback, candidate.score + feedbackStore.modelDelta(candidate.reason, candidate.text) + if (semantic.label == SemanticCandidateLabel.AD) 8 else if (semantic.label == SemanticCandidateLabel.BODY) -16 else 0)
+                        LabCandidate(
+                            raw = candidate,
+                            feedback = feedbackStore.decision(book.id, candidate.reason, candidate.text),
+                        )
                     }
                 }
             }
@@ -246,7 +247,7 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
             throw cancelled
         } catch (failure: Exception) {
             candidates = emptyList()
-            error = failure.message ?: context.getString(R.string.smart_clean_load_failed)
+            error = failure.message ?: resources.getString(R.string.smart_clean_load_failed)
         } finally {
             loading = false
         }
@@ -296,7 +297,7 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
             items(candidates.take(40), key = { it.raw.reason + "\u001f" + it.raw.text }) { candidate ->
                 ElevatedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.smart_clean4_signal, candidate.raw.reason, candidate.raw.count, candidate.raw.score, candidate.semantic.label.name, candidate.adjustedScore), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.smart_clean4_signal, candidate.raw.count), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Text(candidate.raw.text, maxLines = 4, overflow = TextOverflow.Ellipsis)
                         if (candidate.feedback != SmartCleanFeedback.NONE) Text(stringResource(R.string.smart_clean4_memory, candidate.feedback.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
