@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Publish immutable Jingdu source provenance from an already-gated main SHA.
+"""Prepare Jingdu source provenance and a draft GitHub Release from a gated main SHA.
 
-This script is intentionally stdlib-only. It is invoked only by the tail job of the
-main CI workflow after all required product gates succeed. New releases use annotated
-tag objects whose message binds the exact gated commit to the checked-in manifest hash.
-The current Android GitHub release stage adds a stable-debug-key APK in the following
-tail job; Google Play production remains a separate later stage.
+This script is intentionally stdlib-only. It runs only after all required product gates
+succeed on a push to main. New versions create an annotated source tag plus a *draft*
+GitHub Release. The following Android APK job uploads every release asset while the
+release is still mutable. A separate workflow_run finalizer publishes the draft only
+after the complete CI run succeeds, so repositories with Immutable Releases enabled
+never need to mutate assets or tags after publication.
 """
 
 from __future__ import annotations
@@ -23,11 +24,6 @@ from pathlib import Path
 TEMP_PREFIXES = ("feat/", "fix/", "chore/", "ci/", "refactor/", "docs/", "test/", "perf/", "tmp/", "dependabot/")
 RELEASE_PREFIX = "release/source-v"
 CURRENT_STAGE_MARKER = "## Current Android release stage"
-OLD_SOURCE_ONLY_TEXT = (
-    "This records source provenance only. It is not evidence of a signed APK/AAB or "
-    "Google Play production rollout. Android production still requires the retained upload key, "
-    "Play Console product/listing/license-test evidence and staged rollout documented in `docs/RELEASE.md`."
-)
 CURRENT_STAGE_TEXT = (
     "This release records immutable source provenance. The attached debug-signed APK is the official "
     "installable Android artifact for the current GitHub release stage. GitHub `main` protection is not "
@@ -139,8 +135,24 @@ def read_tag(tag: str):
     return ref, sha
 
 
+def find_release(tag: str) -> dict | None:
+    for release in paged("/releases"):
+        if release.get("tag_name") == tag:
+            return release
+    return None
+
+
 def manifest_sha256(manifest: Path) -> str:
     return hashlib.sha256(manifest.read_bytes()).hexdigest()
+
+
+def expected_assets(tag: str) -> set[str]:
+    version = tag.removeprefix("v")
+    return {
+        f"Jingdu-v{version}-debug-signed.apk",
+        "SHA256SUMS.txt",
+        "SIGNING-CERT-SHA256.txt",
+    }
 
 
 def create_annotated_tag(tag: str, manifest: Path) -> None:
@@ -174,108 +186,82 @@ def create_annotated_tag(tag: str, manifest: Path) -> None:
         fail(f"annotated tag {tag} does not resolve to gated main {MAIN_SHA}")
 
 
-def ensure_current_stage_release_notes(release: dict) -> None:
-    release_id = release.get("id")
-    if not release_id:
-        fail("existing GitHub Release has no id")
-    body = release.get("body") or ""
-    updated = body
-    if OLD_SOURCE_ONLY_TEXT in updated:
-        updated = updated.replace(OLD_SOURCE_ONLY_TEXT, CURRENT_STAGE_TEXT)
-    updated = updated.replace("used for the current pre-production stage", "used for the current GitHub release stage")
-    if CURRENT_STAGE_MARKER not in updated:
-        updated = (
-            updated.rstrip()
-            + "\n\n"
-            + CURRENT_STAGE_MARKER
-            + "\n\n"
-            + "The attached `Jingdu-vX.Y.Z-debug-signed.apk` pattern is the official installable Android "
-              "artifact for the current GitHub release stage. It is signed with the repository-stable Android "
-              "debug key (`androiddebugkey`); the APK checksum and signing-certificate fingerprint are published "
-              "beside it. `main` branch protection / repository rulesets are not required for this stage.\n\n"
-              "This remains separate from a future Google Play production release, which uses the production/upload "
-              "signing path and external Play/device evidence."
-        )
-    if updated != body:
-        request(f"/releases/{release_id}", method="PATCH", payload={"body": updated})
-        print("updated GitHub Release notes for current debug-signed release stage")
-
-
-def publish(tag: str, manifest: Path) -> None:
-    existing = read_tag(tag)
-    encoded = urllib.parse.quote(tag, safe="")
-    release_status, release = request(f"/releases/tags/{encoded}", allowed=(404,))
-
-    # A completed tag + Release keeps immutable tag provenance. Later main commits may retain the
-    # same version until the next bump; the publisher never moves the tag. Release notes may be
-    # refreshed to keep current-stage distribution semantics accurate.
-    if existing is not None and release_status != 404:
-        _, target_sha = existing
-        ensure_current_stage_release_notes(release)
-        print(
-            f"source release already published at immutable {tag} -> {target_sha}: "
-            f"{release.get('html_url')}"
-        )
-        return
-
-    # An orphan tag can be completed only when it already resolves to this exact gated main SHA.
-    if existing is not None:
-        _, target_sha = existing
-        if target_sha != MAIN_SHA:
-            fail(f"orphan immutable tag {tag} points to {target_sha}, expected gated main {MAIN_SHA}")
-        _, release = request(
-            "/releases",
-            method="POST",
-            payload={
-                "tag_name": tag,
-                "target_commitish": target_sha,
-                "name": f"Jingdu {tag}",
-                "body": release_body(tag, manifest),
-                "draft": False,
-                "prerelease": False,
-                "make_latest": "true",
-            },
-        )
-        print(f"completed release for existing immutable tag: {release.get('html_url')}")
-        return
-
-    if release_status != 404:
-        fail(f"release exists for missing tag {tag}")
-
-    create_annotated_tag(tag, manifest)
+def create_draft_release(tag: str, target_sha: str, manifest: Path) -> dict:
     _, release = request(
         "/releases",
         method="POST",
         payload={
             "tag_name": tag,
-            "target_commitish": MAIN_SHA,
+            "target_commitish": target_sha,
             "name": f"Jingdu {tag}",
             "body": release_body(tag, manifest),
-            "draft": False,
+            "draft": True,
             "prerelease": False,
-            "make_latest": "true",
+            "make_latest": "false",
             "generate_release_notes": True,
         },
     )
+    if not release or release.get("draft") is not True:
+        fail(f"GitHub did not create {tag} as a draft release")
+    return release
+
+
+def prepare_release(tag: str, manifest: Path) -> None:
+    existing = read_tag(tag)
+    release = find_release(tag)
+
+    if existing is not None and release is not None:
+        _, target_sha = existing
+        if release.get("draft") is True:
+            if target_sha != MAIN_SHA:
+                fail(f"stale draft {tag} points to {target_sha}, expected gated main {MAIN_SHA}")
+            print(f"draft source release already prepared for {tag} -> {target_sha}")
+            return
+
+        assets = {asset.get("name") for asset in release.get("assets") or []}
+        missing = sorted(expected_assets(tag) - assets)
+        if missing:
+            fail(f"published release {tag} is missing required immutable assets: {missing}")
+        print(
+            f"source release already published at {tag} -> {target_sha}: "
+            f"{release.get('html_url')}"
+        )
+        return
+
+    if existing is not None:
+        _, target_sha = existing
+        if target_sha != MAIN_SHA:
+            fail(f"orphan tag {tag} points to {target_sha}, expected gated main {MAIN_SHA}")
+        release = create_draft_release(tag, target_sha, manifest)
+        print(f"prepared draft release for existing source tag: id={release.get('id')} tag={tag}")
+        return
+
+    if release is not None:
+        fail(f"release exists for missing source tag {tag}")
+
+    create_annotated_tag(tag, manifest)
+    release = create_draft_release(tag, MAIN_SHA, manifest)
     final = read_tag(tag)
     if final is None or final[1] != MAIN_SHA:
-        fail(f"created release tag {tag} does not resolve to gated main {MAIN_SHA}")
+        fail(f"created source tag {tag} does not resolve to gated main {MAIN_SHA}")
     print(
-        f"created annotated source release: {release.get('html_url')} "
-        f"(manifest sha256 {manifest_sha256(manifest)})"
+        f"prepared annotated tag + draft release: id={release.get('id')} tag={tag} "
+        f"manifest_sha256={manifest_sha256(manifest)}"
     )
 
 
 def release_body(tag: str, manifest: Path) -> str:
+    version = tag.removeprefix("v")
+    apk_name = f"Jingdu-v{version}-debug-signed.apk"
     return (
         f"Jingdu {tag} source provenance and current-stage Android GitHub release.\n\n"
         f"Immutable source manifest: `{manifest.as_posix()}`.\n"
         f"Manifest SHA-256: `{manifest_sha256(manifest)}`.\n\n"
         f"{CURRENT_STAGE_TEXT}\n\n"
         f"{CURRENT_STAGE_MARKER}\n\n"
-        "The current Android release stage publishes an installable APK from this immutable source tag "
-        "using the repository-stable Android debug key (`androiddebugkey`), with APK checksum and signing-"
-        "certificate fingerprint evidence attached to the GitHub Release.\n\n"
+        f"`{apk_name}` is built from the annotated `{tag}` source tag and signed with the repository-stable "
+        "Android debug key (`androiddebugkey`). `SHA256SUMS.txt` and `SIGNING-CERT-SHA256.txt` are attached "
+        "while this release is still a draft; the release is published only after all three assets are present.\n\n"
         "A future Play production release uses the separate production/upload signing path plus the Play "
         "Console and physical-device evidence documented in `docs/PRODUCTION_READINESS.md`."
     )
@@ -317,7 +303,7 @@ def main() -> int:
         cleanup_closed_temporary_branches()
         return 0
 
-    publish(tag, manifest)
+    prepare_release(tag, manifest)
     cleanup_closed_temporary_branches()
     return 0
 

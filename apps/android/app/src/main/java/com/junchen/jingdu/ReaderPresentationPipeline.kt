@@ -12,16 +12,24 @@ internal data class ReaderPresentedText(
  * monotonic projection back to source coordinates.
  */
 internal object ReaderPresentationPipeline {
-    fun present(source: String, settings: ReaderSettings): ReaderPresentedText {
+    private val excessiveBlankLines = Regex("\\n[ \\t]*\\n(?:[ \\t]*\\n)+")
+
+    fun present(
+        source: String,
+        settings: ReaderSettings,
+        prewarmSelection: Boolean = settings.readingMode == ReaderMode.CONTINUOUS,
+    ): ReaderPresentedText {
         var intermediate = source
         if (settings.compressBlankLines) {
             // The long-standing presentation toggle now represents conservative Smart Layout:
             // repair fixed-width hard wraps only with strong local evidence, then normalize truly
             // excessive blank lines. Both operations remain display-only and projection-backed.
             intermediate = SmartLayout.present(intermediate).text
-            intermediate = intermediate.replace(Regex("\\n[ \\t]*\\n(?:[ \\t]*\\n)+"), "\n\n")
+            if (excessiveBlankLines.containsMatchIn(intermediate)) {
+                intermediate = intermediate.replace(excessiveBlankLines, "\n\n")
+            }
         }
-        if (settings.paragraphSpacingEm > 0f) {
+        if (settings.paragraphSpacingEm > 0f && "\n\n" in intermediate) {
             intermediate = intermediate.replace("\n\n", "\n${ReaderTypographySpec.PARAGRAPH_SPACER}\n")
         }
         val sourceToIntermediate = TextProjection.between(source, intermediate)
@@ -29,9 +37,11 @@ internal object ReaderPresentationPipeline {
         val display = presented.displayText
         val intermediateToDisplay = presented.projection
         val map = SourceDisplayMap.compose(sourceToIntermediate, intermediateToDisplay)
-        // All present() callers are already on bounded worker/IO paths. Build selection source ranges
-        // here so normal reader frames only merge the prepared annotations with visual spans.
-        ReaderSelectionController.prewarmSelectionMap(display, map)
+        // Continuous text is consumed later by Compose, so prewarm its exact selection map on this
+        // bounded worker. Paged rendering first measures the visible prefix and then calls
+        // annotatedForSelection() on the same worker; skipping full-window prewarm there avoids
+        // allocating source-range annotations for text that cannot appear on the current page.
+        if (prewarmSelection) ReaderSelectionController.prewarmSelectionMap(display, map)
         return ReaderPresentedText(
             sourceText = source,
             displayText = display,

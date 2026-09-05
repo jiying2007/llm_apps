@@ -57,6 +57,7 @@ required=(
   scripts/check-android-performance-slo.py scripts/run-android-macrobenchmark-ci.sh
   scripts/run-android-functional-tests-ci.sh scripts/verify-android-16k-page-size.sh scripts/verify-product-maturity.sh
   scripts/train-smartclean-model.py scripts/verify-smartclean-model.py scripts/verify-reader.sh scripts/verify-reading-experience.sh
+  scripts/publish-source-release.py scripts/finalize-draft-release.py .github/workflows/finalize-immutable-release.yml
 )
 for path in "${required[@]}"; do test -f "$path" || { echo "terminal-quality asset missing: $path" >&2; exit 1; }; done
 
@@ -108,8 +109,13 @@ for legacy in apps/android/app/src/main/java/com/junchen/jingdu/ReaderV2Panels.k
 done
 
 test ! -f .github/workflows/source-release.yml
-python3 -m py_compile scripts/publish-source-release.py
+python3 -m py_compile scripts/publish-source-release.py scripts/finalize-draft-release.py
 grep -Fq 'needs: [native-core, android, android-functional, android-native-compat, android-performance, harmony-contract, play-store-contract, terminal-contract]' .github/workflows/ci.yml
-grep -q 'if existing is not None and release_status != 404:' scripts/publish-source-release.py
+grep -Fq '"draft": True' scripts/publish-source-release.py
+grep -Fq '"make_latest": "false"' scripts/publish-source-release.py
+grep -Fq 'published release {tag} is missing required immutable assets' scripts/publish-source-release.py
+grep -Fq 'published release {tag} did not become immutable' scripts/finalize-draft-release.py
+grep -Fq 'github.event.workflow_run.conclusion == '\''success'\''' .github/workflows/finalize-immutable-release.yml
+grep -Fq 'ref: ${{ github.event.workflow_run.head_sha }}' .github/workflows/finalize-immutable-release.yml
 
 echo 'Terminal long-form / moat / Reader quality contract OK'

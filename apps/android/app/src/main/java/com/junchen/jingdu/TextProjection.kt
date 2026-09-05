@@ -9,18 +9,26 @@ package com.junchen.jingdu
  * actual replacement/deletion/insertion span, where boundaries are interpolated monotonically.
  */
 internal class TextProjection private constructor(
-    private val sourceToDisplay: IntArray,
-    private val displayToSource: IntArray,
+    private val sourceToDisplay: IntArray?,
+    private val displayToSource: IntArray?,
+    private val sourceCount: Int,
+    private val displayCount: Int,
     private val identityMapping: Boolean,
 ) {
-    val sourceCodePoints: Long get() = (sourceToDisplay.size - 1).toLong()
-    val displayCodePoints: Long get() = (displayToSource.size - 1).toLong()
+    val sourceCodePoints: Long get() = sourceCount.toLong()
+    val displayCodePoints: Long get() = displayCount.toLong()
 
-    fun displayForSource(source: Long): Long =
-        sourceToDisplay[source.coerceIn(0, sourceCodePoints).toInt()].toLong()
+    fun displayForSource(source: Long): Long {
+        val bounded = source.coerceIn(0, sourceCodePoints)
+        if (identityMapping) return bounded
+        return sourceToDisplay!![bounded.toInt()].toLong()
+    }
 
-    fun sourceForDisplay(display: Long): Long =
-        displayToSource[display.coerceIn(0, displayCodePoints).toInt()].toLong()
+    fun sourceForDisplay(display: Long): Long {
+        val bounded = display.coerceIn(0, displayCodePoints)
+        if (identityMapping) return bounded
+        return displayToSource!![bounded.toInt()].toLong()
+    }
 
     fun compose(after: TextProjection): TextProjection {
         require(displayCodePoints == after.sourceCodePoints) { "projection domains do not compose" }
@@ -29,20 +37,22 @@ internal class TextProjection private constructor(
         // two full IntArrays on every page while preserving exactly the same boundary semantics.
         if (after.identityMapping) return this
         if (identityMapping) return after
-        val s2d = IntArray(sourceToDisplay.size)
-        for (index in s2d.indices) s2d[index] = after.displayForSource(sourceToDisplay[index].toLong()).toInt()
-        val d2s = IntArray(after.displayToSource.size)
-        for (index in d2s.indices) d2s[index] = sourceForDisplay(after.sourceForDisplay(index.toLong())).toInt()
-        return TextProjection(s2d, d2s, false)
+        val firstS2d = sourceToDisplay!!
+        val afterD2s = after.displayToSource!!
+        val s2d = IntArray(sourceCount + 1)
+        for (index in s2d.indices) s2d[index] = after.displayForSource(firstS2d[index].toLong()).toInt()
+        val d2s = IntArray(after.displayCount + 1)
+        for (index in d2s.indices) d2s[index] = sourceForDisplay(afterD2s[index].toLong()).toInt()
+        return TextProjection(s2d, d2s, sourceCount, after.displayCount, false)
     }
 
     companion object {
         fun identity(codePoints: Int): TextProjection {
             val count = codePoints.coerceAtLeast(0)
-            // The arrays are private and never mutated after construction, so an identity mapping can
-            // safely share its single table in both directions instead of allocating three copies.
-            val values = IntArray(count + 1) { it }
-            return TextProjection(values, values, true)
+            // Identity projections are by far the most common Reader path (ORIGINAL text and
+            // equal-code-point script conversion). Keep only the domain size: mapping is simply a
+            // clamp, so allocating and initializing two page-sized IntArrays provides no value.
+            return TextProjection(null, null, count, count, true)
         }
 
         fun between(source: String, display: String): TextProjection {
@@ -84,7 +94,7 @@ internal class TextProjection private constructor(
             s2d[n] = m; d2s[m] = n
             fillMonotonic(s2d, m)
             fillMonotonic(d2s, n)
-            return TextProjection(s2d, d2s, false)
+            return TextProjection(s2d, d2s, n, m, false)
         }
 
         private fun nearestAnchor(source: IntArray, display: IntArray, sourceAt: Int, displayAt: Int): Pair<Int, Int>? {
