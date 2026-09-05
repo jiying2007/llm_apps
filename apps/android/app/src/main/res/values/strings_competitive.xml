@@ -2,6 +2,7 @@
 <resources>
     <string name="txt_doctor">TXT Doctor</string>
     <string name="txt_doctor_body">Diagnose encoding, text quality, chapter structure and distracting text locally before you repair anything.</string>
+    <string name="txt_doctor_failed">Couldn’t complete the TXT check. Try again.</string>
     <string name="txt_health_score">TXT health · %1$d/100</string>
     <string name="doctor_encoding">Encoding health</string>
     <string name="doctor_toc">Chapter structure</string>
@@ -21,18 +22,20 @@
     <string name="toc_reset_repairs">Reset local TOC repairs</string>
     <string name="toc_source_user_or_special">Locally repaired / special heading</string>
 
-    <string name="smart_clean4">Smart Clean 4</string>
-    <string name="smart_clean4_body">Precision-first local candidate intelligence · tiny model v%1$d · no full-book model scan</string>
-    <string name="smart_clean4_signal">%1$s · %2$d× · base %3$d · semantic %4$s · adjusted %5$d</string>
-    <string name="smart_clean4_memory">Local decision memory · %1$s</string>
+    <string name="smart_clean4">Review cleanup suggestions</string>
+    <string name="smart_clean4_body">Precision-first local cleanup suggestions · private and offline</string>
+    <string name="smart_clean4_signal">Candidate found %1$d× · review before applying</string>
+    <string name="smart_clean4_memory">Your local choice has been saved</string>
+    <string name="smart_clean_load_failed">Couldn’t load cleanup suggestions. Try again.</string>
     <string name="keep_text">Keep</string>
     <string name="protect_text">Always protect</string>
     <string name="delete_and_remember">Delete + remember</string>
-    <string name="open_standard_clean">Open Clean preview</string>
+    <string name="open_standard_clean">Back to Smart Clean</string>
 
     <string name="privacy_verification">Privacy verification</string>
     <string name="privacy_verification_body">Verify the offline promise from the installed app itself. The exported audit contains configuration/counts only, never book text.</string>
     <string name="privacy_no_internet">No Android INTERNET permission</string>
+    <string name="privacy_auto_backup_disabled">System automatic backup disabled</string>
     <string name="privacy_no_upload">No book-text upload capability</string>
     <string name="privacy_no_analytics">No runtime analytics SDK</string>
     <string name="privacy_no_ads">No advertising SDK</string>

@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.LinkedHashMap
@@ -108,6 +109,8 @@ internal fun ReaderSmartChaptersPanel(
     var loading by remember(book?.id, book?.normalizedSha256, state.length) {
         mutableStateOf(initial == null && !state.chaptersLoaded)
     }
+    var failed by remember(book?.id, book?.normalizedSha256, state.length) { mutableStateOf(false) }
+    var loadRequest by remember(book?.id, book?.normalizedSha256, state.length) { mutableIntStateOf(0) }
     var addDialog by rememberSaveable(book?.id) { mutableStateOf(false) }
     var title by rememberSaveable(book?.id) { mutableStateOf("") }
     var editing by rememberSaveable(book?.id) { mutableStateOf(false) }
@@ -119,11 +122,12 @@ internal fun ReaderSmartChaptersPanel(
     var positioned by remember(book?.id) { mutableStateOf(initialChapters.isNotEmpty()) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
 
-    LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length) {
+    LaunchedEffect(book?.id, book?.normalizedSha256, state.chaptersLoaded, state.chapters, state.length, loadRequest) {
         if (book == null) {
             base = null
             report = null
             loading = false
+            failed = false
             positioned = false
             return@LaunchedEffect
         }
@@ -131,52 +135,65 @@ internal fun ReaderSmartChaptersPanel(
             base = initial.base
             report = initial.report
             loading = false
+            failed = false
             return@LaunchedEffect
         }
 
-        // Import/re-decode prewarms this revision cache.
-        // A revision-cache hit is authoritative for this panel; never hydrate duplicate global chapter state.
-        val cachedBase = withContext(Dispatchers.IO) {
-            derivedCache.load(book.id, book.normalizedSha256, state.length)
-        }
-        if (cachedBase != null) {
-            val key = TocPanelKey(book.id, book.normalizedSha256, state.length, cachedBase.chapters.hashCode())
+        failed = false
+        loading = true
+        try {
+            // Import/re-decode prewarms this revision cache.
+            // A revision-cache hit is authoritative for this panel; never hydrate duplicate global chapter state.
+            val cachedBase = withContext(Dispatchers.IO) {
+                derivedCache.load(book.id, book.normalizedSha256, state.length)
+            }
+            if (cachedBase != null) {
+                val key = TocPanelKey(book.id, book.normalizedSha256, state.length, cachedBase.chapters.hashCode())
+                TocPanelCache.get(key)?.let { cached ->
+                    base = cached.base
+                    report = cached.report
+                    loading = false
+                    return@LaunchedEffect
+                }
+                val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
+                val computed = withContext(Dispatchers.Default) { store.apply(cachedBase, overrides) }
+                base = cachedBase
+                report = computed
+                TocPanelCache.put(key, TocPanelEntry(cachedBase, computed))
+                loading = false
+                return@LaunchedEffect
+            }
+
+            if (!state.chaptersLoaded) {
+                actions.onEnsureChapters()
+                return@LaunchedEffect
+            }
+            val key = TocPanelKey(book.id, book.normalizedSha256, state.length, state.chapters.hashCode())
             TocPanelCache.get(key)?.let { cached ->
                 base = cached.base
                 report = cached.report
                 loading = false
                 return@LaunchedEffect
             }
+            val computedBase = withContext(Dispatchers.Default) {
+                SmartToc.evaluate(state.chapters.map { SmartChapter(it.offset, it.title, it.source, it.confidence) })
+            }
             val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
-            val computed = withContext(Dispatchers.Default) { store.apply(cachedBase, overrides) }
-            base = cachedBase
+            val computed = withContext(Dispatchers.Default) { store.apply(computedBase, overrides) }
+            base = computedBase
             report = computed
-            TocPanelCache.put(key, TocPanelEntry(cachedBase, computed))
+            TocPanelCache.put(key, TocPanelEntry(computedBase, computed))
             loading = false
-            return@LaunchedEffect
-        }
-
-        if (!state.chaptersLoaded) {
-            loading = true
-            actions.onEnsureChapters()
-            return@LaunchedEffect
-        }
-        val key = TocPanelKey(book.id, book.normalizedSha256, state.length, state.chapters.hashCode())
-        TocPanelCache.get(key)?.let { cached ->
-            base = cached.base
-            report = cached.report
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ProductErrorLog(context).record(ProductErrorCode.INTERNAL_OPERATION_FAILED, "smart-chapters")
+            base = null
+            report = null
+            positioned = false
+            failed = true
             loading = false
-            return@LaunchedEffect
         }
-        val computedBase = withContext(Dispatchers.Default) {
-            SmartToc.evaluate(state.chapters.map { SmartChapter(it.offset, it.title, it.source, it.confidence) })
-        }
-        val overrides = withContext(Dispatchers.IO) { store.load(book.id, state.length) }
-        val computed = withContext(Dispatchers.Default) { store.apply(computedBase, overrides) }
-        base = computedBase
-        report = computed
-        TocPanelCache.put(key, TocPanelEntry(computedBase, computed))
-        loading = false
     }
 
     val chapters = report?.chapters.orEmpty()
@@ -261,6 +278,20 @@ internal fun ReaderSmartChaptersPanel(
             HorizontalDivider()
 
             when {
+                failed -> Column(
+                    Modifier.fillMaxWidth().height(180.dp).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        stringResource(R.string.reader_chapters_failed),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = { loadRequest++ }) {
+                        Text(stringResource(R.string.reader_retry))
+                    }
+                }
                 loading -> Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -310,7 +341,11 @@ internal fun ReaderSmartChaptersPanel(
                                 val percent = if (state.length <= 0L) 0 else {
                                     ((chapter.offset.toDouble() / state.length.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
                                 }
-                                val sourceLabel = if (chapter.source != "core") " · ${chapter.source}" else ""
+                                val sourceLabel = if (chapter.source != "core") {
+                                    " · ${stringResource(R.string.toc_source_user_or_special)}"
+                                } else {
+                                    ""
+                                }
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         displayTitle,
@@ -341,7 +376,6 @@ internal fun ReaderSmartChaptersPanel(
                                 )
                             }
                         }
-
                     }
                 }
             }

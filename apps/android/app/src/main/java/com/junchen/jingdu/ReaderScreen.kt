@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -253,9 +254,13 @@ internal fun ReaderScreen(
     LaunchedEffect(skimDragging, skimFraction, state.chapters, settings) {
         if (!skimDragging) return@LaunchedEffect
         delay(70L)
-        skimPreview = runCatching {
-            skim.preview(skimFraction, skimOrigin, settings, state.chapters, stats.charsPerMinute())
-        }.getOrNull()
+        try {
+            skimPreview = skim.preview(skimFraction, skimOrigin, settings, state.chapters, stats.charsPerMinute())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            skimPreview = null
+        }
     }
 
     fun publishVisibleChars(chars: Long) {

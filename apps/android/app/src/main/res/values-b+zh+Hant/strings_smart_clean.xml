@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="chinese_conversion">中文轉換</string>
-    <string name="chinese_conversion_body">只對目前可見閱讀視窗使用 OpenCC 相容詞組詞典轉換；來源 TXT 與 Core 原始偏移始終不變。</string>
+    <string name="chinese_conversion_body">只改變閱讀顯示，不修改原始 TXT；搜尋、閱讀進度和書籤位置保持一致。</string>
     <string name="chinese_original">原文</string>
     <string name="chinese_simplified">簡體</string>
     <string name="chinese_traditional">標準繁體</string>
@@ -13,8 +13,8 @@
     <string name="chinese_overrides_hint">頭髮 =&gt; 頭髮\n軟件 =&gt; 軟體</string>
     <string name="chinese_overrides_count">%1$d 條有效本地映射</string>
     <string name="save_dictionary">儲存詞典</string>
-    <string name="smart_clean_pack">內建淨化特徵包 v%1$d</string>
-    <string name="smart_clean_refiner">Smart Clean 亦會檢查行內推廣碎片及明顯亂碼行；這類高誤刪風險建議永遠不會預設勾選。</string>
+    <string name="smart_clean_pack">內建安全淨化規則</string>
+    <string name="smart_clean_refiner">智慧淨化亦會檢查行內推廣碎片及明顯亂碼行；高誤刪風險建議不會自動勾選。</string>
     <string name="noise_reason_inline_fragment">行內推廣碎片</string>
     <string name="noise_reason_garbled_line">亂碼 / 替換字元異常行</string>
 </resources>

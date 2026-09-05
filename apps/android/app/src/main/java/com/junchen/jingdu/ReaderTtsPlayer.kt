@@ -144,6 +144,7 @@ internal class ReaderTtsPlayer(
         when (seekCommand) {
             Player.COMMAND_SEEK_TO_NEXT -> nextSentence()
             Player.COMMAND_SEEK_TO_PREVIOUS -> previousSentence()
+            else -> Unit
         }
         return Futures.immediateVoidFuture()
     }

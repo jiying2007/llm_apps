@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,15 +75,9 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
         previewError = null
         importPreview = null
         scope.launch {
-            val prepared = runCatching { withContext(Dispatchers.IO) { ProgressiveImport(context).prepare(uri) } }
-            if (prepared.isFailure) {
-                previewBusy = false
-                previewError = prepared.exceptionOrNull()?.message
-                return@launch
-            }
-            importPreview = prepared.getOrThrow()
-            val imported = runCatching {
-                withContext(Dispatchers.IO) {
+            try {
+                importPreview = withContext(Dispatchers.IO) { ProgressiveImport(context).prepare(uri) }
+                val imported = withContext(Dispatchers.IO) {
                     val repository = BookRepository(context)
                     val book = repository.importUri(uri, BookRepository.AUTO)
                     ReaderController().use { warm ->
@@ -91,12 +86,15 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
                     }
                     book
                 }
-            }
-            previewBusy = false
-            imported.onSuccess {
-                previewBookId = it.id
+                previewBookId = imported.id
                 actions.onBackToLibrary()
-            }.onFailure { previewError = it.message }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                previewError = failure.message
+            } finally {
+                previewBusy = false
+            }
         }
     }
 
@@ -121,12 +119,27 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
                     folderStore.markImported(entry, book.id)
                     existingBookIds += book.id
                     imported++
-                } catch (_: Throwable) {
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
                     failed++
                 }
             }
         }
         FolderLibraryStore.SyncResult(roots.size, discovered, imported, skipped, failed)
+    }
+
+    suspend fun performFolderSync() {
+        try {
+            syncResult = syncFolders()
+            actions.onBackToLibrary()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            syncResult = FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1)
+        } finally {
+            syncBusy = false
+        }
     }
 
     val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -141,12 +154,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
         folderStore.addRoot(uri)
         folderRevision++
         syncBusy = true
-        scope.launch {
-            syncResult = runCatching { syncFolders() }
-                .getOrElse { FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1) }
-            syncBusy = false
-            actions.onBackToLibrary()
-        }
+        scope.launch { performFolderSync() }
     }
 
     fun startFolderSync() {
@@ -155,12 +163,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
             return
         }
         syncBusy = true
-        scope.launch {
-            syncResult = runCatching { syncFolders() }
-                .getOrElse { FolderLibraryStore.SyncResult(folderStore.roots().size, 0, 0, 0, 1) }
-            syncBusy = false
-            actions.onBackToLibrary()
-        }
+        scope.launch { performFolderSync() }
     }
 
     fun removeFolderRoot(uri: android.net.Uri) {
@@ -224,7 +227,7 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
         state.books.filter { it.status == LibraryBookStatus.READING }.maxByOrNull(BookCardModel::touchedAt)
     }
     val showContinue = continueBook != null && libraryQuery.isBlank() && filterName == "ALL" && sortName == LibrarySort.RECENT.name
-    val gridBooks = if (showContinue) filteredBooks.filterNot { it.id == continueBook?.id } else filteredBooks
+    val gridBooks = if (showContinue && continueBook != null) filteredBooks.filterNot { it.id == continueBook.id } else filteredBooks
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -313,7 +316,9 @@ internal fun LibraryScreen(state: AppUiState, actions: JingduActions, snackbar: 
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                if (showContinue) item(span = { GridItemSpan(maxLineSpan) }) { ContinueReadingCard(continueBook!!, { actions.onOpenBook(continueBook!!.id) }) }
+                continueBook?.takeIf { showContinue }?.let { current ->
+                    item(span = { GridItemSpan(maxLineSpan) }) { ContinueReadingCard(current, { actions.onOpenBook(current.id) }) }
+                }
                 gridItems(gridBooks, key = { it.id }) { book ->
                     BookCard(book, { actions.onOpenBook(book.id) }, { deleteTarget = book.id }, { actions.onToggleFavorite(book.id) }, { tagTarget = book.id; tagInput = book.tags.joinToString(", ") })
                 }

@@ -20,27 +20,36 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
 internal fun DoctorSheet(state: AppUiState, actions: JingduActions) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val book = state.currentBook
     var report by remember(book?.id) { mutableStateOf<TxtDoctorReport?>(null) }
     var loading by remember(book?.id) { mutableStateOf(false) }
     var error by remember(book?.id) { mutableStateOf<String?>(null) }
+    var scanRequest by remember(book?.id) { mutableIntStateOf(0) }
 
-    fun request() { loading = true; error = null; report = null }
-    LaunchedEffect(book?.id, loading) {
-        if (book == null || (!loading && report != null)) return@LaunchedEffect
+    fun request() {
+        scanRequest++
+        error = null
+        report = null
+    }
+    LaunchedEffect(book?.id, scanRequest) {
+        if (book == null) return@LaunchedEffect
         loading = true
-        runCatching {
-            withContext(Dispatchers.IO) {
+        error = null
+        try {
+            report = withContext(Dispatchers.IO) {
                 val repo = BookRepository(context)
                 val source = repo.list().firstOrNull { it.id == book.id } ?: error("missing book")
                 ReaderController().use { reader ->
@@ -48,11 +57,17 @@ internal fun DoctorSheet(state: AppUiState, actions: JingduActions) {
                     TxtDoctor.diagnose(reader, source)
                 }
             }
-        }.onSuccess { report = it }.onFailure { error = it.message }
-        loading = false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ProductErrorLog(context).record(ProductErrorCode.INTERNAL_OPERATION_FAILED, "txt-doctor")
+            error = resources.getString(R.string.txt_doctor_failed)
+        } finally {
+            loading = false
+        }
     }
 
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
+    ModalBottomSheet(onDismissRequest = actions.onClosePanel, sheetGesturesEnabled = false) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             contentPadding = PaddingValues(20.dp, 8.dp, 20.dp, 36.dp),
@@ -84,10 +99,10 @@ internal fun DoctorSheet(state: AppUiState, actions: JingduActions) {
                     }
                 }
                 item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { actions.onOpenPanel(ReaderPanel.ENCODING) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.text_encoding)) }
-                        OutlinedButton(onClick = { actions.onOpenPanel(ReaderPanel.CHAPTERS) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.chapters)) }
-                        Button(onClick = { actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.smart_clean4)) }
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { actions.onOpenPanel(ReaderPanel.ENCODING) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.text_encoding)) }
+                        OutlinedButton(onClick = { actions.onOpenPanel(ReaderPanel.CHAPTERS) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.chapters)) }
+                        Button(onClick = { actions.onOpenPanel(ReaderPanel.SMART_CLEAN_LAB) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.smart_clean4)) }
                     }
                 }
             }
@@ -117,8 +132,6 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
     var addDialog by rememberSaveable { mutableStateOf(false) }
     var title by rememberSaveable { mutableStateOf("") }
 
-    // MainActivity.ensureChapters() is the single TOC authority. The sheet must never reopen the
-    // document and run SmartToc.analyze() a second time while the first analysis is already active.
     LaunchedEffect(book?.id, state.chaptersLoaded, state.chapters, state.length) {
         if (book == null) {
             base = null
@@ -193,39 +206,66 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
 
 private data class LabCandidate(
     val raw: ReaderController.NoiseCandidate,
-    val semantic: SemanticCandidateDecision,
     val feedback: SmartCleanFeedback,
-    val adjustedScore: Int,
 )
 
 @Composable
 internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val book = state.currentBook
     val feedbackStore = remember(book?.id) { SmartCleanFeedbackStore(context) }
     var candidates by remember(book?.id) { mutableStateOf<List<LabCandidate>>(emptyList()) }
     var loading by remember(book?.id) { mutableStateOf(true) }
+    var error by remember(book?.id) { mutableStateOf<String?>(null) }
+    var loadRequest by remember(book?.id) { mutableIntStateOf(0) }
 
     suspend fun load() {
-        if (book == null) return
+        if (book == null) {
+            candidates = emptyList()
+            error = null
+            loading = false
+            return
+        }
         loading = true
-        candidates = withContext(Dispatchers.IO) {
-            val repo = BookRepository(context)
-            val source = repo.list().firstOrNull { it.id == book.id } ?: return@withContext emptyList()
-            ReaderController().use { reader ->
-                reader.open(repo.normalizedFile(source), source.progress)
-                reader.noiseCandidates().map { candidate ->
-                    val semantic = TinyLocalSemanticCandidateClassifier.classifyCandidate(candidate.text)
-                    val feedback = feedbackStore.decision(book.id, candidate.reason, candidate.text)
-                    LabCandidate(candidate, semantic, feedback, candidate.score + feedbackStore.modelDelta(candidate.reason, candidate.text) + if (semantic.label == SemanticCandidateLabel.AD) 8 else if (semantic.label == SemanticCandidateLabel.BODY) -16 else 0)
+        error = null
+        try {
+            candidates = withContext(Dispatchers.IO) {
+                val repo = BookRepository(context)
+                val source = repo.list().firstOrNull { it.id == book.id } ?: return@withContext emptyList()
+                ReaderController().use { reader ->
+                    reader.open(repo.normalizedFile(source), source.progress)
+                    reader.noiseCandidates().map { candidate ->
+                        LabCandidate(
+                            raw = candidate,
+                            feedback = feedbackStore.decision(book.id, candidate.reason, candidate.text),
+                        )
+                    }
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            ProductErrorLog(context).record(ProductErrorCode.INTERNAL_OPERATION_FAILED, "smart-clean-review")
+            candidates = emptyList()
+            error = resources.getString(R.string.smart_clean_load_failed)
+        } finally {
+            loading = false
         }
-        loading = false
     }
-    LaunchedEffect(book?.id) { load() }
 
-    ModalBottomSheet(onDismissRequest = actions.onClosePanel) {
+    fun record(candidate: LabCandidate, decision: SmartCleanFeedback) {
+        val currentBook = book ?: return
+        feedbackStore.record(currentBook.id, candidate.raw.reason, candidate.raw.text, decision)
+        candidates = candidates.map { current ->
+            if (current.raw.reason == candidate.raw.reason && current.raw.text == candidate.raw.text) current.copy(feedback = decision) else current
+        }
+        if (decision == SmartCleanFeedback.DELETE) actions.onAddRule(RepairRuleMode.LITERAL, candidate.raw.text, "")
+    }
+
+    LaunchedEffect(book?.id, loadRequest) { load() }
+
+    ModalBottomSheet(onDismissRequest = actions.onClosePanel, sheetGesturesEnabled = false) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
             contentPadding = PaddingValues(20.dp, 8.dp, 20.dp, 36.dp),
@@ -237,31 +277,34 @@ internal fun SmartCleanLabSheet(state: AppUiState, actions: JingduActions) {
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.smart_clean4), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                        Text(stringResource(R.string.smart_clean4_body, TinyLocalSemanticCandidateClassifier.MODEL_VERSION), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.smart_clean4_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            if (!loading && candidates.isEmpty()) item { Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(candidates.take(40), key = { it.raw.reason + "\u001f" + it.raw.text }) { item ->
+            error?.let { message ->
+                item {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(message, color = MaterialTheme.colorScheme.error)
+                        OutlinedButton(onClick = { loadRequest++ }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Refresh, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.rescan_noise))
+                        }
+                    }
+                }
+            }
+            if (!loading && error == null && candidates.isEmpty()) item { Text(stringResource(R.string.no_noise_found), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            items(candidates.take(40), key = { it.raw.reason + "\u001f" + it.raw.text }) { candidate ->
                 ElevatedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(stringResource(R.string.smart_clean4_signal, item.raw.reason, item.raw.count, item.raw.score, item.semantic.label.name, item.adjustedScore), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(item.raw.text, maxLines = 4, overflow = TextOverflow.Ellipsis)
-                        if (item.feedback != SmartCleanFeedback.NONE) Text(stringResource(R.string.smart_clean4_memory, item.feedback.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            TextButton(onClick = {
-                                if (book != null) feedbackStore.record(book.id, item.raw.reason, item.raw.text, SmartCleanFeedback.KEEP)
-                            }) { Text(stringResource(R.string.keep_text)) }
-                            TextButton(onClick = {
-                                if (book != null) feedbackStore.record(book.id, item.raw.reason, item.raw.text, SmartCleanFeedback.PROTECT)
-                            }) { Text(stringResource(R.string.protect_text)) }
-                            Button(onClick = {
-                                if (book != null) {
-                                    feedbackStore.record(book.id, item.raw.reason, item.raw.text, SmartCleanFeedback.DELETE)
-                                    actions.onAddRule(RepairRuleMode.LITERAL, item.raw.text, "")
-                                }
-                            }) { Text(stringResource(R.string.delete_and_remember)) }
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.smart_clean4_signal, candidate.raw.count), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(candidate.raw.text, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        if (candidate.feedback != SmartCleanFeedback.NONE) Text(stringResource(R.string.smart_clean4_memory), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OutlinedButton(onClick = { record(candidate, SmartCleanFeedback.KEEP) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.keep_text)) }
+                            OutlinedButton(onClick = { record(candidate, SmartCleanFeedback.PROTECT) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.protect_text)) }
+                            Button(onClick = { record(candidate, SmartCleanFeedback.DELETE) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.delete_and_remember)) }
                         }
                     }
                 }
@@ -290,6 +333,7 @@ internal fun PrivacySheet(state: AppUiState, actions: JingduActions) {
                 Column { Text(stringResource(R.string.privacy_verification), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.privacy_verification_body), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             PrivacyFact(stringResource(R.string.privacy_no_internet), audit.networkPermissionAbsent)
+            PrivacyFact(stringResource(R.string.privacy_auto_backup_disabled), audit.automaticBackupDisabled)
             PrivacyFact(stringResource(R.string.privacy_no_upload), !audit.bookTextUploadCapability)
             PrivacyFact(stringResource(R.string.privacy_no_analytics), !audit.analyticsSdkPresent)
             PrivacyFact(stringResource(R.string.privacy_no_ads), !audit.adsSdkPresent)

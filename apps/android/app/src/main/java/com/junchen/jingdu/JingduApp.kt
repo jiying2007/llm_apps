@@ -62,8 +62,75 @@ data class JingduActions(
 
 private val BrandLight = lightColorScheme(primary = Color(0xFF386A52), onPrimary = Color.White, primaryContainer = Color(0xFFB9F0D1), onPrimaryContainer = Color(0xFF002114), secondary = Color(0xFF4F6357), surface = Color(0xFFFFFBFE), background = Color(0xFFF8FAF6))
 private val BrandSepia = lightColorScheme(primary = Color(0xFF6D5C34), onPrimary = Color.White, primaryContainer = Color(0xFFF2E2B8), onPrimaryContainer = Color(0xFF241A00), secondary = Color(0xFF6A6048), surface = Color(0xFFFFF7E6), background = Color(0xFFFFF5DF))
-private val BrandDark = darkColorScheme(primary = Color(0xFF9DD5B6), onPrimary = Color(0xFF073823), primaryContainer = Color(0xFF20513A), onPrimaryContainer = Color(0xFFB9F0D1), secondary = Color(0xFFB6CCBD), surface = Color(0xFF111411), background = Color(0xFF0E110F))
-private val BrandOled = darkColorScheme(primary = Color(0xFF9DD5B6), onPrimary = Color(0xFF073823), primaryContainer = Color(0xFF173D2B), onPrimaryContainer = Color(0xFFB9F0D1), secondary = Color(0xFFB6CCBD), surface = Color.Black, background = Color.Black)
+private val BrandDark = darkColorScheme(
+    primary = Color(0xFF9DD5B6),
+    onPrimary = Color(0xFF073823),
+    primaryContainer = Color(0xFF20513A),
+    onPrimaryContainer = Color(0xFFD0F5DD),
+    secondary = Color(0xFFC0D0C5),
+    onSecondary = Color(0xFF26352C),
+    secondaryContainer = Color(0xFF354A3E),
+    onSecondaryContainer = Color(0xFFDCE8E0),
+    tertiary = Color(0xFFD7C79F),
+    onTertiary = Color(0xFF3A2F10),
+    tertiaryContainer = Color(0xFF51461F),
+    onTertiaryContainer = Color(0xFFF4E5B9),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    background = Color(0xFF0E110F),
+    onBackground = Color(0xFFE4E8E3),
+    surface = Color(0xFF111411),
+    onSurface = Color(0xFFE4E8E3),
+    surfaceVariant = Color(0xFF2B312D),
+    onSurfaceVariant = Color(0xFFC4CBC4),
+    outline = Color(0xFF8E978F),
+    outlineVariant = Color(0xFF414842),
+    inverseSurface = Color(0xFFE4E8E3),
+    inverseOnSurface = Color(0xFF2B312D),
+    inversePrimary = Color(0xFF386A52),
+    scrim = Color.Black,
+    surfaceTint = Color(0xFF9DD5B6),
+)
+private val BrandOled = darkColorScheme(
+    primary = Color(0xFFA8E1C1),
+    onPrimary = Color(0xFF073823),
+    primaryContainer = Color(0xFF173D2B),
+    onPrimaryContainer = Color(0xFFD2F7DF),
+    secondary = Color(0xFFC5D6CB),
+    onSecondary = Color(0xFF23342A),
+    secondaryContainer = Color(0xFF26382E),
+    onSecondaryContainer = Color(0xFFE0ECE4),
+    tertiary = Color(0xFFDDCCA2),
+    onTertiary = Color(0xFF392F10),
+    tertiaryContainer = Color(0xFF473D1B),
+    onTertiaryContainer = Color(0xFFF5E6BA),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    background = Color.Black,
+    onBackground = Color(0xFFF0F2EF),
+    surface = Color.Black,
+    onSurface = Color(0xFFF0F2EF),
+    surfaceVariant = Color(0xFF1C211D),
+    onSurfaceVariant = Color(0xFFCAD1CB),
+    outline = Color(0xFF98A19A),
+    outlineVariant = Color(0xFF383E39),
+    inverseSurface = Color(0xFFE8ECE8),
+    inverseOnSurface = Color(0xFF202521),
+    inversePrimary = Color(0xFF386A52),
+    scrim = Color.Black,
+    surfaceTint = Color(0xFFA8E1C1),
+)
+
+internal fun jingduColorScheme(palette: ReaderPalette) = when (palette) {
+    ReaderPalette.NIGHT -> BrandDark
+    ReaderPalette.OLED -> BrandOled
+    ReaderPalette.SEPIA -> BrandSepia
+    else -> BrandLight
+}
 
 @Composable
 fun JingduApp(
@@ -75,12 +142,7 @@ fun JingduApp(
     onLocationBack: () -> Unit = {},
     onLocationForward: () -> Unit = {},
 ) {
-    val scheme = when (state.settings.palette) {
-        ReaderPalette.NIGHT -> BrandDark
-        ReaderPalette.OLED -> BrandOled
-        ReaderPalette.SEPIA -> BrandSepia
-        else -> BrandLight
-    }
+    val scheme = jingduColorScheme(state.settings.palette)
     MaterialTheme(colorScheme = scheme) {
         val snackbar = remember { SnackbarHostState() }
         LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); actions.onMessageConsumed() } }
@@ -229,12 +291,6 @@ private fun ReaderHotPanelBackHandler(
     }
 }
 
-/**
- * Hot panels remain physically offscreen whenever hidden. Chapters can opt into a bounded two-frame
- * pre-record phase during Reader setup: those initial frames are placed behind the opaque Reader with
- * semantics cleared, then the exact same retained nodes move back offscreen. This warms their draw
- * content before the first user-visible open without a persistent layer or accessibility exposure.
- */
 @Composable
 private fun PersistentReaderPanelLayer(
     panelState: State<ReaderPanel?>,

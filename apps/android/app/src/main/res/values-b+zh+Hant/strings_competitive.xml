@@ -2,6 +2,7 @@
 <resources>
     <string name="txt_doctor">TXT 體檢</string>
     <string name="txt_doctor_body">在修復前完全本機檢查編碼、文字品質、章節結構和干擾內容。</string>
+    <string name="txt_doctor_failed">無法完成 TXT 體檢，請重試。</string>
     <string name="txt_health_score">TXT 健康度 · %1$d/100</string>
     <string name="doctor_encoding">編碼健康</string>
     <string name="doctor_toc">章節結構</string>
@@ -21,18 +22,20 @@
     <string name="toc_reset_repairs">重設本機目錄修復</string>
     <string name="toc_source_user_or_special">本機修復 / 特殊標題</string>
 
-    <string name="smart_clean4">智慧淨化 4</string>
-    <string name="smart_clean4_body">準確率優先的本機候選判斷 · 輕量模型 v%1$d · 不以模型掃描整本</string>
-    <string name="smart_clean4_signal">%1$s · %2$d 次 · 基礎 %3$d · 語意 %4$s · 調整後 %5$d</string>
-    <string name="smart_clean4_memory">本機判斷記憶 · %1$s</string>
+    <string name="smart_clean4">覆核淨化建議</string>
+    <string name="smart_clean4_body">準確率優先的本機淨化建議 · 私隱本機運行</string>
+    <string name="smart_clean4_signal">候選出現 %1$d 次 · 套用前請覆核</string>
+    <string name="smart_clean4_memory">已儲存你的本機選擇</string>
+    <string name="smart_clean_load_failed">無法載入淨化建議，請重試。</string>
     <string name="keep_text">保留</string>
     <string name="protect_text">永久保護</string>
     <string name="delete_and_remember">刪除並記住</string>
-    <string name="open_standard_clean">開啟淨化預覽</string>
+    <string name="open_standard_clean">返回智慧淨化</string>
 
     <string name="privacy_verification">隱私驗證</string>
     <string name="privacy_verification_body">從已安裝應用程式本身驗證離線承諾。匯出的稽核只包含設定和數量，不包含任何書籍正文。</string>
     <string name="privacy_no_internet">沒有 Android INTERNET 權限</string>
+    <string name="privacy_auto_backup_disabled">系統自動備份已關閉</string>
     <string name="privacy_no_upload">沒有正文上傳能力</string>
     <string name="privacy_no_analytics">沒有執行階段統計 SDK</string>
     <string name="privacy_no_ads">沒有廣告 SDK</string>
