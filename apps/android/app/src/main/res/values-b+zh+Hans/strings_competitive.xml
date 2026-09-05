@@ -23,7 +23,7 @@
 
     <string name="smart_clean4">复核净化建议</string>
     <string name="smart_clean4_body">准确率优先的本地净化建议 · 隐私本地运行</string>
-    <string name="smart_clean4_signal">候选出现 %2$d 次 · 应用前请复核</string>
+    <string name="smart_clean4_signal">候选出现 %1$d 次 · 应用前请复核</string>
     <string name="smart_clean4_memory">已保存你的本地选择</string>
     <string name="smart_clean_load_failed">无法加载净化建议，请重试。</string>
     <string name="keep_text">保留</string>
