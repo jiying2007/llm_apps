@@ -68,7 +68,9 @@ internal fun readerSkimPreviewAround(text: String, utf: Int): String {
     }
     val clean = text.replace(ReaderTypographySpec.PARAGRAPH_SPACER.toString(), "")
     val safe = (sourceSafe - removedBefore).coerceIn(0, clean.length)
-    val start = (safe - 90).coerceAtLeast(0)
-    val end = (safe + 180).coerceAtMost(clean.length)
+    var start = (safe - 90).coerceAtLeast(0)
+    var end = (safe + 180).coerceAtMost(clean.length)
+    if (start in 1 until clean.length && Character.isLowSurrogate(clean[start]) && Character.isHighSurrogate(clean[start - 1])) start--
+    if (end in 1 until clean.length && Character.isLowSurrogate(clean[end]) && Character.isHighSurrogate(clean[end - 1])) end++
     return clean.substring(start, end).replace(SKIM_WHITESPACE, " ").trim()
 }
