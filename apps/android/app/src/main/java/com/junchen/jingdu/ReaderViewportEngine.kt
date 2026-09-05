@@ -176,11 +176,15 @@ internal object ReaderPageLayoutCache {
         // was just inserted. Resolve that case without allocating cache.values.toList() on the UI
         // path; only history/back-navigation falls through to the tiny bounded LRU scan.
         mostRecent?.takeIf(::matches)?.let { return it.reusableLayout }
-        for (snapshot in cache.values) {
-            if (matches(snapshot)) {
-                mostRecent = snapshot
-                return snapshot.reusableLayout
-            }
+        val iterator = cache.values.iterator()
+        var match: PageLayoutSnapshot? = null
+        while (iterator.hasNext()) {
+            val snapshot = iterator.next()
+            if (matches(snapshot)) match = snapshot
+        }
+        if (match != null) {
+            mostRecent = match
+            return match.reusableLayout
         }
         return null
     }
