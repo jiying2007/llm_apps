@@ -130,8 +130,6 @@ internal fun SmartChaptersSheet(state: AppUiState, actions: JingduActions) {
     var addDialog by rememberSaveable { mutableStateOf(false) }
     var title by rememberSaveable { mutableStateOf("") }
 
-    // MainActivity.ensureChapters() is the single TOC authority. The sheet must never reopen the
-    // document and run SmartToc.analyze() a second time while the first analysis is already active.
     LaunchedEffect(book?.id, state.chaptersLoaded, state.chapters, state.length) {
         if (book == null) {
             base = null
@@ -332,6 +330,7 @@ internal fun PrivacySheet(state: AppUiState, actions: JingduActions) {
                 Column { Text(stringResource(R.string.privacy_verification), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); Text(stringResource(R.string.privacy_verification_body), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             PrivacyFact(stringResource(R.string.privacy_no_internet), audit.networkPermissionAbsent)
+            PrivacyFact(stringResource(R.string.privacy_auto_backup_disabled), audit.automaticBackupDisabled)
             PrivacyFact(stringResource(R.string.privacy_no_upload), !audit.bookTextUploadCapability)
             PrivacyFact(stringResource(R.string.privacy_no_analytics), !audit.analyticsSdkPresent)
             PrivacyFact(stringResource(R.string.privacy_no_ads), !audit.adsSdkPresent)
