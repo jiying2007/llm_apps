@@ -29,9 +29,13 @@ internal object ReaderPresentationPipeline {
         val display = presented.displayText
         val intermediateToDisplay = presented.projection
         val map = SourceDisplayMap.compose(sourceToIntermediate, intermediateToDisplay)
-        // All present() callers are already on bounded worker/IO paths. Build selection source ranges
-        // here so normal reader frames only merge the prepared annotations with visual spans.
-        ReaderSelectionController.prewarmSelectionMap(display, map)
+        // Continuous text is consumed later by Compose, so prewarm its exact selection map on this
+        // bounded worker. Paged rendering first measures the visible prefix and then calls
+        // annotatedForSelection() on the same worker; skipping full-window prewarm there avoids
+        // allocating source-range annotations for text that cannot appear on the current page.
+        if (settings.readingMode == ReaderMode.CONTINUOUS) {
+            ReaderSelectionController.prewarmSelectionMap(display, map)
+        }
         return ReaderPresentedText(
             sourceText = source,
             displayText = display,
