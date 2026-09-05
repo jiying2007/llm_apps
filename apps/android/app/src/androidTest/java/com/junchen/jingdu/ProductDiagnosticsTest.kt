@@ -30,6 +30,7 @@ class ProductDiagnosticsTest {
     fun privacyAuditExportContainsCodesButNoBookTextFields() {
         val result = PrivacyAuditResult(
             networkPermissionAbsent = true,
+            automaticBackupDisabled = true,
             bookTextUploadCapability = false,
             analyticsSdkPresent = false,
             adsSdkPresent = false,
@@ -44,7 +45,8 @@ class ProductDiagnosticsTest {
             recentErrors = listOf(ProductErrorEvent(ProductErrorCode.BILLING_UNAVAILABLE, "billing.connect", 42)),
         )
         val payload = JSONObject(PrivacyAudit.toJson(context, result))
-        assertEquals(2, payload.getInt("schema"))
+        assertEquals(3, payload.getInt("schema"))
+        assertTrue(payload.getBoolean("automaticBackupDisabled"))
         assertFalse(payload.getBoolean("containsBookText"))
         assertEquals("BILLING_UNAVAILABLE", payload.getJSONArray("recentErrors").getJSONObject(0).getString("code"))
         val policy = payload.getJSONObject("diagnosticPolicy")
