@@ -1,6 +1,7 @@
 package com.junchen.jingdu
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,12 +25,14 @@ class ReaderSkimControllerTest {
     }
 
     @Test
-    fun previewHandlesSupplementaryCharactersWithoutSplittingTarget() {
-        val text = "😀".repeat(60) + "目标" + "😀".repeat(100)
+    fun previewKeepsSupplementaryCharactersWholeAtSliceBoundaries() {
+        val text = "😀".repeat(80) + "目标" + "😀".repeat(140)
         val targetUtf = text.indexOf("目标")
 
         val preview = readerSkimPreviewAround(text, targetUtf)
 
         assertTrue(preview.contains("目标"))
+        assertFalse(preview.isNotEmpty() && Character.isLowSurrogate(preview.first()))
+        assertFalse(preview.isNotEmpty() && Character.isHighSurrogate(preview.last()))
     }
 }
