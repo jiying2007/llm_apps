@@ -21,14 +21,14 @@
     <string name="toc_reset_repairs">Reset local TOC repairs</string>
     <string name="toc_source_user_or_special">Locally repaired / special heading</string>
 
-    <string name="smart_clean4">Smart Clean 4</string>
-    <string name="smart_clean4_body">Precision-first local candidate intelligence · tiny model v%1$d · no full-book model scan</string>
+    <string name="smart_clean4">Smart Clean</string>
+    <string name="smart_clean4_body">Precision-first local cleanup suggestions · private and offline</string>
     <string name="smart_clean4_signal">%1$s · %2$d× · base %3$d · semantic %4$s · adjusted %5$d</string>
     <string name="smart_clean4_memory">Local decision memory · %1$s</string>
     <string name="keep_text">Keep</string>
     <string name="protect_text">Always protect</string>
     <string name="delete_and_remember">Delete + remember</string>
-    <string name="open_standard_clean">Open Clean preview</string>
+    <string name="open_standard_clean">Back to Smart Clean</string>
 
     <string name="privacy_verification">Privacy verification</string>
     <string name="privacy_verification_body">Verify the offline promise from the installed app itself. The exported audit contains configuration/counts only, never book text.</string>
