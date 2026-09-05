@@ -21,10 +21,10 @@
     <string name="toc_reset_repairs">重設本機目錄修復</string>
     <string name="toc_source_user_or_special">本機修復 / 特殊標題</string>
 
-    <string name="smart_clean4">智慧淨化</string>
+    <string name="smart_clean4">覆核淨化建議</string>
     <string name="smart_clean4_body">準確率優先的本機淨化建議 · 私隱本機運行</string>
-    <string name="smart_clean4_signal">%1$s · %2$d 次 · 基礎 %3$d · 語意 %4$s · 調整後 %5$d</string>
-    <string name="smart_clean4_memory">本機判斷記憶 · %1$s</string>
+    <string name="smart_clean4_signal">候選出現 %2$d 次 · 套用前請覆核</string>
+    <string name="smart_clean4_memory">已儲存你的本機選擇</string>
     <string name="keep_text">保留</string>
     <string name="protect_text">永久保護</string>
     <string name="delete_and_remember">刪除並記住</string>
