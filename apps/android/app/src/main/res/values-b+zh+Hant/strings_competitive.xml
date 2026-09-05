@@ -21,14 +21,14 @@
     <string name="toc_reset_repairs">重設本機目錄修復</string>
     <string name="toc_source_user_or_special">本機修復 / 特殊標題</string>
 
-    <string name="smart_clean4">智慧淨化 4</string>
-    <string name="smart_clean4_body">準確率優先的本機候選判斷 · 輕量模型 v%1$d · 不以模型掃描整本</string>
+    <string name="smart_clean4">智慧淨化</string>
+    <string name="smart_clean4_body">準確率優先的本機淨化建議 · 私隱本機運行</string>
     <string name="smart_clean4_signal">%1$s · %2$d 次 · 基礎 %3$d · 語意 %4$s · 調整後 %5$d</string>
     <string name="smart_clean4_memory">本機判斷記憶 · %1$s</string>
     <string name="keep_text">保留</string>
     <string name="protect_text">永久保護</string>
     <string name="delete_and_remember">刪除並記住</string>
-    <string name="open_standard_clean">開啟淨化預覽</string>
+    <string name="open_standard_clean">返回智慧淨化</string>
 
     <string name="privacy_verification">隱私驗證</string>
     <string name="privacy_verification_body">從已安裝應用程式本身驗證離線承諾。匯出的稽核只包含設定和數量，不包含任何書籍正文。</string>
