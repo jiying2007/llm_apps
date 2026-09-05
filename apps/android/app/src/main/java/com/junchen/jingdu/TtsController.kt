@@ -132,18 +132,17 @@ internal class TtsController(context: Context) : AutoCloseable {
         }
         chineseMode = mode
         chineseOverrides = overrides
-        if (desiredVoiceName.isEmpty()) {
-            preferredLocale = when (mode) {
-                ChineseDisplayMode.SIMPLIFIED -> Locale.forLanguageTag("zh-CN")
-                ChineseDisplayMode.TRADITIONAL,
-                ChineseDisplayMode.TAIWAN,
-                ChineseDisplayMode.TAIWAN_PHRASES -> Locale.forLanguageTag("zh-TW")
-                ChineseDisplayMode.HONG_KONG -> Locale.forLanguageTag("zh-HK")
-                ChineseDisplayMode.ORIGINAL -> runCatching { detectDocumentLocale(reader.page()) }.getOrDefault(Locale.getDefault())
+        val documentLocale = runCatching { detectDocumentLocale(reader.page()) }.getOrDefault(Locale.getDefault())
+        val voiceApplied = desiredVoiceName.isNotEmpty() && applyDesiredVoice()
+        if (!voiceApplied) {
+            TtsLocalePolicy.choose(
+                mode = mode,
+                documentLocale = documentLocale,
+                systemLocale = Locale.getDefault(),
+                isSupported = { locale -> tts.isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE },
+            )?.let { locale ->
+                if (tts.setLanguage(locale) >= TextToSpeech.LANG_AVAILABLE) preferredLocale = locale
             }
-            tts.language = preferredLocale
-        } else {
-            applyDesiredVoice()
         }
         if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
             listener.onStopped("audio focus denied")
@@ -206,11 +205,12 @@ internal class TtsController(context: Context) : AutoCloseable {
             .toList()
     }
 
-    private fun applyDesiredVoice() {
-        if (!ready || desiredVoiceName.isEmpty()) return
-        val voice = tts.voices?.firstOrNull { !it.isNetworkConnectionRequired && it.name == desiredVoiceName } ?: return
+    private fun applyDesiredVoice(): Boolean {
+        if (!ready || desiredVoiceName.isEmpty()) return false
+        val voice = tts.voices?.firstOrNull { !it.isNetworkConnectionRequired && it.name == desiredVoiceName } ?: return false
         preferredLocale = voice.locale ?: Locale.getDefault()
         tts.voice = voice
+        return true
     }
 
     private fun pauseForFocus() {
@@ -249,7 +249,9 @@ internal class TtsController(context: Context) : AutoCloseable {
             listener?.onPosition(offset)
             val sourceEnd = (offset + sourceToSpoken.sourceCodePoints).coerceAtMost(sourceChunk.nextOffset)
             listener?.onRange(offset, sourceEnd.coerceAtLeast(offset + 1))
-            tts.speak(spoken.text, TextToSpeech.QUEUE_FLUSH, Bundle(), token.toString())
+            if (tts.speak(spoken.text, TextToSpeech.QUEUE_FLUSH, Bundle(), token.toString()) == TextToSpeech.ERROR) {
+                stop("tts speak failed")
+            }
         } catch (error: Exception) {
             stop(error.message ?: "tts failure")
         }
