@@ -42,6 +42,17 @@ class TtsLocalePolicyTest {
     }
 
     @Test
+    fun convertedChineseNeverFallsBackToNonChineseSystemVoice() {
+        val selected = TtsLocalePolicy.choose(
+            mode = ChineseDisplayMode.TRADITIONAL,
+            documentLocale = Locale.forLanguageTag("zh-CN"),
+            systemLocale = Locale.ENGLISH,
+        ) { it == Locale.ENGLISH }
+
+        assertNull(selected)
+    }
+
+    @Test
     fun convertedChineseRejectsSavedNonChineseVoice() {
         assertFalse(TtsLocalePolicy.acceptsSavedVoice(ChineseDisplayMode.TRADITIONAL, Locale.ENGLISH))
         assertFalse(TtsLocalePolicy.acceptsSavedVoice(ChineseDisplayMode.SIMPLIFIED, Locale.JAPANESE))
